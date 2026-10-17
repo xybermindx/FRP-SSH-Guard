@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+**[Download v1.1.0 .deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb)** · [All release files](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0) · Pre-release
+
 Connection-rate protection for SSH services exposed through an FRP server (`frps`).
 Install the guard on your public Linux server, select the forwarded TCP ports,
 and use nftables to limit repeated connection attempts and block abusive sources.
@@ -115,21 +117,22 @@ packets, including retransmissions, are measured—not exact sessions or login a
 
 ## Download a release
 
-Open this repository's **Releases** section and select the desired published version.
-For 1.1.0, the release artifacts are:
+Download from **[GitHub Releases](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0)**. Debian `.deb` files are
+release assets; they do not appear in the GitHub **Packages** tab.
+The public 1.1.0 pre-release contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| `frp-ssh-guard_1.1.0_all.deb` | Install on the target Debian/Ubuntu host. |
-| `frp-ssh-guard-1.1.0.tar.gz` | Complete project source, build scripts, packaging, docs, and tests. |
-| `frp-ssh-guard-1.1.0-src.zip` | The same source in ZIP format. |
-| `SHA256SUMS` | Verify downloaded files. |
+| [frp-ssh-guard_1.1.0_all.deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb) | Install on the target Debian/Ubuntu host. |
+| [frp-ssh-guard-1.1.0.tar.gz](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0.tar.gz) | Complete project source, build scripts, packaging, docs, and tests. |
+| [frp-ssh-guard-1.1.0-src.zip](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0-src.zip) | The same source in ZIP format. |
+| [SHA256SUMS](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/SHA256SUMS) | Verify downloaded files. |
 
 `all` means the package contains scripts rather than a CPU-specific compiled
 binary. Dependencies are installed for the host architecture. Checksums detect
-corruption/changes; they are not publisher signatures. If no release has been
-published yet, build from source below. Release preparation does not automatically
-publish a public release.
+corruption/changes; they are not publisher signatures. This pre-release has passed
+CI, including nftables and package lifecycle checks; full FRP/systemd VM validation
+remains pending. See the release notes for details.
 
 ## Deploy step by step
 

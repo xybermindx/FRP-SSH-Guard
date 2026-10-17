@@ -2,6 +2,8 @@
 
 [English](README.md) | **简体中文**
 
+**[下载 v1.1.0 .deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0) · 预发布版本
+
 为 FRP 服务端（`frps`）暴露的 SSH 服务提供连接速率防护。
 将本工具安装在公网 Linux 服务器上，选择需要保护的转发 TCP 端口，
 通过 nftables 限制重复连接尝试，并封禁异常来源。
@@ -103,18 +105,19 @@ flowchart LR
 
 ## 下载发布版本
 
-进入本仓库的 **Releases** 页面，选择已发布版本。1.1.0 的发布文件为：
+请从 **[GitHub Releases](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0)** 下载。Debian `.deb` 文件作为发布附件提供，
+不会显示在 GitHub 的 **Packages** 栏目中。公开的 1.1.0 预发布版本包含：
 
 | 文件 | 用途 |
 | --- | --- |
-| `frp-ssh-guard_1.1.0_all.deb` | 安装到目标 Debian/Ubuntu 主机。 |
-| `frp-ssh-guard-1.1.0.tar.gz` | 完整项目源码、构建脚本、打包文件、文档和测试。 |
-| `frp-ssh-guard-1.1.0-src.zip` | 相同源码的 ZIP 格式。 |
-| `SHA256SUMS` | 校验下载文件。 |
+| [frp-ssh-guard_1.1.0_all.deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [frp-ssh-guard-1.1.0.tar.gz](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0.tar.gz) | 完整项目源码、构建脚本、打包文件、文档和测试。 |
+| [frp-ssh-guard-1.1.0-src.zip](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0-src.zip) | 相同源码的 ZIP 格式。 |
+| [SHA256SUMS](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/SHA256SUMS) | 校验下载文件。 |
 
 `all` 表示软件包包含脚本，而非针对特定 CPU 编译的二进制程序；依赖包按主机架构安装。
-校验和可检测文件变化或损坏，但不是发布者签名。如果尚无公开版本，可以按下文从源码构建。
-生成发布文件不会自动公开发布 Release。
+校验和可检测文件变化或损坏，但不是发布者签名。此预发布版本已通过 CI，
+包括 nftables 和软件包生命周期检查；完整的 FRP/systemd 虚拟机验证仍待完成，详见发布说明。
 
 ## 逐步部署
 
