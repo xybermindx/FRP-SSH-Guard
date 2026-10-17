@@ -25,7 +25,7 @@ jobs:
       - name: Verify reproducibility and checksums
         run: |
           cp dist/SHA256SUMS /tmp/first-build.sha256
-          python3 scripts/build.py all
+          python3 scripts/build.py release
           cmp /tmp/first-build.sha256 dist/SHA256SUMS
           (cd dist && sha256sum -c SHA256SUMS)
       - name: Verify Debian 12 install, reinstall, removal, and purge
@@ -35,5 +35,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: release-artifacts
-          path: dist/*
+          path: |
+            dist/*.deb
+            dist/SHA256SUMS
           if-no-files-found: error

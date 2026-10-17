@@ -1,4 +1,21 @@
-# Migration to 1.1.0
+# Migration to 0.0.4
+
+## Corrected public version numbering
+
+The public release uses **v0.0.4**. The initially published v1.1.0 package and
+older 1.0.x development packages have numerically higher Debian versions.
+To replace one of those installations while preserving settings and state:
+
+```bash
+sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4_all.deb
+# If protection was already active:
+sudo systemctl restart frp-ssh-guard.service
+sudo frp-ssh-guard status
+```
+
+This is a release-number correction. Keep your existing settings; do not purge
+or remove the package first. Fresh installations use the normal install command.
+The earlier v1.1.0 release is superseded by v0.0.4.
 
 ## Existing Debian installations (1.0.x)
 
@@ -14,7 +31,7 @@ restore the accepted policy, not later edits.
    updated programs and units:
 
    ```bash
-   sudo apt install ./frp-ssh-guard_1.1.0_all.deb
+   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4_all.deb
    sudo systemctl restart frp-ssh-guard.service
    sudo frp-ssh-guard status
    ```

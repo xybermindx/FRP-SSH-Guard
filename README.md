@@ -2,13 +2,13 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**[Download v1.1.0 .deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb)** · [All release files](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0) · Pre-release
+**[Download v0.0.4 .deb](https://github.com/nengwanx/FRP-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb)** · [All release files](https://github.com/nengwanx/FRP-Guard/releases/tag/v0.0.4) · Pre-release
 
 Connection-rate protection for SSH services exposed through an FRP server (`frps`).
 Install the guard on your public Linux server, select the forwarded TCP ports,
 and use nftables to limit repeated connection attempts and block abusive sources.
 
-**Version 1.1.0 · MIT licensed · Bash and Python · No proprietary runtime components**
+**Version 0.0.4 · MIT licensed · Bash and Python · No proprietary runtime components**
 
 [Deployment](#deploy-step-by-step) · [Configuration](#configuration) ·
 [Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
@@ -117,16 +117,20 @@ packets, including retransmissions, are measured—not exact sessions or login a
 
 ## Download a release
 
-Download from **[GitHub Releases](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0)**. Debian `.deb` files are
+Download from **[GitHub Releases](https://github.com/nengwanx/FRP-Guard/releases/tag/v0.0.4)**. Debian `.deb` files are
 release assets; they do not appear in the GitHub **Packages** tab.
-The public 1.1.0 pre-release contains:
+The public 0.0.4 pre-release contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_1.1.0_all.deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb) | Install on the target Debian/Ubuntu host. |
-| [frp-ssh-guard-1.1.0.tar.gz](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0.tar.gz) | Complete project source, build scripts, packaging, docs, and tests. |
-| [frp-ssh-guard-1.1.0-src.zip](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0-src.zip) | The same source in ZIP format. |
-| [SHA256SUMS](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/SHA256SUMS) | Verify downloaded files. |
+| [frp-ssh-guard_0.0.4_all.deb](https://github.com/nengwanx/FRP-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb) | Install on the target Debian/Ubuntu host. |
+| [SHA256SUMS](https://github.com/nengwanx/FRP-Guard/releases/download/v0.0.4/SHA256SUMS) | Verify the downloaded Debian package. |
+
+The complete source remains in the repository. GitHub automatically provides
+[Source code (zip)](https://github.com/nengwanx/FRP-Guard/archive/refs/tags/v0.0.4.zip)
+and [Source code (tar.gz)](https://github.com/nengwanx/FRP-Guard/archive/refs/tags/v0.0.4.tar.gz)
+for the release tag, including the runtime, build scripts, packaging, docs, and tests.
+Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb`.
 
 `all` means the package contains scripts rather than a CPU-specific compiled
 binary. Dependencies are installed for the host architecture. Checksums detect
@@ -155,7 +159,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_1.1.0_all.deb
+sudo apt install ./frp-ssh-guard_0.0.4_all.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -340,6 +344,10 @@ sudo apt remove frp-ssh-guard  # retain settings and state
 sudo apt purge frp-ssh-guard   # also erase settings, state, and logs
 ```
 
+If you installed the earlier v1.1.0 or 1.0.x package, use
+`sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4_all.deb` to adopt the
+corrected public numbering without removing your settings.
+
 Upgrades do not restart services automatically. Existing `guard.conf`/`ports.conf`
 installations remain supported until migrated; the package does not mask them with
 an empty new settings file. Follow [migration instructions](docs/MIGRATING.md).
@@ -356,11 +364,13 @@ project-hosted service. System dependencies retain their own licenses.
 ```bash
 # In the extracted source directory, as a regular user:
 make test
-make release  # .deb, source archives, and SHA256SUMS under dist/
+make release  # .deb and SHA256SUMS under dist/
+make dist     # optional local source tar.gz/zip exports
 ```
 
-Build prerequisites: Bash, Python 3, GNU Make, and `dpkg-deb`. Source releases use
-an explicit manifest to exclude live settings, IP lists, logs, credentials, and
+Build prerequisites: Bash, Python 3, GNU Make, and `dpkg-deb`. GitHub source
+downloads contain the files tracked at the release tag. Optional `make dist` exports
+use an explicit manifest to exclude live settings, IP lists, logs, credentials, and
 original deployment backups. See [release procedure](docs/RELEASING.md).
 
 For a source deployment (the package is preferred):

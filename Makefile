@@ -17,7 +17,7 @@ dist:
 	python3 scripts/build.py source
 
 release: test
-	python3 scripts/build.py all
+	python3 scripts/build.py release
 
 clean:
 	rm -rf build dist

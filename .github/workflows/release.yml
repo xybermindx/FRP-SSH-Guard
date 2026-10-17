@@ -30,11 +30,12 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           test "$RELEASE_TAG" = "v$(cat VERSION)"
+          package="dist/frp-ssh-guard_$(cat VERSION)_all.deb"
           (cd dist && sha256sum -c SHA256SUMS)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
-            gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release upload "$RELEASE_TAG" "$package" dist/SHA256SUMS --clobber
           else
-            gh release create "$RELEASE_TAG" dist/* --verify-tag --draft \
+            gh release create "$RELEASE_TAG" "$package" dist/SHA256SUMS --verify-tag --draft \
               --title "FRP SSH Guard $RELEASE_TAG" --notes-file CHANGELOG.md
           fi

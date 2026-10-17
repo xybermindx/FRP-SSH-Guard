@@ -2,13 +2,13 @@
 
 [English](README.md) | **简体中文**
 
-**[下载 v1.1.0 .deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0) · 预发布版本
+**[下载 v0.0.4 .deb](https://github.com/nengwanx/FRP-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-Guard/releases/tag/v0.0.4) · 预发布版本
 
 为 FRP 服务端（`frps`）暴露的 SSH 服务提供连接速率防护。
 将本工具安装在公网 Linux 服务器上，选择需要保护的转发 TCP 端口，
 通过 nftables 限制重复连接尝试，并封禁异常来源。
 
-**版本 1.1.0 · MIT 开源许可 · Bash 与 Python · 无闭源运行组件**
+**版本 0.0.4 · MIT 开源许可 · Bash 与 Python · 无闭源运行组件**
 
 [部署步骤](#逐步部署) · [配置说明](#配置说明) · [命令](#常用命令) ·
 [防护范围](#可以防护哪些攻击) · [验证效果](#验证防护是否生效) · [源码构建](#开源与源码构建)
@@ -105,15 +105,19 @@ flowchart LR
 
 ## 下载发布版本
 
-请从 **[GitHub Releases](https://github.com/nengwanx/FRP-Guard/releases/tag/v1.1.0)** 下载。Debian `.deb` 文件作为发布附件提供，
-不会显示在 GitHub 的 **Packages** 栏目中。公开的 1.1.0 预发布版本包含：
+请从 **[GitHub Releases](https://github.com/nengwanx/FRP-Guard/releases/tag/v0.0.4)** 下载。Debian `.deb` 文件作为发布附件提供，
+不会显示在 GitHub 的 **Packages** 栏目中。公开的 0.0.4 预发布版本包含：
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_1.1.0_all.deb](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard_1.1.0_all.deb) | 安装到目标 Debian/Ubuntu 主机。 |
-| [frp-ssh-guard-1.1.0.tar.gz](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0.tar.gz) | 完整项目源码、构建脚本、打包文件、文档和测试。 |
-| [frp-ssh-guard-1.1.0-src.zip](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/frp-ssh-guard-1.1.0-src.zip) | 相同源码的 ZIP 格式。 |
-| [SHA256SUMS](https://github.com/nengwanx/FRP-Guard/releases/download/v1.1.0/SHA256SUMS) | 校验下载文件。 |
+| [frp-ssh-guard_0.0.4_all.deb](https://github.com/nengwanx/FRP-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [SHA256SUMS](https://github.com/nengwanx/FRP-Guard/releases/download/v0.0.4/SHA256SUMS) | 校验下载的 Debian 软件包。 |
+
+完整源码保留在仓库中。GitHub 会根据发布标签自动提供
+[Source code (zip)](https://github.com/nengwanx/FRP-Guard/archive/refs/tags/v0.0.4.zip)
+和 [Source code (tar.gz)](https://github.com/nengwanx/FRP-Guard/archive/refs/tags/v0.0.4.tar.gz)，
+包含运行代码、构建脚本、打包文件、文档及测试。无需再上传重复的源码附件。
+`SHA256SUMS` 仅校验 `.deb` 文件。
 
 `all` 表示软件包包含脚本，而非针对特定 CPU 编译的二进制程序；依赖包按主机架构安装。
 校验和可检测文件变化或损坏，但不是发布者签名。此预发布版本已通过 CI，
@@ -139,7 +143,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_1.1.0_all.deb
+sudo apt install ./frp-ssh-guard_0.0.4_all.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -315,6 +319,10 @@ sudo apt remove frp-ssh-guard  # 保留配置和状态
 sudo apt purge frp-ssh-guard   # 同时删除配置、状态和日志
 ```
 
+如果已安装此前的 v1.1.0 或 1.0.x 软件包，请执行
+`sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4_all.deb`，
+切换到修正后的公开版本编号，并保留现有设置。
+
 升级不会自动重启服务。原有 `guard.conf`/`ports.conf` 部署在迁移前仍可使用，
 不会被空的新配置文件覆盖。详细操作见[迁移说明](docs/MIGRATING.md)（英文）。
 `settings.conf` 由维护脚本创建并保留，不会在升级时被替换；新版本默认示例随软件包文档提供。
@@ -328,11 +336,13 @@ sudo apt purge frp-ssh-guard   # 同时删除配置、状态和日志
 ```bash
 # 在解压后的源码目录中，以普通用户执行：
 make test
-make release  # dist/ 下生成 .deb、源码包和 SHA256SUMS
+make release  # dist/ 下生成 .deb 和 SHA256SUMS
+make dist     # 可选：导出本地源码 tar.gz/zip
 ```
 
 构建需要 Bash、Python 3、GNU Make 和 `dpkg-deb`。
-源码发布使用明确的文件清单，排除真实配置、IP 名单、日志、凭据和原始部署备份。
+GitHub 源码下载包含发布标签所对应的仓库文件。可选的 `make dist` 本地导出使用明确的文件清单，
+排除真实配置、IP 名单、日志、凭据和原始部署备份。
 发布流程见[发布说明](docs/RELEASING.md)（英文）。
 
 如需从源码部署（推荐使用软件包）：

@@ -118,7 +118,7 @@ def build_deb(version, epoch, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["all", "deb", "source"])
+    parser.add_argument("kind", choices=["all", "deb", "source", "release"])
     args = parser.parse_args()
     version = (ROOT / "VERSION").read_text().strip()
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
@@ -127,9 +127,9 @@ def main():
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     artifacts = []
-    if args.kind in ("all", "deb"): artifacts.append(build_deb(version, epoch, output))
+    if args.kind in ("all", "deb", "release"): artifacts.append(build_deb(version, epoch, output))
     if args.kind in ("all", "source"): artifacts.extend(build_source(version, epoch, output))
-    if args.kind == "all":
+    if args.kind in ("all", "release"):
         sums = output / "SHA256SUMS"
         sums.write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in artifacts))
         artifacts.append(sums)

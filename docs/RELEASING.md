@@ -7,11 +7,12 @@ user should use their own GitHub login/SSH keys; avoid `sudo git`, `sudo gh`, an
 sharing a working copy across users. Commit author settings and GitHub
 authentication are separate.
 
-Extract the generated source archive into that directory, then initialize Git:
+For an initial publication from an untracked workspace, run `make dist` to create
+a clean local source export. Extract it into that directory, then initialize Git:
 
 ```bash
-tar -xzf frp-ssh-guard-1.1.0.tar.gz
-cd frp-ssh-guard-1.1.0
+tar -xzf frp-ssh-guard-0.0.4.tar.gz
+cd frp-ssh-guard-0.0.4
 git init -b main
 git config --local user.name 'YOUR NAME'
 git config --local user.email 'YOUR VERIFIED OR NOREPLY GITHUB EMAIL'
@@ -49,7 +50,8 @@ its attribution and package maintainer metadata if appropriate.
    ```
 
 6. The release workflow runs validation and creates a **draft** GitHub release
-   containing the tested `.deb`, source `.tar.gz`, source `.zip`, and SHA256SUMS.
+   containing only the tested `.deb` and `SHA256SUMS`. GitHub automatically adds
+   source ZIP/tar.gz links for the tag; do not upload duplicate source bundles.
    Review the notes and artifacts, then publish the draft on GitHub.
 
 The workflow uses the repository's built-in `GITHUB_TOKEN` with release-write
@@ -60,11 +62,19 @@ it refuses to overwrite a published release.
 GitHub documents draft releases in its
 [release management guide](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).
 
+## Public release layout
+
+For v0.0.4, upload `frp-ssh-guard_0.0.4_all.deb` and `SHA256SUMS` only.
+GitHub supplies **Source code (zip)** and **Source code (tar.gz)** from the tag.
+Those automatic archives contain all tracked files; inspect the commit before
+publishing and never commit live configuration, secrets, or deployment backups.
+The checksum file covers uploaded installable packages, not GitHub-generated archives.
+
 ## Build details
 
 - `make deb`: architecture-independent Debian binary package only.
 - `make dist`: complete development source in tar.gz and zip formats.
-- `make release`: tests, both formats, and SHA256SUMS.
+- `make release`: tests, the Debian package, and a SHA256SUMS covering that package.
 - `make clean`: remove generated `build/` and `dist/` directories.
 
 Source export includes a fixed set of top-level files and development directories.
@@ -86,8 +96,8 @@ repository. Checksums detect changes but do not replace artifact signatures.
   with reciprocal language links and the actual release version.
 - Complete `docs/VALIDATION.md` with observed results before publishing stable
   artifacts. Never present expected examples or configured CI as completed tests.
-- Attach the tested `.deb`, complete source `.tar.gz`/`.zip`, and `SHA256SUMS`.
-  The full MIT-licensed runtime, packaging, build scripts, and tests are included.
+- Attach only the tested `.deb` and its `SHA256SUMS`. GitHub's automatic tag
+  archives provide the full MIT-licensed runtime, packaging, build scripts, and tests.
 - Check install, migration, source build, language links, and license links from
   the resulting repository and extracted archives.
 - Retain user settings on upgrade; ship updated defaults as examples.

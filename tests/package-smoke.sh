@@ -27,13 +27,13 @@ test ! -e /etc/frp-ssh-guard/settings.conf
 test ! -e /var/lib/frp-ssh-guard
 test ! -e /var/log/frp-ssh-guard
 
-# Simulate a pre-1.1 package owning the old conffiles, then upgrade. This
+# Simulate an earlier package owning the old conffiles, then upgrade. This
 # specifically checks dpkg's obsolete-conffile behavior, not old runtime behavior.
 legacy=$(mktemp -d)
 mkdir -p "$legacy/DEBIAN" "$legacy/etc/frp-ssh-guard"
 cat > "$legacy/DEBIAN/control" <<'CONTROL'
 Package: frp-ssh-guard
-Version: 1.0.99
+Version: 0.0.3
 Architecture: all
 Maintainer: Package smoke test <test@example.invalid>
 Description: Legacy configuration upgrade fixture

@@ -1,6 +1,11 @@
 # Changelog
 
-## 1.1.0
+## 0.0.4
+
+- Use v0.0.4 for the public release, replacing the initial v1.1.0 numbering.
+  Package metadata, filenames, source tags, and download links use 0.0.4.
+- Publish only the Debian package and its checksum as release assets; use GitHub's
+  automatic tag ZIP/tar.gz downloads for the complete source.
 
 - Consolidate new deployment settings and protected ports in commented `settings.conf`.
 - Add `enable`/`disable` commands while preserving existing aliases and trial controls.
@@ -16,7 +21,7 @@
 - Live systemd/FRP and target-container validation remains pending in this preparation
   environment; see `docs/VALIDATION.md` before publishing a stable release.
 
-## 1.0.1
+## Development snapshot 1.0.1 (before public version numbering)
 
 - Add architecture-independent Debian packaging with configuration preservation,
   explicit activation, systemd units, removal/purge handling, and log rotation.
@@ -34,7 +39,7 @@
 - Recompile source-install rules on startup so saved table-deletion statements
   cannot prevent restoration after reboot.
 
-## 1.0.0
+## Development snapshot 1.0.0 (before public version numbering)
 
 - Original source archive with nftables guard, SSH learning, ban history,
   strike escalation, and a source installer.

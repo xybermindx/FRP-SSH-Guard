@@ -4,14 +4,14 @@ This document distinguishes expected behavior from tests actually run. It does
 not claim a prevention percentage, maximum throughput, independent audit, or
 production availability guarantee.
 
-## Recorded checks for 1.1.0
+## Recorded checks for 0.0.4
 
 Local preparation environment: Ubuntu 26.04.1 LTS, unprivileged workspace.
 
 | Check | Result |
 | --- | --- |
 | Shell/Python syntax and unprivileged regression suite | Passed: 33 tests; one additional privileged kernel test skipped (34 total). |
-| Debian/source artifact creation, checksum verification, repeat-build comparison | Passed: `.deb`, tar.gz, ZIP, and SHA256SUMS generated; checksums verified; repeated builds produced identical checksums. |
+| Debian artifact creation, checksum verification, repeat-build comparison | Passed during preparation: `.deb` and its SHA256SUMS generated and verified. CI repeats the release build and compares checksums. Source downloads are provided by GitHub from the release tag. |
 | Package/source contents and local documentation links | Passed: both languages and all settings documented; source manifest excludes live configuration/state. |
 | Real nftables kernel namespace test | Not run here: namespace creation is denied and passwordless sudo is unavailable. |
 | Debian 12 / Ubuntu 24.04 package lifecycle containers | Not run here: Docker socket access is denied. CI includes these checks. |
