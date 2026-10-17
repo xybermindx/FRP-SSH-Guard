@@ -1,6 +1,7 @@
 #!/bin/bash
 # Run only inside a disposable Debian/Ubuntu container as root.
 set -euo pipefail
+trap 'echo "Package smoke test failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 [[ ${FRP_GUARD_DISPOSABLE:-} == 1 && $EUID == 0 ]] || { echo 'Requires a disposable container and FRP_GUARD_DISPOSABLE=1.' >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -47,7 +48,11 @@ dpkg -i "$package"
 test ! -e /etc/frp-ssh-guard/settings.conf
 grep -qx 'BAN_TIMEOUT=3h' /etc/frp-ssh-guard/guard.conf
 grep -qx '22001' /etc/frp-ssh-guard/ports.conf
-test -f /usr/share/doc/frp-ssh-guard/README.zh-CN.md
-test -f /usr/share/doc/frp-ssh-guard/examples/settings.conf.example
+# Minimal images can configure dpkg to exclude /usr/share/doc. Verify the
+# shipped payload independently of those image-level installation filters.
+dpkg-deb --fsys-tarfile "$package" | tar -tf - > /tmp/frp-guard-package-files
+grep -qx './usr/share/doc/frp-ssh-guard/README.zh-CN.md' /tmp/frp-guard-package-files
+grep -qx './usr/share/doc/frp-ssh-guard/examples/settings.conf.example' /tmp/frp-guard-package-files
+test -f /usr/share/frp-ssh-guard/settings.conf.default
 apt-get purge -y frp-ssh-guard
 test ! -e /etc/frp-ssh-guard
