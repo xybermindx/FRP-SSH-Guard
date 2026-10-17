@@ -46,5 +46,8 @@ commands, OS/kernel version, and observed results in your pull request. A passin
 syntax or mocked rule test is not a live-firewall test.
 
 Keep README.md and README.zh-CN.md equivalent when changing user-facing behavior.
+The main README also contains a collapsible Chinese guide: copy the Chinese
+README body, starting at its download link, into that section when updating it.
+Keep its language navigation as same-page anchors.
 Record real runtime checks in docs/VALIDATION.md; distinguish fake-command tests
 from actual kernel, systemd, and FRP tests.
