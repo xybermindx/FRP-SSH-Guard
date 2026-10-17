@@ -12,6 +12,39 @@ and use nftables to limit repeated connection attempts and block abusive sources
 [Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
 [Verification](#verify-that-protection-takes-effect) · [Build from source](#open-source-and-building)
 
+## Observed deployment results
+
+An operator-reported snapshot from one deployment, **October 13–17, 2026**
+(approximately four days since the guard was last applied), recorded **3.2 million
+packets dropped** and **zero backend failed logins in the latest 24 hours**.
+
+| Metric | Before the guard (reported) | With the guard (reported) |
+| --- | --- | --- |
+| Guard-rule packet counters, approximately four days | — | **3,206,432 dropped; 967 passed** |
+| Drop fraction of those packet counters | — | **99.97%** |
+| SSH connections reaching backends, hourly | Approximately 200+/hour | **2 in the latest 60 minutes** |
+| SSH connections reaching backends, latest 24 hours | — | **79** |
+| Backend failed logins, 24-hour window | **6,442** | **0 observed** |
+| All-proxy connections, hourly | Approximately 248/hour | **102/hour** |
+
+The hourly SSH figures correspond to approximately **99% fewer backend connections**
+against the reported baseline. The remaining all-proxy traffic was reported to be
+mostly public web traffic on port 443, which this deployment intentionally left
+outside the guarded ports.
+
+The packet figure is `3,206,432 / (3,206,432 + 967)`. It describes the supplied
+counters; established and allowlisted traffic can bypass those counters. It does
+not measure unique attackers or attack-prevention accuracy. Zero recorded failed
+logins means none were observed in that 24-hour window; successful logins and
+other authentication activity are separate metrics.
+
+These are observations from an existing deployment, supplied by its operator;
+the exact deployed version and raw logs were not supplied for independent
+verification. Traffic, settings, and logging coverage affect results. The operator
+also reported CPU usage displaying approximately 0% and a few MB of process RAM;
+the measurement method and kernel firewall costs were not provided, so these
+resource figures are not a performance benchmark.
+
 ## Purpose and features
 
 FRP exposes private services through a public server. Forwarded SSH ports can
@@ -75,8 +108,9 @@ has been tested. See [validation results](docs/VALIDATION.md).
 | Bandwidth-saturating DDoS | No availability guarantee; host filtering cannot recover an already saturated upstream link. |
 | Unconfigured ports, UDP, and other protocols | Outside the filtering scope. |
 
-**Effectiveness depends on traffic, limits, and the deployment.** No prevention
-percentage, throughput benchmark, or external security audit is claimed. New SYN
+**Effectiveness depends on traffic, limits, and the deployment.** The observed
+results above are specific to one deployment. No general prevention percentage,
+throughput benchmark, or external security audit is claimed. New SYN
 packets, including retransmissions, are measured—not exact sessions or login attempts.
 
 ## Download a release
