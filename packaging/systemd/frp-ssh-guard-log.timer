@@ -1,0 +1,9 @@
+[Unit]
+Description=Record FRP SSH guard bans every minute
+After=frp-ssh-guard.service
+PartOf=frp-ssh-guard.service
+
+[Timer]
+OnActiveSec=60
+OnUnitActiveSec=60
+AccuracySec=1s

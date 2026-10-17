@@ -1,0 +1,10 @@
+[Unit]
+Description=Snapshot FRP SSH guard bans
+After=frp-ssh-guard.service
+Requisite=frp-ssh-guard.service
+PartOf=frp-ssh-guard.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/frp-ssh-guard/run log
+UMask=0027

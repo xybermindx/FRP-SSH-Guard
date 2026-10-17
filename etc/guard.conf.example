@@ -1,0 +1,35 @@
+# Legacy 1.0.x policy example. New installations use settings.conf.example.
+# All scripts source this file.
+
+# Base directory (contains bin/ etc/ lists/ logs/).
+GUARD_DIR=/opt/frp-ssh-guard
+
+# Dedicated nftables table name. Only one guard instance is supported.
+GUARD_TABLE=frp_ssh_persistent_guard
+
+# Ports to protect live in etc/ports.conf (one port or range per line).
+# EXCLUDE_PORTS: ports/ranges to skip even if inside a protected range (e.g. an HTTP port).
+EXCLUDE_PORTS=
+
+# Validation bounds for ports.conf (default = all valid TCP ports).
+PORT_MIN=1
+PORT_MAX=65535
+
+# --- per-IP limiting (connection-rate; SSH credentials are hidden by the tunnel) ---
+PER_IP_RATE=2          # sustained new connections/min per source IP before a ban
+PER_IP_BURST=40        # quick burst tolerated (opening many terminals at once)
+GLOBAL_RATE=30         # shared per-port ceiling/min (distributed floods)
+GLOBAL_BURST=20
+BAN_TIMEOUT=6h         # base ban for one offense (across guarded ports)
+
+# --- auto-learn whitelist ---
+LOGIN_USERS=""   # opt in: local sshd accounts whose successful login trusts the source IP
+                       # (regex alternation, e.g. "ubuntu|admin")
+EDIT_USER=root         # user allowed to edit lists/ (root = root-only)
+MAX_LEARNED=500        # cap on auto-learned entries
+LEARN_TIMEOUT=90d      # rolling lifetime of a learned entry
+
+# --- strike (repeat-offender) escalation: kept at the cap while active ---
+STRIKE_WINDOW=90d      # offenses within this window count as strikes (decay)
+STRIKE_MAX=28d         # maximum ban (28d = 4 weeks)
+STRIKE_LADDER="2:1d 3:3d 4:7d 5:28d"

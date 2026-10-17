@@ -1,0 +1,10 @@
+[Unit]
+Description=Apply edited FRP SSH guard lists
+After=frp-ssh-guard.service
+Requisite=frp-ssh-guard.service
+PartOf=frp-ssh-guard.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/frp-ssh-guard apply
+UMask=0027

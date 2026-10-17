@@ -1,0 +1,12 @@
+[Unit]
+Description=Learn trusted sources from local SSH logins
+After=frp-ssh-guard.service
+Requires=frp-ssh-guard.service
+PartOf=frp-ssh-guard.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/frp-ssh-guard/run learn
+Restart=on-failure
+RestartSec=10
+UMask=0027

@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch FRP SSH guard manual lists
+After=frp-ssh-guard.service
+PartOf=frp-ssh-guard.service
+
+[Path]
+PathModified=/var/lib/frp-ssh-guard/lists/whitelist.conf
+PathModified=/var/lib/frp-ssh-guard/lists/blocklist.conf
+Unit=frp-ssh-guard-lists.service

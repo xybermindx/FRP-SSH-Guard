@@ -1,0 +1,39 @@
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install build and kernel-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make python3 dpkg nftables util-linux
+      - name: Test and build
+        run: make release
+      - name: Validate rules in an isolated network namespace
+        run: sudo env FRP_GUARD_LIVE_TESTS=1 python3 -m unittest discover -s tests -v
+      - name: Verify reproducibility and checksums
+        run: |
+          cp dist/SHA256SUMS /tmp/first-build.sha256
+          python3 scripts/build.py all
+          cmp /tmp/first-build.sha256 dist/SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS)
+      - name: Verify Debian 12 install, reinstall, removal, and purge
+        run: docker run --rm -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" debian:12 bash /src/tests/package-smoke.sh
+      - name: Verify Ubuntu 24.04 install, reinstall, removal, and purge
+        run: docker run --rm -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" ubuntu:24.04 bash /src/tests/package-smoke.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-artifacts
+          path: dist/*
+          if-no-files-found: error

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+if [ "${1:-}" = purge ]; then
+    rm -rf /etc/frp-ssh-guard
+    rm -rf /var/lib/frp-ssh-guard /var/log/frp-ssh-guard
+    rm -f /run/frp-ssh-guard-bans.state /run/frp-ssh-guard-trial.pending /run/frp-ssh-guard.lock /run/frp-ssh-guard.lock.lifecycle
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+fi

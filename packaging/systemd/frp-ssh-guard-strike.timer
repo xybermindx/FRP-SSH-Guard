@@ -1,0 +1,9 @@
+[Unit]
+Description=Update FRP SSH guard strikes every five minutes
+After=frp-ssh-guard.service
+PartOf=frp-ssh-guard.service
+
+[Timer]
+OnActiveSec=120
+OnUnitActiveSec=300
+AccuracySec=10s

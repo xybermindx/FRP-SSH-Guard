@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ "${1:-}" = install ] && [ -e /etc/systemd/system/frp-ssh-guard.service ]; then
+    echo 'An existing source installation or local service was found.' >&2
+    echo 'Back up its data and uninstall its units before installing this package. See docs/MIGRATING.md.' >&2
+    exit 1
+fi

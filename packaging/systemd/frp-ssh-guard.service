@@ -1,0 +1,20 @@
+# Managed by frp-ssh-guard-persistent.sh
+[Unit]
+Description=FRP SSH port guard
+DefaultDependencies=no
+After=local-fs.target nftables.service firewalld.service
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/var/lib/frp-ssh-guard /var/log/frp-ssh-guard /etc/frp-ssh-guard
+Wants=network-pre.target frp-ssh-guard-learn.service frp-ssh-guard-log.timer frp-ssh-guard-strike.timer frp-ssh-guard-lists.path
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/frp-ssh-guard apply
+ExecReload=/usr/sbin/frp-ssh-guard apply
+ExecStop=/usr/sbin/frp-ssh-guard _stop
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,63 @@
+# FRP SSH Guard settings (trusted, root-owned Bash assignments).
+# Edit this file, then: sudo frp-ssh-guard check && sudo frp-ssh-guard reload
+# First activation: sudo frp-ssh-guard enable
+# Saving alone does not change protection; reboot restores accepted settings.
+
+# REQUIRED: public frps forwarded TCP ports. Default empty = refuse activation.
+# Comma-separated ports/ranges; never include management SSH, frps control ports,
+# or public HTTP(S). Start frps and its forwarded listeners before check/enable.
+# Example: PROTECTED_PORTS="22001,22003,23000-23010"
+# Optional per-port/range global rate and burst: "22001:30:20,23000-23010:60:40"
+PROTECTED_PORTS=""
+
+# Ports/ranges to skip within PROTECTED_PORTS. Default none.
+# Example: EXCLUDE_PORTS="23005,23008-23009"
+EXCLUDE_PORTS=""
+
+# Per source AND destination port: sustained new SYN packets/minute, not logins.
+# Positive integers 1–1000000. Default 2/minute with a burst allowance of 40.
+# Shared NAT/VPN users count together. Bursts replenish over time, not per minute.
+PER_IP_RATE=2
+PER_IP_BURST=40
+
+# Shared new SYN ceiling per destination port (shared across IPv4/IPv6).
+# Positive integers 1–1000000. Default 30/minute, burst 20. Excess is dropped;
+# the shared limit alone does not add IP bans. Per-port overrides take precedence.
+GLOBAL_RATE=30
+GLOBAL_BURST=20
+
+# Base source ban across ALL protected ports when the per-source limit is exceeded.
+# Positive integer + s/m/h/d/w (seconds/minutes/hours/days/weeks). Default 6 hours.
+BAN_TIMEOUT=6h
+
+# Optional learning from successful logins to THIS SERVER's sshd, not tunneled SSH.
+# Default empty = disabled. grep extended regex, e.g. "alice|bob".
+# Matching source IPs bypass guard limits/blocks; also exempted from an existing
+# fail2ban sshd jail. Enable only for trusted operator accounts.
+LOGIN_USERS=""
+
+# Maximum learned addresses (integer 1–1000000); oldest entries evicted. Default 500.
+MAX_LEARNED=500
+# Learned-address timeout: positive integer + s/m/h/d/w; default 90 days.
+# Existing persisted entries have their timeout renewed when rules are reapplied.
+LEARN_TIMEOUT=90d
+
+# Repeat-offender history window; positive integer + s/m/h/d/w. Default 90 days.
+# Bans are sampled every minute: short bans and repeated events may be missed.
+STRIKE_WINDOW=90d
+# Increasing "strike-count:duration" pairs, counts >=2. Empty disables escalation.
+# Default: 2 offenses=1 day, 3=3 days, 4=7 days, 5 or more=28 days.
+STRIKE_LADDER="2:1d 3:3d 4:7d 5:28d"
+# Default timeout when persisted strike bans are restored. Default 28 days.
+# The strike helper caps ladder durations at this value.
+STRIKE_MAX=28d
+
+# Advanced settings (usually leave unchanged).
+# Allowed protected-port bounds, inclusive, integers 1–65535. Defaults cover all TCP.
+PORT_MIN=1
+PORT_MAX=65535
+# Local account owning command-managed lists. Default root; trusted accounts only.
+EDIT_USER=root
+# Dedicated nftables table identifier. One guard instance is supported.
+# Default below; to change while active: disable first, then enable with new name.
+GUARD_TABLE=frp_ssh_persistent_guard

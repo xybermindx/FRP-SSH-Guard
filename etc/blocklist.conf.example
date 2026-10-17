@@ -1,0 +1,5 @@
+# MANUAL BLOCKLIST -- IPs/CIDRs here are PERMANENTLY blocked on the protected ports.
+#   <IP|CIDR> [PORTS]
+# Examples (RFC 5737 documentation ranges):
+#   198.51.100.66
+#   203.0.113.0/24 22001,22003

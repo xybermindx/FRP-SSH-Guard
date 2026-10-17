@@ -1,0 +1,25 @@
+# Local deployment data and original transfer archives.
+/lists/
+/logs/
+/etc/guard.conf
+/etc/ports.conf
+/etc/active.nft
+/ip-guard*/
+*.zip
+*.tar.gz
+*.deb
+*.buildinfo
+*.changes
+/build/
+/dist/
+__pycache__/
+*.py[cod]
+*.tmp
+.env
+.env.*
+.aws/
+.codex/
+.agents/
+
+/etc/settings.conf
+/applied.conf

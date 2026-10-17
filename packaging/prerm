@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+    remove|deconfigure)
+        if [ -d /run/systemd/system ]; then
+            /usr/sbin/frp-ssh-guard remove
+        else
+            systemctl --root=/ disable frp-ssh-guard.service
+        fi
+        ;;
+esac

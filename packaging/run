@@ -1,0 +1,22 @@
+#!/bin/sh
+# Keep package paths independent of the legacy /opt installation.
+set -eu
+export GUARD_PACKAGED=1
+export GUARD_DIR=/var/lib/frp-ssh-guard
+export GUARD_ETC_DIR=/etc/frp-ssh-guard
+export GUARD_BIN_DIR=/usr/lib/frp-ssh-guard
+export GUARD_LIST_DIR=/var/lib/frp-ssh-guard/lists
+export GUARD_LOG_DIR=/var/log/frp-ssh-guard
+export GUARD_ACTIVE_RULES=/var/lib/frp-ssh-guard/active.nft
+export GUARD_COMMAND=/usr/sbin/frp-ssh-guard
+export GUARD_UNIT_FILE=/usr/lib/systemd/system/frp-ssh-guard.service
+if [ "${0##*/}" = frp-ssh-guard ]; then
+    exec /usr/lib/frp-ssh-guard/frp-ssh-guard-persistent.sh "$@"
+fi
+helper=${1:?Expected learn, log, or strike}
+shift
+case "$helper" in
+    learn|log) exec "/usr/lib/frp-ssh-guard/frp-ssh-guard-$helper.sh" "$@" ;;
+    strike) exec /usr/lib/frp-ssh-guard/frp-ssh-guard-strike.py "$@" ;;
+    *) echo "Unknown helper: $helper" >&2; exit 2 ;;
+esac

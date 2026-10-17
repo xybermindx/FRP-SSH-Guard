@@ -1,0 +1,5 @@
+# MANUAL WHITELIST -- IPs/CIDRs here are NEVER rate-limited or banned.
+#   <IP|CIDR> [PORTS]
+# Examples (RFC 5737 documentation ranges):
+#   198.51.100.10
+#   203.0.113.0/24 22001

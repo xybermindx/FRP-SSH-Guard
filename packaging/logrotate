@@ -1,0 +1,10 @@
+/var/log/frp-ssh-guard/*.log {
+    weekly
+    rotate 13
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su root root
+}
