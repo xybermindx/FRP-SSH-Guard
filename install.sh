@@ -105,7 +105,7 @@ GUARD_DIR="$PREFIX" "$BIN/frp-ssh-guard" enable
 UNITS=/etc/systemd/system
 cat > "$UNITS/frp-ssh-guard-learn.service" <<EOF
 [Unit]
-Description=FRP SSH guard - auto-learn whitelist from successful logins
+Description=FRP-SSH-Guard - auto-learn whitelist from successful logins
 After=network-online.target frp-ssh-guard.service
 Wants=network-online.target
 Requisite=frp-ssh-guard.service
@@ -124,7 +124,7 @@ EOF
 
 cat > "$UNITS/frp-ssh-guard-log.service" <<EOF
 [Unit]
-Description=FRP SSH guard - snapshot banned IPs to history
+Description=FRP-SSH-Guard - snapshot banned IPs to history
 After=frp-ssh-guard.service
 Requisite=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service
@@ -137,7 +137,7 @@ EOF
 
 cat > "$UNITS/frp-ssh-guard-log.timer" <<EOF
 [Unit]
-Description=Run FRP SSH guard ban-history snapshot every minute
+Description=Run FRP-SSH-Guard ban-history snapshot every minute
 PartOf=frp-ssh-guard.service
 
 [Timer]
@@ -152,7 +152,7 @@ EOF
 
 cat > "$UNITS/frp-ssh-guard-strike.service" <<EOF
 [Unit]
-Description=FRP SSH guard - strike escalation manager
+Description=FRP-SSH-Guard - strike escalation manager
 After=frp-ssh-guard.service
 Requisite=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service
@@ -165,7 +165,7 @@ EOF
 
 cat > "$UNITS/frp-ssh-guard-strike.timer" <<EOF
 [Unit]
-Description=Run FRP SSH guard strike manager every 5 minutes
+Description=Run FRP-SSH-Guard strike manager every 5 minutes
 PartOf=frp-ssh-guard.service
 
 [Timer]
@@ -180,7 +180,7 @@ EOF
 
 cat > "$UNITS/frp-ssh-guard-lists.service" <<EOF
 [Unit]
-Description=Apply FRP SSH guard lists after edits
+Description=Apply FRP-SSH-Guard lists after edits
 After=frp-ssh-guard.service
 Requisite=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service
@@ -193,7 +193,7 @@ EOF
 
 cat > "$UNITS/frp-ssh-guard-lists.path" <<EOF
 [Unit]
-Description=Watch FRP SSH guard list files for edits
+Description=Watch FRP-SSH-Guard list files for edits
 PartOf=frp-ssh-guard.service
 
 [Path]

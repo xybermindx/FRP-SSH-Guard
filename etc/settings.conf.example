@@ -1,4 +1,4 @@
-# FRP SSH Guard settings (trusted, root-owned Bash assignments).
+# FRP-SSH-Guard settings (trusted, root-owned Bash assignments).
 # Edit this file, then: sudo frp-ssh-guard check && sudo frp-ssh-guard reload
 # First activation: sudo frp-ssh-guard enable
 # Saving alone does not change protection; reboot restores accepted settings.

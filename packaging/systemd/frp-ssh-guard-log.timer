@@ -1,5 +1,5 @@
 [Unit]
-Description=Record FRP SSH guard bans every minute
+Description=Record FRP-SSH-Guard bans every minute
 After=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service
 

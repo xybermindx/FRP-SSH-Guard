@@ -1,5 +1,5 @@
 [Unit]
-Description=Apply edited FRP SSH guard lists
+Description=Apply edited FRP-SSH-Guard lists
 After=frp-ssh-guard.service
 Requisite=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service

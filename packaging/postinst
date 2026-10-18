@@ -14,7 +14,7 @@ case "${1:-}" in
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
         fi
-        echo 'FRP SSH Guard installed; installation does not activate protection.'
+        echo 'FRP-SSH-Guard installed; installation does not activate protection.'
         echo 'Edit /etc/frp-ssh-guard/settings.conf (legacy guard.conf/ports.conf remain supported).'
         echo 'Then run: sudo frp-ssh-guard check && sudo frp-ssh-guard enable'
         echo 'Verify: sudo frp-ssh-guard status | Help: frp-ssh-guard --help'

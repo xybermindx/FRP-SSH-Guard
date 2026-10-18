@@ -1,5 +1,5 @@
 [Unit]
-Description=Update FRP SSH guard strikes every five minutes
+Description=Update FRP-SSH-Guard strikes every five minutes
 After=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service
 

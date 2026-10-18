@@ -1,6 +1,6 @@
 # Architecture
 
-FRP SSH Guard owns one nftables `inet` table with an input-hook chain. It returns
+FRP-SSH-Guard owns one nftables `inet` table with an input-hook chain. It returns
 for loopback, established/related traffic, non-TCP traffic, and unselected ports.
 It then checks trusted sources, manual blocks, persisted strike bans, temporary
 bans, per-source/per-port SYN rate meters, and shared per-port SYN limits.

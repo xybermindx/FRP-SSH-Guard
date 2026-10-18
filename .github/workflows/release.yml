@@ -37,5 +37,5 @@ jobs:
             gh release upload "$RELEASE_TAG" "$package" dist/SHA256SUMS --clobber
           else
             gh release create "$RELEASE_TAG" "$package" dist/SHA256SUMS --verify-tag --draft \
-              --title "FRP SSH Guard $RELEASE_TAG" --notes-file CHANGELOG.md
+              --title "FRP-SSH-Guard $RELEASE_TAG" --notes-file CHANGELOG.md
           fi

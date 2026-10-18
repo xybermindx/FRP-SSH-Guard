@@ -1,5 +1,5 @@
 [Unit]
-Description=Escalate repeat FRP SSH guard offenders
+Description=Escalate repeat FRP-SSH-Guard offenders
 After=frp-ssh-guard.service
 Requisite=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service

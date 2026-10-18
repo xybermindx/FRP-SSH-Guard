@@ -1,5 +1,5 @@
 [Unit]
-Description=Watch FRP SSH guard manual lists
+Description=Watch FRP-SSH-Guard manual lists
 After=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service
 

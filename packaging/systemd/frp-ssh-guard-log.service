@@ -1,5 +1,5 @@
 [Unit]
-Description=Snapshot FRP SSH guard bans
+Description=Snapshot FRP-SSH-Guard bans
 After=frp-ssh-guard.service
 Requisite=frp-ssh-guard.service
 PartOf=frp-ssh-guard.service

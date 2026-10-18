@@ -2,7 +2,7 @@
 
 ## 0.0.4
 
-- Use v0.0.4 for the public release, replacing the initial v1.1.0 numbering.
+- Use v0.0.4 for the public release.
   Package metadata, filenames, source tags, and download links use 0.0.4.
 - Publish only the Debian package and its checksum as release assets; use GitHub's
   automatic tag ZIP/tar.gz downloads for the complete source.

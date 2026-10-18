@@ -18,10 +18,10 @@ git config --local user.name 'YOUR NAME'
 git config --local user.email 'YOUR VERIFIED OR NOREPLY GITHUB EMAIL'
 git add .
 git diff --cached --stat
-git commit -m 'Prepare FRP SSH Guard for public development and Debian deployment'
+git commit -m 'Prepare FRP-SSH-Guard for public development and Debian deployment'
 gh auth login --hostname github.com
 gh auth status
-gh repo create OWNER/FRP-Guard --public --source=. --remote=origin --push
+gh repo create OWNER/FRP-SSH-Guard --public --source=. --remote=origin --push
 ```
 
 Replace the owner and identity placeholders with the intended maintainer. Do not
