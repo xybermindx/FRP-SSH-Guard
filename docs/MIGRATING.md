@@ -2,8 +2,8 @@
 
 ## Corrected public version numbering
 
-The public release uses **v0.0.4**. The initially published v1.1.0 package and
-older 1.0.x development packages have numerically higher Debian versions.
+The public release uses **v0.0.4**. Earlier pre-release packages used
+numerically higher Debian versions.
 To replace one of those installations while preserving settings and state:
 
 ```bash
@@ -15,7 +15,7 @@ sudo frp-ssh-guard status
 
 This is a release-number correction. Keep your existing settings; do not purge
 or remove the package first. Fresh installations use the normal install command.
-The earlier v1.1.0 release is superseded by v0.0.4.
+Earlier pre-release builds are superseded by v0.0.4.
 
 ## Existing Debian installations (1.0.x)
 

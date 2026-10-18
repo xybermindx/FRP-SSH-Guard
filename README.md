@@ -8,6 +8,10 @@ Connection-rate protection for SSH services exposed through an FRP server (`frps
 Install the guard on your public Linux server, select the forwarded TCP ports,
 and use nftables to limit repeated connection attempts and block abusive sources.
 
+> **Observed impact (~10-day window):** **4,255,592** abusive packets dropped
+> (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
+> failed logins in the latest 24-hour window.
+
 **Version 0.0.4 · MIT licensed · Bash and Python · No proprietary runtime components**
 
 [Deployment](#deploy-step-by-step) · [Configuration](#configuration) ·
@@ -16,29 +20,36 @@ and use nftables to limit repeated connection attempts and block abusive sources
 
 ## Observed deployment results
 
-An operator-reported snapshot from one deployment, **October 13–17, 2026**
-(approximately four days since the guard was last applied), recorded **3.2 million
-packets dropped** and **zero backend failed logins in the latest 24 hours**.
+An operator-reported dataset from a live deployment during a **~10-day observation window**, together with a **~30-day backend log window**.
 
-| Metric | Before the guard (reported) | With the guard (reported) |
+| Metric | Before / earlier (reported) | With the guard (reported) |
 | --- | --- | --- |
-| Guard-rule packet counters, approximately four days | — | **3,206,432 dropped; 967 passed** |
-| Drop fraction of those packet counters | — | **99.97%** |
-| SSH connections reaching backends, hourly | Approximately 200+/hour | **2 in the latest 60 minutes** |
-| SSH connections reaching backends, latest 24 hours | — | **79** |
+| Observation window | - | **~10 days** |
+| Auto-ban events recorded | - | **1,110** |
+| Unique IPs auto-banned | - | **595** |
+| Auto-ban events per day | - | **155 to 37** across the window |
+| Guard packet counters, ~5 days since last reload | - | **4,255,592 dropped; 1,287 passed** |
+| Drop fraction of those packet counters | - | **99.97%** |
 | Backend failed logins, 24-hour window | **6,442** | **0 observed** |
-| All-proxy connections, hourly | Approximately 248/hour | **102/hour** |
+| Backend failed logins, ~30 days before the public guard | **927,446** | - |
+| All-proxy connections, hourly | Approximately 248/hour | **~56/hour** (1,336 in 24 h) |
+| SSH connections reaching backends, 24 hours | Approximately 200+/hour | **246 (~10/hour)** |
 
-The hourly SSH figures correspond to approximately **99% fewer backend connections**
-against the reported baseline. The remaining all-proxy traffic was reported to be
-mostly public web traffic on port 443, which this deployment intentionally left
-outside the guarded ports.
+Against the reported baseline this is roughly **77% fewer all-proxy connections**
+and **95% fewer SSH connections reaching the backends**, while the backend
+recorded **zero failed logins** in the latest 24-hour window. The remaining
+all-proxy traffic was mostly public web traffic on port 443, which this
+deployment intentionally left outside the guarded ports.
 
-The packet figure is `3,206,432 / (3,206,432 + 967)`. It describes the supplied
+The packet figure is `4,255,592 / (4,255,592 + 1,287)`. It describes the supplied
 counters; established and allowlisted traffic can bypass those counters. It does
 not measure unique attackers or attack-prevention accuracy. Zero recorded failed
 logins means none were observed in that 24-hour window; successful logins and
 other authentication activity are separate metrics.
+
+The 1,110 ban events and 595 unique addresses are cumulative for the ~10-day
+observation window; the packet counters cover the ~5 days since the rules were
+last reloaded. Both are raw observations, not normalized rates.
 
 These are observations from an existing deployment, supplied by its operator;
 the exact deployed version and raw logs were not supplied for independent
