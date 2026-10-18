@@ -5,7 +5,7 @@ trap 'echo "Package smoke test failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 [[ ${FRP_GUARD_DISPOSABLE:-} == 1 && $EUID == 0 ]] || { echo 'Requires a disposable container and FRP_GUARD_DISPOSABLE=1.' >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-package="/src/dist/frp-ssh-guard_$(cat /src/VERSION)_all.deb"
+package="/src/dist/frp-ssh-guard_$(cat /src/VERSION).deb"
 apt-get install -y "$package"
 frp-ssh-guard --help
 [[ ! -e /var/lib/frp-ssh-guard/active.nft ]]

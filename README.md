@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**[Download v0.0.4 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb)** · [All release files](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4) · Pre-release
+**[Download v0.0.4 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb)** · [All release files](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4) · Pre-release
 
 Connection-rate protection for SSH services exposed through an FRP server (`frps`).
 Install the guard on your public Linux server, select the forwarded TCP ports,
@@ -123,7 +123,7 @@ The public 0.0.4 pre-release contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_0.0.4_all.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb) | Install on the target Debian/Ubuntu host. |
+| [frp-ssh-guard_0.0.4.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb) | Install on the target Debian/Ubuntu host. |
 | [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/SHA256SUMS) | Verify the downloaded Debian package. |
 
 The complete source remains in the repository. GitHub automatically provides
@@ -132,8 +132,10 @@ and [Source code (tar.gz)](https://github.com/nengwanx/FRP-SSH-Guard/archive/ref
 for the release tag, including the runtime, build scripts, packaging, docs, and tests.
 Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb`.
 
-`all` means the package contains scripts rather than a CPU-specific compiled
-binary. Dependencies are installed for the host architecture. Checksums detect
+The package contains scripts rather than a CPU-specific compiled binary. Its
+Debian metadata uses `Architecture: all`; dependencies are installed for the host
+architecture. CI currently validates x64 (amd64); ARM and 32-bit systems have not
+been verified. Checksums detect
 corruption/changes; they are not publisher signatures. This pre-release has passed
 CI, including nftables and package lifecycle checks; full FRP/systemd VM validation
 remains pending. See the release notes for details.
@@ -159,7 +161,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.4_all.deb
+sudo apt install ./frp-ssh-guard_0.0.4.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -334,7 +336,7 @@ Operational limits:
 ## Upgrade, migrate, or uninstall
 
 ```bash
-sudo apt install ./frp-ssh-guard_NEW_VERSION_all.deb
+sudo apt install ./frp-ssh-guard_NEW_VERSION.deb
 # If previously active, load updated programs without adopting pending settings:
 sudo systemctl restart frp-ssh-guard.service
 sudo frp-ssh-guard status

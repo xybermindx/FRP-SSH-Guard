@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-**[下载 v0.0.4 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4) · 预发布版本
+**[下载 v0.0.4 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4) · 预发布版本
 
 为 FRP 服务端（`frps`）暴露的 SSH 服务提供连接速率防护。
 将本工具安装在公网 Linux 服务器上，选择需要保护的转发 TCP 端口，
@@ -110,7 +110,7 @@ flowchart LR
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_0.0.4_all.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4_all.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [frp-ssh-guard_0.0.4.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb) | 安装到目标 Debian/Ubuntu 主机。 |
 | [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/SHA256SUMS) | 校验下载的 Debian 软件包。 |
 
 完整源码保留在仓库中。GitHub 会根据发布标签自动提供
@@ -119,7 +119,9 @@ flowchart LR
 包含运行代码、构建脚本、打包文件、文档及测试。无需再上传重复的源码附件。
 `SHA256SUMS` 仅校验 `.deb` 文件。
 
-`all` 表示软件包包含脚本，而非针对特定 CPU 编译的二进制程序；依赖包按主机架构安装。
+软件包包含脚本，而非针对特定 CPU 编译的二进制程序。Debian 元数据使用
+`Architecture: all`，依赖包按主机架构安装。当前 CI 验证的是 x64（amd64）；
+ARM 和 32 位系统尚未验证。
 校验和可检测文件变化或损坏，但不是发布者签名。此预发布版本已通过 CI，
 包括 nftables 和软件包生命周期检查；完整的 FRP/systemd 虚拟机验证仍待完成，详见发布说明。
 
@@ -143,7 +145,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.4_all.deb
+sudo apt install ./frp-ssh-guard_0.0.4.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -309,7 +311,7 @@ sudo journalctl -u frp-ssh-guard.service -u frp-ssh-guard-learn.service --since 
 ## 升级、迁移与卸载
 
 ```bash
-sudo apt install ./frp-ssh-guard_NEW_VERSION_all.deb
+sudo apt install ./frp-ssh-guard_NEW_VERSION.deb
 # 如果之前已经启用，加载新程序，但不接受待应用的配置修改：
 sudo systemctl restart frp-ssh-guard.service
 sudo frp-ssh-guard status

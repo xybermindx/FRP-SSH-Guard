@@ -64,7 +64,10 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-For v0.0.4, upload `frp-ssh-guard_0.0.4_all.deb` and `SHA256SUMS` only.
+For v0.0.4, upload `frp-ssh-guard_0.0.4.deb` and `SHA256SUMS` only.
+The filename omits the optional architecture suffix; Debian metadata remains
+`Architecture: all` because the package contains architecture-independent scripts.
+
 GitHub supplies **Source code (zip)** and **Source code (tar.gz)** from the tag.
 Those automatic archives contain all tracked files; inspect the commit before
 publishing and never commit live configuration, secrets, or deployment backups.

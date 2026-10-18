@@ -7,7 +7,7 @@ older 1.0.x development packages have numerically higher Debian versions.
 To replace one of those installations while preserving settings and state:
 
 ```bash
-sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4_all.deb
+sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4.deb
 # If protection was already active:
 sudo systemctl restart frp-ssh-guard.service
 sudo frp-ssh-guard status
@@ -31,7 +31,7 @@ restore the accepted policy, not later edits.
    updated programs and units:
 
    ```bash
-   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4_all.deb
+   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.4.deb
    sudo systemctl restart frp-ssh-guard.service
    sudo frp-ssh-guard status
    ```
