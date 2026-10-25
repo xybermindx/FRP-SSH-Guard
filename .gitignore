@@ -24,3 +24,6 @@ __pycache__/
 
 /etc/settings.conf
 /applied.conf
+.frp-ssh-guard/
+/auth-state.json
+/etc/user-home.json

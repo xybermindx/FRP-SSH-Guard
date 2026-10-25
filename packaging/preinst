@@ -1,5 +1,11 @@
 #!/bin/sh
 set -eu
+if [ "${1:-}" = install ] && { [ -e /usr/sbin/frp-ssh-guard ] || [ -L /usr/sbin/frp-ssh-guard ]; }; then
+    if ! dpkg-query -S /usr/sbin/frp-ssh-guard 2>/dev/null | grep -q '^frp-ssh-guard:'; then
+        echo 'An unrelated or unmanaged frp-ssh-guard command already exists; refusing to overwrite it.' >&2
+        exit 1
+    fi
+fi
 if [ "${1:-}" = install ] && [ -e /etc/systemd/system/frp-ssh-guard.service ]; then
     echo 'An existing source installation or local service was found.' >&2
     echo 'Back up its data and uninstall its units before installing this package. See docs/MIGRATING.md.' >&2

@@ -35,10 +35,13 @@ its attribution and package maintainer metadata if appropriate.
 
 ## Versioned releases
 
+v0.0.5 is currently a local candidate. Building it does not authorize a push,
+tag, release or upload; keep it local until publication is explicitly requested.
+
 1. Update `VERSION` (plain `MAJOR.MINOR.PATCH`) and `CHANGELOG.md`.
 2. Run `make release` as an ordinary user. The build needs Python 3, Bash,
    GNU Make, and `dpkg-deb`; it does not install the tool or change the firewall.
-3. Review `dist/`, run the disposable VM checklist in `ARCHITECTURE.md`, and
+3. Review `dist/`, run the disposable VM checklist in `VALIDATION.md`, and
    record tested platforms and any limitations in release notes.
 4. Commit the changes and push the branch. Require passing CI before tagging.
 5. Create and push a matching tag:
@@ -116,3 +119,7 @@ repository. Checksums detect changes but do not replace artifact signatures.
 - Check install, migration, source build, language links, and license links from
   the resulting repository and extracted archives.
 - Retain user settings on upgrade; ship updated defaults as examples.
+- Test an active upgrade with `tests/vm-acceptance.py`: preserve accepted policy,
+  custom home files, jail membership and remaining expiry, timer configuration
+  and deadlines. Do not add service restarts, firewall reapplication, or
+  `daemon-reload` to upgrade hooks. Test new defaults against missing old keys.

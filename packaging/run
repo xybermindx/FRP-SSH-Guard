@@ -17,6 +17,6 @@ helper=${1:?Expected learn, log, or strike}
 shift
 case "$helper" in
     learn|log) exec "/usr/lib/frp-ssh-guard/frp-ssh-guard-$helper.sh" "$@" ;;
-    strike) exec /usr/lib/frp-ssh-guard/frp-ssh-guard-strike.py "$@" ;;
+    strike|auth) exec "/usr/lib/frp-ssh-guard/frp-ssh-guard-$helper.py" "$@" ;;
     *) echo "Unknown helper: $helper" >&2; exit 2 ;;
 esac

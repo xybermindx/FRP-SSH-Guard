@@ -3,7 +3,7 @@
 # Counts how many times each IP has been auto-banned within STRIKE_WINDOW and
 # escalates repeat offenders into the nft 'hardban' set (kept at the cap), and
 # persists them so the guard restores them on reload/reboot.
-import os, re, subprocess, datetime, time, glob, gzip, fcntl
+import os, re, subprocess, datetime, time, glob, gzip, fcntl, ipaddress
 from pathlib import Path
 
 GUARD_DIR = os.environ.get("GUARD_DIR", "/opt/frp-ssh-guard")
@@ -23,7 +23,7 @@ NFT      = "/usr/sbin/nft" if os.path.exists("/usr/sbin/nft") else "nft"
 _lock = open(os.environ.get("GUARD_LOCK_FILE", "/run/frp-ssh-guard.lock"), "a")
 fcntl.flock(_lock, fcntl.LOCK_EX)
 config_lib = Path(__file__).with_name("frp-ssh-guard-config.sh")
-keys = ["STRIKE_WINDOW", "STRIKE_MAX", "STRIKE_LADDER", "GUARD_TABLE", "EDIT_USER"]
+keys = ["STRIKE_WINDOW", "STRIKE_MAX", "STRIKE_LADDER", "GUARD_TABLE", "EDIT_USER", "JAIL_PER_PORT", "MANUAL_DIR"]
 loaded = subprocess.run(
     ["bash", "-ec", '. "$1"; load_guard_config runtime; shift; for key; do printf "%s\\0" "${!key}"; done',
      "guard-config", str(config_lib), *keys], check=True, capture_output=True, text=True)
@@ -31,6 +31,7 @@ values = loaded.stdout.rstrip('\0').split('\0')
 cfg = dict(zip(keys, values))
 TABLE = cfg["GUARD_TABLE"]
 EDIT_USER = cfg["EDIT_USER"]
+PER_PORT = cfg["JAIL_PER_PORT"] == "on"
 
 def parse_dur(s):
     m = re.match(r'^(\d+)([smhdw])$', s.strip())
@@ -89,6 +90,13 @@ for log_path in sorted(glob.glob(LOG + '*')):
                 continue
             ts, ip = p[0], p[2]
             try:
+                ip = str(ipaddress.ip_address(ip))
+                if PER_PORT:
+                    if len(p) < 4 or not 1 <= int(p[3]) <= 65535:
+                        continue
+                    key = ip + ' ' + str(int(p[3]))
+                else:
+                    key = ip
                 ep = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(
                         tzinfo=datetime.timezone.utc).timestamp()
             except Exception:
@@ -96,8 +104,8 @@ for log_path in sorted(glob.glob(LOG + '*')):
             if ep < excused.get(ip, 0):   # forgiven at release time
                 continue
             if now - ep <= window:
-                counts[ip] = counts.get(ip, 0) + 1
-                last[ip] = max(last.get(ip, 0), ep)
+                counts[key] = counts.get(key, 0) + 1
+                last[key] = max(last.get(key, 0), ep)
 
 # strikes view
 os.makedirs(os.path.dirname(STRIKES), exist_ok=True)
@@ -106,22 +114,42 @@ with open(STRIKES, "w") as f:
         f.write("%s\t%d\t%s\n" % (ip, c,
                 datetime.datetime.fromtimestamp(last[ip], datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")))
 
-# whitelisted / learned IPs are never escalated
-good = set()
-for path in (os.path.join(LIST_DIR, "whitelist.conf"),
-             os.path.join(LIST_DIR, "learned.conf")):
+# Respect manual scope and CIDRs when deciding whether to escalate a source.
+import importlib.util
+_spec = importlib.util.spec_from_file_location('guard_inputs', Path(__file__).with_name('frp-ssh-guard-input.py'))
+_inputs = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_inputs)
+manual_allow = Path(cfg['MANUAL_DIR']) / 'whitelist.conf'
+if not manual_allow.exists():
+    manual_allow = Path(LIST_DIR) / 'whitelist.conf'
+good = []
+for path in (manual_allow, Path(LIST_DIR) / 'learned.conf'):
     try:
-        for line in Path(path).read_text().splitlines():
-            line = line.split('#')[0].strip().split()[0] if line.split('#')[0].strip() else ''
-            if line:
-                good.add(line)
+        good.extend(_inputs.entries(path.read_text(), 'allow'))
     except FileNotFoundError:
         pass
+
+
+def exempt(key):
+    fields = key.split()
+    ip = ipaddress.ip_address(fields[0])
+    port = int(fields[1]) if len(fields) > 1 else None
+    for network, scope, expiry in good:
+        if ip not in ipaddress.ip_network(network, strict=False):
+            continue
+        if scope == '*':
+            return True
+        if port is not None:
+            for token in scope.split(','):
+                bounds = [int(p) for p in token.split('-')]
+                if bounds[0] <= port <= bounds[-1]:
+                    return True
+    return False
 
 # target hardbans
 target = {}
 for ip, c in counts.items():
-    if ip in good:
+    if exempt(ip):
         continue
     d = dur_for(c)
     if d:
@@ -137,15 +165,18 @@ if os.path.exists(HARDBAN):
     for line in Path(HARDBAN).read_text().splitlines():
         line = line.split('#')[0].strip()
         if line:
-            cur.add(line.split()[0])
+            fields = line.split()
+            cur.add(' '.join(fields[:2]) if PER_PORT and len(fields) > 1 else fields[0])
 
 if active:
     for ip, d in target.items():
         fam = "hardban6" if ':' in ip else "hardban4"
-        nft("add", "element", "inet", TABLE, fam, "{ %s timeout %s }" % (ip, d))
+        value = ip.replace(' ', ' . ') if PER_PORT else ip
+        nft("add", "element", "inet", TABLE, fam, "{ %s timeout %s }" % (value, d))
     for ip in cur - set(target):
         fam = "hardban6" if ':' in ip else "hardban4"
-        nft("delete", "element", "inet", TABLE, fam, "{ %s }" % ip)
+        value = ip.replace(' ', ' . ') if PER_PORT else ip
+        nft("delete", "element", "inet", TABLE, fam, "{ %s }" % value)
 
 os.makedirs(os.path.dirname(HARDBAN), exist_ok=True)
 with open(HARDBAN, "w") as f:

@@ -23,13 +23,14 @@ if (( PURGE )); then
 fi
 
 UNITS=/etc/systemd/system
-for u in frp-ssh-guard-learn.service frp-ssh-guard-log.timer frp-ssh-guard-strike.timer frp-ssh-guard-lists.path; do
+for u in frp-ssh-guard-auth.service frp-ssh-guard-learn.service frp-ssh-guard-log.timer frp-ssh-guard-strike.timer frp-ssh-guard-lists.path; do
   systemctl disable --now "$u" 2>/dev/null || true
 done
 if [[ -x "$PREFIX/bin/frp-ssh-guard" ]]; then
   GUARD_DIR="$PREFIX" "$PREFIX/bin/frp-ssh-guard" remove 2>/dev/null || true
 fi
 rm -f "$UNITS"/frp-ssh-guard*.service "$UNITS"/frp-ssh-guard*.timer "$UNITS"/frp-ssh-guard*.path
+rm -f "$UNITS/frp-ssh-guard-lists.path.d/50-user-home.conf"
 systemctl daemon-reload
 
 if (( PURGE )); then

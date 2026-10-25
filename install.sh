@@ -10,15 +10,18 @@ EXCLUDE=""
 EXCLUDE_SET=0
 EDIT_USER_SET=0
 EDIT_USER="root"
+CONFIG_USER="${SUDO_USER:-root}"
+UPGRADE=0
 
 usage() {
   cat <<'TXT'
-Usage: sudo ./install.sh [--prefix DIR] [--ports LIST] [--exclude LIST] [--edit-user USER]
+Usage: sudo ./install.sh [--prefix DIR] [--ports LIST] [--exclude LIST] [--edit-user USER] [--config-user USER]
 
   --ports       ports to PROTECT  (required) e.g. 22001,22003 or 20000-20100
   --exclude     ports to EXCLUDE  (optional) e.g. 22002
   --prefix      install directory (default: /opt/frp-ssh-guard)
   --edit-user   user allowed to edit the lists/ dir (default: root)
+  --config-user home-folder owner on a fresh install (default: invoking sudo user)
 
 If --ports is omitted and you're on a terminal, you'll be prompted for it.
 TXT
@@ -30,6 +33,7 @@ while (( $# )); do
     --ports)     PROTECT="${2:?}"; shift 2 ;;
     --exclude)   EXCLUDE="${2-}"; EXCLUDE_SET=1; shift 2 ;;
     --edit-user) EDIT_USER="${2:?}"; EDIT_USER_SET=1; shift 2 ;;
+    --config-user) CONFIG_USER="${2:?}"; shift 2 ;;
     -h|--help)   usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -38,6 +42,10 @@ done
 [[ "$PREFIX" =~ ^/([a-zA-Z0-9_-]+/)+[a-zA-Z0-9_-]+$ ]] || { echo "Use an absolute prefix with at least two components (for example /opt/frp-ssh-guard)." >&2; exit 2; }
 [[ ! -e /usr/lib/frp-ssh-guard/run ]] || { echo "The Debian package is installed. Manage it with apt and frp-ssh-guard." >&2; exit 1; }
 (( EUID == 0 )) || { echo "Run with sudo." >&2; exit 1; }
+if [[ -e "$PREFIX/bin/frp-ssh-guard" ]]; then
+  grep -Fqx '# Managed by frp-ssh-guard-persistent.sh' "$PREFIX/bin/frp-ssh-guard" || { echo 'Existing command belongs to another installation; refusing to overwrite it.' >&2; exit 1; }
+  UPGRADE=1
+fi
 
 for t in nft systemctl ss python3 jq flock journalctl; do
   command -v "$t" >/dev/null || { echo "Missing dependency: $t (install nftables, iproute2, python3, jq)" >&2; exit 1; }
@@ -55,15 +63,31 @@ if [[ "$EXCLUDE_SET" == 0 && ! -f "$PREFIX/etc/settings.conf" && ! -f "$PREFIX/e
 fi
 
 BIN="$PREFIX/bin"; ETC="$PREFIX/etc"; LISTS="$PREFIX/lists"; LOGS="$PREFIX/logs"
-install -d -o root -g root -m 0755 "$PREFIX" "$BIN" "$ETC" "$LISTS" "$LOGS"
+for directory in "$PREFIX" "$BIN" "$ETC" "$LISTS" "$LOGS"; do
+  [[ -d "$directory" ]] || install -d -o root -g root -m 0755 "$directory"
+done
 
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-persistent.sh" "$BIN/frp-ssh-guard"
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-learn.sh"       "$BIN/frp-ssh-guard-learn"
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-log.sh"         "$BIN/frp-ssh-guard-log"
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-strike.py"      "$BIN/frp-ssh-guard-strike"
-for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py; do
+install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-auth.py"        "$BIN/frp-ssh-guard-auth"
+install -o root -g root -m 0644 "$SRC/VERSION" "$BIN/VERSION"
+for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py; do
   install -o root -g root -m 0755 "$SRC/bin/$helper" "$BIN/$helper"
 done
+
+# Add the new optional helper without replacing existing service/timer definitions.
+if [[ ! -e /etc/systemd/system/frp-ssh-guard-auth.service ]]; then
+  sed -e "s|ExecStart=.*|ExecStart=$BIN/frp-ssh-guard-auth|" \
+      -e "/Type=simple/a Environment=GUARD_DIR=$PREFIX" \
+      "$SRC/packaging/systemd/frp-ssh-guard-auth.service" > /etc/systemd/system/frp-ssh-guard-auth.service
+fi
+if (( UPGRADE )); then
+  echo 'Programs upgraded. Existing settings, lists, live jails, units and timer schedules were preserved.'
+  echo 'Installer policy flags do not change an existing installation; edit settings and use check/reload.'
+  exit 0
+fi
 
 # New installations use one file; preserve existing settings and legacy deployments.
 CONFIG="$ETC/settings.conf"
@@ -99,6 +123,7 @@ done
 chmod 0644 "$LISTS"/* 2>/dev/null || true
 
 # apply rules + create the (boot-persistent) guard service
+GUARD_DIR="$PREFIX" "$BIN/frp-ssh-guard" config-home "$CONFIG_USER"
 GUARD_DIR="$PREFIX" "$BIN/frp-ssh-guard" enable
 
 # ---- helper units (learn / history / strike / list watcher) ----

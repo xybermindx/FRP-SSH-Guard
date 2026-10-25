@@ -107,7 +107,10 @@ class PrivacyTests(unittest.TestCase):
         audit = privacy.Audit([])
         audit.source('lists/learned.conf', b'198.51.100.10')
         audit.source('.private-artifacts/backup.bundle', b'example')
-        self.assertEqual(len(audit.findings), 2)
+        audit.source('.frp-ssh-guard/blocklist.conf', b'198.51.100.10')
+        audit.source('auth-state.json', b'{}')
+        audit.source('etc/user-home.json', b'{}')
+        self.assertEqual(len(audit.findings), 5)
 
 
 if __name__ == '__main__':

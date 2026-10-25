@@ -6,8 +6,9 @@ Architecture: all
 Maintainer: FRP-SSH-Guard contributors <frp-ssh-guard@users.noreply.github.com>
 Depends: bash (>= 4.4), nftables (>= 1.0.6), python3 (>= 3.9), jq, iproute2, systemd, util-linux, coreutils, grep, sed, gawk | mawk
 Recommends: logrotate
-Description: Host-side connection guard for FRP-forwarded SSH ports
+Description: Guard for FRP-forwarded and optional local SSH ports
  Limits TCP connection attempts on selected frps listener ports using
- nftables, with manual allow/block lists, optional local SSH login learning,
+ nftables, with scoped/expiring manual blocks, optional local SSH authentication
+ protection and login learning, shared or per-port jails,
  ban history, and repeat-offender escalation. Configuration is required
  before activation; installing this package does not alter firewall rules.

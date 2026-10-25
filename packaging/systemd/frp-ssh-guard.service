@@ -6,7 +6,7 @@ After=local-fs.target nftables.service firewalld.service
 Before=network-pre.target shutdown.target
 Conflicts=shutdown.target
 RequiresMountsFor=/var/lib/frp-ssh-guard /var/log/frp-ssh-guard /etc/frp-ssh-guard
-Wants=network-pre.target frp-ssh-guard-learn.service frp-ssh-guard-log.timer frp-ssh-guard-strike.timer frp-ssh-guard-lists.path
+Wants=network-pre.target frp-ssh-guard-learn.service frp-ssh-guard-auth.service frp-ssh-guard-log.timer frp-ssh-guard-strike.timer frp-ssh-guard-lists.path
 
 [Service]
 Type=oneshot

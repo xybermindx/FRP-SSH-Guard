@@ -85,6 +85,7 @@ def build_deb(version, epoch, output):
             if path.suffix in (".sh", ".py"):
                 copy(path, stage / "usr/lib" / NAME / path.name, 0o755)
         copy(ROOT / "packaging/run", stage / "usr/lib" / NAME / "run", 0o755)
+        copy(ROOT / "VERSION", stage / "usr/lib" / NAME / "VERSION")
         (stage / "usr/sbin").mkdir(parents=True)
         (stage / "usr/sbin" / NAME).symlink_to("../lib/frp-ssh-guard/run")
         for path in (ROOT / "packaging/systemd").iterdir():

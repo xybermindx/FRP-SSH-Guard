@@ -1,12 +1,12 @@
-# FRP-SSH-Guard settings (trusted, root-owned Bash assignments).
+# FRP-SSH-Guard settings (literal KEY=value assignments; no shell execution).
 # Edit this file, then: sudo frp-ssh-guard check && sudo frp-ssh-guard reload
 # First activation: sudo frp-ssh-guard enable
 # Saving alone does not change protection; reboot restores accepted settings.
 
-# REQUIRED: public frps forwarded TCP ports. Default empty = refuse activation.
+# Public frps forwarded TCP ports. Empty refuses activation unless local SSH is on.
 # Port numbers below are invented examples, not a deployment configuration.
 # Comma-separated ports/ranges; never include management SSH, frps control ports,
-# or public HTTP(S). Start frps and its forwarded listeners before check/enable.
+# or public HTTP(S). Enable server SSH separately below. Start listeners first.
 # Example: PROTECTED_PORTS="22001,22003,23000-23010"
 # Optional per-port/range global rate and burst: "22001:30:20,23000-23010:60:40"
 PROTECTED_PORTS=""
@@ -14,6 +14,21 @@ PROTECTED_PORTS=""
 # Ports/ranges to skip within PROTECTED_PORTS. Default none.
 # Example: EXCLUDE_PORTS="23005,23008-23009"
 EXCLUDE_PORTS=""
+
+# Protect this server's SSH port 22, including observed authentication failures.
+# Default off. When enabled, port 22 is added to the protected ports automatically.
+PROTECT_SERVER_SSH=off
+
+# Default off: a banned IP is blocked across ALL protected ports.
+# On: automatic and authentication bans apply only to the offending port.
+# Explicit manual block scopes are independent of this switch.
+JAIL_PER_PORT=off
+
+# Local sshd journal outcomes only; attempted passwords are never read or stored.
+# Count repeated invalid-user connections or failed authentications in this window.
+SSH_AUTH_FAILURES=5
+SSH_INVALID_USER_FAILURES=3
+SSH_AUTH_WINDOW=10m
 
 # Per source AND destination port: sustained new SYN packets/minute, not logins.
 # Positive integers 1–1000000. Default 2/minute with a burst allowance of 40.
@@ -27,7 +42,8 @@ PER_IP_BURST=40
 GLOBAL_RATE=30
 GLOBAL_BURST=20
 
-# Base source ban across ALL protected ports when the per-source limit is exceeded.
+# Base source ban when the per-source or local authentication limit is exceeded.
+# Scope is all protected ports unless JAIL_PER_PORT=on.
 # Positive integer + s/m/h/d/w (seconds/minutes/hours/days/weeks). Default 6 hours.
 BAN_TIMEOUT=6h
 

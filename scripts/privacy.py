@@ -20,8 +20,9 @@ IPV6 = re.compile(r'(?<![\w:])(?:[0-9a-fA-F]{0,4}:){2,}[0-9a-fA-F]{0,4}(?![\w:])
 EXAMPLES = tuple(ipaddress.ip_network(n) for n in (
     '192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24', '2001:db8::/32'))
 LOCAL = tuple(ipaddress.ip_address(n) for n in ('0.0.0.0', '127.0.0.1', '::', '::1'))
-PRIVATE_DIRS = {'.private-artifacts', '.aws', '.codex', '.agents', 'lists', 'logs'}
-LIVE_FILES = {'etc/settings.conf', 'etc/guard.conf', 'etc/ports.conf', 'etc/active.nft', 'applied.conf'}
+PRIVATE_DIRS = {'.private-artifacts', '.aws', '.codex', '.agents', '.frp-ssh-guard', 'lists', 'logs'}
+LIVE_FILES = {'etc/settings.conf', 'etc/guard.conf', 'etc/ports.conf', 'etc/active.nft',
+              'applied.conf', 'auth-state.json', 'etc/user-home.json'}
 ARCHIVES = ('.zip', '.tar.gz', '.tgz', '.tar.xz', '.tar', '.deb', '.bundle')
 
 

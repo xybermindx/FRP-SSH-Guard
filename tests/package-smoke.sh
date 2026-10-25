@@ -8,6 +8,7 @@ apt-get update
 package="/src/dist/frp-ssh-guard_$(cat /src/VERSION).deb"
 apt-get install -y "$package"
 frp-ssh-guard --help
+[[ $(frp-ssh-guard --version) == "FRP-SSH-Guard $(cat /src/VERSION)" ]]
 [[ ! -e /var/lib/frp-ssh-guard/active.nft ]]
 [[ ! -e /etc/systemd/system/multi-user.target.wants/frp-ssh-guard.service ]]
 printf '\nPROTECTED_PORTS=22001\nPER_IP_RATE=9\n' >> /etc/frp-ssh-guard/settings.conf

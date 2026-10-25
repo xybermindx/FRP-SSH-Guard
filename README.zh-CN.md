@@ -11,7 +11,10 @@
 > **约 10 天观测：** 已丢弃 **4,255,592** 个恶意数据包（**99.97%**），
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，最近 24 小时后端登录失败 **0** 次。
 
-**版本 0.0.4 · MIT 开源许可 · Bash 与 Python · 无闭源运行组件**
+**版本 0.0.5（本地候选版，尚未发布）· MIT 开源许可 · Bash 与 Python**
+
+上方公开下载仍为 v0.0.4。通过 `make release` 在本地构建 v0.0.5；
+下文介绍 v0.0.5 的操作。本候选版尚未上传。
 
 [部署步骤](#逐步部署) · [配置说明](#配置说明) · [命令](#常用命令) ·
 [防护范围](#可以防护哪些攻击) · [验证效果](#验证防护是否生效) · [源码构建](#开源与源码构建)
@@ -56,6 +59,8 @@ FRP 可以通过公网服务器暴露内网服务，转发的 SSH 端口也可�
 本项目为明确选择的端口增加主机防火墙策略：
 
 - 按来源 IP、目标端口限制新连接速率，并临时封禁来源。
+- 可选保护本机 22 端口，并检测本机 sshd 认证失败。
+- 默认所有受保护端口共享 IP 封禁，也可切换为每端口独立封禁。
 - 对每个端口设置共享速率上限，缓解分布式连接突发。
 - 支持 IPv4/IPv6 地址、CIDR 网段以及按端口限定的白名单和黑名单。
 - 记录封禁历史，对重复被观察到的违规来源延长封禁时间。
@@ -86,9 +91,9 @@ flowchart LR
 - `frps` 直接在主机网络命名空间监听。容器桥接/NAT 端口映射不属于此 input hook 方案的覆盖范围，需要另行验证。
 - 每台主机仅支持一个防护实例。其他防火墙规则仍然有效；本工具不会放行被其他规则阻止的端口。
 
-只过滤明确选择的 TCP 端口。不要选择服务器管理 SSH 端口、FRP 控制端口或公共 Web 端口。
-验证器会拒绝不是 `frps` 的已选监听端口，但无法识别 FRP 隧道中实际运行的应用，
-因此需要由管理员选择正确的私有服务端口。
+只过滤明确选择的 TCP 端口。不要选择 FRP 控制端口或公共 Web 端口。
+通过 `PROTECT_SERVER_SSH=on` 单独启用本机管理 SSH 22 端口防护，默认 `off`。
+其他已选监听端口必须属于 `frps`；验证器无法识别 FRP 隧道中实际运行的应用。
 
 以上是目标平台，不代表所有系统和内核组合都经过测试。
 实际验证范围见[验证记录](docs/VALIDATION.md)（英文）。
@@ -97,12 +102,13 @@ flowchart LR
 
 | 流量或攻击 | 预期效果与边界 |
 | --- | --- |
-| 同一来源对受保护端口发起大量新连接 | 超过单来源限制后，临时封禁该来源访问所有受保护端口。 |
-| 不断重新连接的 SSH 暴力破解工具 | 可以减少连接尝试，但不检测密码错误。 |
+| 同一来源对受保护端口发起大量新连接 | 超过单来源限制后临时封禁，默认共享所有受保护端口，也可启用按端口封禁。 |
+| 不断重新连接的 SSH 暴力破解工具 | 限制连接尝试；可选的本机 sshd 监控还会统计认证失败。 |
+| 重复尝试本机不存在的用户名 | 启用 22 端口防护后，默认 10 分钟内 3 个不同连接的无效用户尝试或 5 次认证失败触发封禁。 |
 | 分布式连接突发 | 每端口共享上限丢弃过量新连接；正常用户也可能受影响。 |
 | 多次被观察到的封禁 | 累犯策略可以延长封禁；采样可能漏掉短期或重复事件。 |
 | 已知不需要的 IP 或网段 | 手动黑名单丢弃匹配流量，但白名单和已建立连接的优先规则仍然适用。 |
-| 低于阈值的慢速尝试，或同一连接中多次猜密码 | 无法依靠本工具可靠阻止。 |
+| 低于阈值的慢速尝试，或转发 SSH 连接内部猜密码 | 无法可靠识别；无法读取转发 SSH 的认证结果。 |
 | 应用漏洞利用或被盗凭据 | 不提供应用层识别或阻止能力。 |
 | 占满带宽的 DDoS | 不保证服务可用；主机过滤无法恢复已经被占满的上游链路。 |
 | 未配置端口、UDP 和其他协议 | 不在过滤范围内。 |
@@ -146,6 +152,8 @@ sudo ss -lntp 'sport = :22001'
 监听进程应显示为 `frps`。验证时至少需要一个已选端口具有活动的 FRP 监听；
 允许其他已选端口暂时没有监听，但不允许它们由非 FRP 进程监听。
 先确认原来的转发 SSH 服务可以正常使用。
+若只保护本机 SSH，可使用 `PROTECT_SERVER_SSH=on` 并留空 FRP 端口选择，
+此时验证 22 端口的 sshd/systemd socket 监听。
 
 ### 2. 校验并安装软件包
 
@@ -153,7 +161,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.4.deb
+sudo apt install ./frp-ssh-guard_0.0.5.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -161,8 +169,17 @@ sudo apt install ./frp-ssh-guard_0.0.4.deb
 ### 3. 设置公网转发端口
 
 ```bash
-sudoedit /etc/frp-ssh-guard/settings.conf
+sudo frp-ssh-guard config-home
+${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
+
+`config-home` 将现有设置和手动名单复制到调用 sudo 的用户的
+`~/.frp-ssh-guard/`，使用私有文件权限，保留已接受的运行策略及封禁。
+也可以用 `sudo frp-ssh-guard config-home USER` 指定管理员。
+仅使用 root 的环境可采用 `/root/.frp-ssh-guard/`。
+运行该命令前，原有系统路径继续有效，不重置封禁或修改定时器配置。
+此显式迁移会重新加载 systemd 单元以监听新文件；systemd 可能重新计算自定义
+`OnActiveSec` 的触发时间。软件包升级不会重新加载单元。
 
 例如保护 `22001`、`22003` 和 `23000–23010`，但排除 `23005`：
 
@@ -206,7 +223,7 @@ sudo frp-ssh-guard keep
 ### 5. 后续修改配置
 
 ```bash
-sudoedit /etc/frp-ssh-guard/settings.conf
+${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 sudo frp-ssh-guard check
 sudo frp-ssh-guard reload
 sudo frp-ssh-guard status
@@ -218,13 +235,17 @@ sudo frp-ssh-guard status
 
 ## 配置说明
 
-完整参数说明见[带注释的默认配置](etc/settings.conf.example)。文件使用可信 Bash 赋值语法：
-请保持 root 所有权，不要粘贴不可信的 shell 命令。默认配置注释和命令输出使用英文。
+完整参数说明见[带注释的默认配置](etc/settings.conf.example)。文件使用字面量
+`KEY=value` 赋值，只作为数据解析，不执行 shell 命令或替换表达式。
+请保持家目录配置私有，它决定防火墙策略。默认配置注释和命令输出使用英文。
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PROTECTED_PORTS` | 空，必须设置 | 逗号或空格分隔的端口/范围；`22001:60:40` 覆盖该端口的共享速率和突发额度。 |
 | `EXCLUDE_PORTS` | 空 | 从保护范围中排除的端口/范围。 |
+| `PROTECT_SERVER_SSH` | `off` | `on` 添加本机 22 端口防护，并监控本机 sshd 认证结果。 |
+| `JAIL_PER_PORT` | `off` | `off`：自动/累犯封禁共享所有受保护端口；`on`：按端口独立封禁。 |
+| `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | 本机认证失败阈值、不同连接的无效用户阈值、统计窗口。 |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | 每来源、每端口的新 SYN 每分钟速率及突发额度。 |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | 每端口共享的新 SYN 每分钟速率及突发额度，跨来源和 IP 协议族共享。 |
 | `BAN_TIMEOUT` | `6h` | 临时封禁来源的时长。 |
@@ -245,19 +266,46 @@ sudo frp-ssh-guard status
 
 | 位置 | 用途 |
 | --- | --- |
-| `/etc/frp-ssh-guard/settings.conf` | 用户修改的策略及受保护端口。 |
+| `~/.frp-ssh-guard/settings.conf` | 执行 `config-home` 后的可编辑策略。 |
+| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | 执行 `config-home` 后的手动名单。 |
+| `/etc/frp-ssh-guard/` | 初始/旧版设置，以及选定的家目录位置记录。 |
 | `/var/lib/frp-ssh-guard/applied.conf` | 生成的已接受策略，请勿手动修改。 |
-| `/var/lib/frp-ssh-guard/lists/` | 手动名单、学习来源、累犯状态。 |
+| `/var/lib/frp-ssh-guard/lists/` | 手动名单缓存、学习来源、累犯状态。 |
 | `/var/log/frp-ssh-guard/` | 封禁与学习历史。 |
 | `/usr/lib/frp-ssh-guard/` | 软件包管理的运行程序。 |
 
 手动名单独立保存，防护运行期间会监听名单修改。
 名单命令使用已接受策略，不会顺带应用尚未 reload 的配置。
+只更新名单集合，不清空自动封禁或重置其剩余时间。
+由 root 保管的已接受设置及名单缓存使家目录暂时不可用时仍能启动防护。
+设置修改仍需执行 `check` 和 `reload`。
+
+本机 SSH 监控读取 journald 中由 root sshd 产生的记录，使用无效用户及认证
+成功/失败结果，不采集密码，也不保存用户名。成功登录会清除近期失败计数。
+SYN 和本机认证封禁使用相同的时长及端口范围设置。
+回环、已建立连接和白名单继续优先放行。
+无法读取 FRP 后端 SSH 的认证结果；本机监控要求 sshd 日志进入 journald，
+针对服务器标准 22 端口。
+
+手动封禁默认为永久，直到执行 `unblock`；使用 `--for` 可指定时长。
+默认作用于所有**受保护**端口，显式端口范围不受 jail 模式开关影响：
+
+```bash
+sudo frp-ssh-guard block 198.51.100.20 --all
+sudo frp-ssh-guard block 203.0.113.8 --ports 22001,22003 --for 6h
+sudo frp-ssh-guard unblock 203.0.113.8
+```
+
+限时条目保存绝对 UTC `until=` 时间，reload/重启不会延长有效期。
+全部端口封禁会随受保护端口的选择变化。
+`ban IP [DURATION]` 是内核临时封禁，默认时长为 `BAN_TIMEOUT`；
+需要跨重启保留到期时间时，请使用 `block --for`。
 
 ## 常用命令
 
 ```bash
 frp-ssh-guard --help                       # 无需 root
+frp-ssh-guard --version                    # 查看版本，也可用 version 或 -V
 sudo frp-ssh-guard check                    # 验证编辑后的配置
 sudo frp-ssh-guard enable                   # 立即应用并开启重启恢复
 sudo frp-ssh-guard reload                   # 运行期间接受新配置
@@ -299,8 +347,8 @@ sudo journalctl -u frp-ssh-guard.service -u frp-ssh-guard-learn.service --since 
 
 - 共用 NAT/VPN 出口的用户会一起计数；共享端口限制可能在攻击期间影响正常用户。
 - 已建立/相关连接和回环流量绕过此防护。白名单优先于黑名单，但不能覆盖其他防火墙表。
-- 应用规则会重建防护表，重置计数器、速率状态和临时封禁；手动名单、学习地址和持久累犯封禁会恢复。
-- 持久记录保存地址而非到期时间，因此恢复规则会更新其超时。
+- 显式策略 `reload`、服务重启或系统重启会重建防护表，重置速率状态和自动临时封禁。软件包升级及手动名单更新保留正在生效的封禁。
+- 学习地址和持久累犯封禁会按配置时长恢复；限时手动封禁保留绝对到期时间。
 - 历史每分钟采样一次，可能漏掉短期封禁。防护表丢失的恢复也要等待定时任务，且仅在防护运行期间执行。
 
 ## 故障排查
@@ -320,20 +368,27 @@ sudo journalctl -u frp-ssh-guard.service -u frp-ssh-guard-learn.service --since 
 
 ```bash
 sudo apt install ./frp-ssh-guard_NEW_VERSION.deb
-# 如果之前已经启用，加载新程序，但不接受待应用的配置修改：
-sudo systemctl restart frp-ssh-guard.service
+frp-ssh-guard --version
 sudo frp-ssh-guard status
 
 sudo frp-ssh-guard disable
 sudo apt remove frp-ssh-guard  # 保留配置和状态
-sudo apt purge frp-ssh-guard   # 同时删除配置、状态和日志
+sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件保留
 ```
 
 如果已安装公开版本编号修正前的软件包，请按照
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
-切换到 v0.0.4，并保留现有设置。
+切换到当前版本，并保留现有设置。
 
-升级不会自动重启服务。原有 `guard.conf`/`ports.conf` 部署在迁移前仍可使用，
+安装新版 `.deb` 会自动升级程序，保留自定义配置、家目录文件、当前封禁及剩余时长、
+服务启用状态和定时任务安排。自定义 systemd 定时设置请放在 `/etc/systemd/system/`
+的 drop-in 中，不要修改软件包所有的 `/usr/lib` 单元。Fail2ban jail 配置保持不变。
+首次从 v0.0.4 升级时，旧版卸载钩子可能重新计算自定义 `OnActiveSec` 触发时间，
+详见[迁移说明](docs/MIGRATING.md)。
+软件包升级不需要 restart/reload。已运行的 Python 监控进程保留当前代码，直到显式
+策略 reload 或后续重启；新命令和定时任务调用会使用更新后的代码。新功能需明确启用。
+
+原有 `guard.conf`/`ports.conf` 部署在迁移前仍可使用，
 不会被空的新配置文件覆盖。详细操作见[迁移说明](docs/MIGRATING.md)（英文）。
 `settings.conf` 由维护脚本创建并保留，不会在升级时被替换；新版本默认示例随软件包文档提供。
 
@@ -365,7 +420,8 @@ sudo env GUARD_DIR=/opt/frp-ssh-guard /opt/frp-ssh-guard/bin/frp-ssh-guard statu
 ```
 
 源码安装会激活防护，默认路径是 `/opt/frp-ssh-guard`。
-不要同时安装源码版与 Debian 软件包版。重复安装保留设置；明确提供的安装参数会更新对应字段。
+不要同时安装源码版与 Debian 软件包版。重复安装保留设置、单元、定时安排及现有封禁；
+安装参数只作用于新安装。新的源码安装也会创建管理员家目录配置。
 
 ## 贡献、安全与许可证
 

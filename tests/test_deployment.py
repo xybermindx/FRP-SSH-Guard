@@ -31,7 +31,8 @@ case "$1" in
  --check) test ! -f "$TEST_ROOT/fail-check" ;;
  --file)
    test ! -f "$TEST_ROOT/fail-apply" || exit 1
-   cp "$2" "$TEST_ROOT/live.nft" ;;
+   if grep -q '^table inet ' "$2"; then cp "$2" "$TEST_ROOT/live.nft";
+   else cat "$2" >> "$TEST_ROOT/live.nft"; fi ;;
  delete) rm -f "$TEST_ROOT/live.nft" ;;
  *) exit 0 ;;
 esac
@@ -309,6 +310,54 @@ else:
         (self.root / 'lists/hardban.conf').write_text('198.51.100.22\n')
         self.require_ok(self.run_guard('enable'))
         self.assertIn('hardban4 { 198.51.100.22', (self.root / 'live.nft').read_text())
+
+    def test_native_ssh_is_opt_in_and_has_its_own_listener_validation(self):
+        self.fake('ss', '''#!/bin/bash
+if [[ "$*" == *":22" ]]; then echo 'LISTEN users:(("sshd",pid=1,fd=1))';
+else echo 'LISTEN users:(("frps",pid=2,fd=1))'; fi
+''')
+        self.require_ok(self.run_guard('enable'))
+        self.assertNotIn('tcp dport 22 ', (self.root / 'live.nft').read_text())
+        self.settings('PROTECTED_PORTS="22001"\nPROTECT_SERVER_SSH=on\n')
+        self.require_ok(self.run_guard('reload'))
+        self.assertIn('tcp dport 22 ', (self.root / 'live.nft').read_text())
+        self.settings('PROTECTED_PORTS=""\nPROTECT_SERVER_SSH=on\n')
+        self.require_ok(self.run_guard('reload'))
+        self.assertNotIn('tcp dport 22001 ', (self.root / 'live.nft').read_text())
+
+    def test_manual_updates_leave_jail_sets_and_timer_units_untouched(self):
+        self.require_ok(self.run_guard('enable'))
+        (self.root / 'systemctl.calls').write_text('')
+        self.require_ok(self.run_guard('block', '198.51.100.7', '--ports', '22001', '--for', '6h'))
+        rules = (self.root / 'live.nft').read_text()
+        update = rules[rules.index('flush set'):]
+        self.assertNotIn('delete table', update)
+        self.assertNotIn('flush set inet frp_ssh_persistent_guard ban', update)
+        self.assertNotIn('hardban', update)
+        self.assertIn('198.51.100.7 . 22001 timeout', update)
+        self.assertIn('until=', (self.root / 'lists/blocklist.conf').read_text())
+        self.assertEqual((self.root / 'systemctl.calls').read_text(), '')
+
+    def test_per_port_jails_use_concatenated_keys(self):
+        self.settings('PROTECTED_PORTS="22001,22003"\nJAIL_PER_PORT=on\n')
+        self.require_ok(self.run_guard('enable'))
+        rules = (self.root / 'live.nft').read_text()
+        self.assertIn('set ban4     { type ipv4_addr . inet_service;', rules)
+        self.assertIn('add @ban4 { ip saddr . tcp dport timeout', rules)
+        self.assertIn('ip saddr . tcp dport @ban4', rules)
+
+    def test_settings_command_substitution_is_never_executed(self):
+        marker = self.root / 'must-not-exist'
+        self.settings('PROTECTED_PORTS="22001"\nLOGIN_USERS="$(touch ' + str(marker) + ')"\n')
+        self.run_guard('check')
+        self.assertFalse(marker.exists())
+
+    def test_version_is_available_without_root_or_valid_settings(self):
+        self.settings('invalid data')
+        result = subprocess.run(['bash', str(ROOT / 'bin/frp-ssh-guard-persistent.sh'), '--version'],
+                                env=self.env, text=True, capture_output=True)
+        self.require_ok(result)
+        self.assertEqual(result.stdout.strip(), 'FRP-SSH-Guard ' + (ROOT / 'VERSION').read_text().strip())
 
 
 if __name__ == '__main__':

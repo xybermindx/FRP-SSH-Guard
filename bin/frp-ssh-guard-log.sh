@@ -26,7 +26,7 @@ current=$(mktemp)
 for set in ban4 ban6; do
     if command -v jq >/dev/null 2>&1; then
         "$NFTP" -j list set inet "$TABLE" "$set" 2>/dev/null \
-            | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | "\($s) \(.elem.val)"' >> "$current"
+            | python3 "$(dirname -- "${BASH_SOURCE[0]}")/frp-ssh-guard-input.py" snapshot "$set" >> "$current"
     else
         "$NFTP" list set inet "$TABLE" "$set" 2>/dev/null | tr '\n' ' ' \
             | grep -o 'elements = {[^}]*}' | sed 's/^elements = {//; s/}$//' \

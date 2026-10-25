@@ -12,7 +12,10 @@ and use nftables to limit repeated connection attempts and block abusive sources
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
 > failed logins in the latest 24-hour window.
 
-**Version 0.0.4 · MIT licensed · Bash and Python · No proprietary runtime components**
+**Version 0.0.5 (local candidate, not published) · MIT licensed · Bash and Python**
+
+The public download above is still v0.0.4. Build v0.0.5 locally with `make release`;
+the instructions below describe v0.0.5. Nothing in this candidate has been uploaded.
 
 [Deployment](#deploy-step-by-step) · [Configuration](#configuration) ·
 [Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
@@ -65,6 +68,8 @@ attract automated probes and repeated connection attempts. This project adds a
 host firewall policy specifically for the ports you choose:
 
 - Per-source, per-port new-connection rate limits and temporary source bans.
+- Optional protection of this server's port 22, including local sshd authentication failures.
+- Shared IP jails by default, or separate jails per port.
 - A shared per-port rate limit to reduce distributed connection bursts.
 - IPv4/IPv6 IP and CIDR allow/block lists, optionally restricted to selected ports.
 - Ban history and longer bans for repeatedly observed offenders.
@@ -99,10 +104,10 @@ Target environment:
 - One guard instance per host. Existing firewall rules still apply; the guard does
   not open a port blocked by another firewall.
 
-Only explicitly selected TCP ports are filtered. Do not select your management
-SSH port, FRP control port, or public web ports. The validator rejects selected
-listeners not identified as `frps`, but cannot determine which application an
-FRP tunnel carries: choose only the intended private services.
+Only selected TCP ports are filtered. Keep FRP control and public web ports out of
+the selection. Enable management SSH on port 22 separately with
+`PROTECT_SERVER_SSH=on`; it defaults to `off`. Other selected listeners must be
+`frps`. The validator cannot determine which application an FRP tunnel carries.
 
 These are target platforms, not a claim that every kernel/distribution combination
 has been tested. See [validation results](docs/VALIDATION.md).
@@ -111,12 +116,13 @@ has been tested. See [validation results](docs/VALIDATION.md).
 
 | Traffic or attack | Expected effect and limits |
 | --- | --- |
-| Many new connections from one source to one protected port | Exceeding the per-source limit adds a temporary source ban across guarded ports. |
-| SSH brute-force tools that repeatedly reconnect | Can reduce attempts by limiting connections; does not detect incorrect passwords. |
+| Many new connections from one source to one protected port | Exceeding the per-source limit adds a temporary ban; shared across protected ports by default, or per port when enabled. |
+| SSH brute-force tools that repeatedly reconnect | Limits connections; optional local sshd monitoring also counts authentication failures on this server. |
+| Repeated local SSH invalid-user attempts | With port-22 protection on: ban after 3 distinct invalid-user connections or 5 failures within 10 minutes by default. |
 | Distributed connection bursts | The shared per-port limit drops excess new attempts; legitimate traffic can also be affected. |
 | Repeated observed bans | Strike escalation can impose longer bans; sampling can miss short or repeated events. |
 | Known unwanted IPs/networks | Manual blocks drop matching traffic to guarded ports, subject to whitelist and established-connection precedence. |
-| Slow attempts below thresholds or several guesses inside one connection | No reliable prevention through this guard. |
+| Slow attempts below thresholds or guesses inside a forwarded SSH connection | Not reliably detected; forwarded authentication outcomes are unavailable. |
 | Application exploits or stolen credentials | No application-level detection or prevention. |
 | Bandwidth-saturating DDoS | No availability guarantee; host filtering cannot recover an already saturated upstream link. |
 | Unconfigured ports, UDP, and other protocols | Outside the filtering scope. |
@@ -165,6 +171,8 @@ sudo ss -lntp 'sport = :22001'
 The listener must identify as `frps`. Validation requires at least one selected
 active FRP listener; selected unused ports are allowed, but selected non-FRP
 listeners are rejected. Make sure the forwarded SSH service already works.
+If protecting only this server's SSH, `PROTECT_SERVER_SSH=on` allows an empty
+FRP selection and validates the port-22 sshd/systemd socket listener instead.
 
 ### 2. Verify and install the package
 
@@ -172,7 +180,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.4.deb
+sudo apt install ./frp-ssh-guard_0.0.5.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -181,8 +189,17 @@ change firewall rules.** Dependencies are resolved through apt.
 ### 3. Configure your public forwarded ports
 
 ```bash
-sudoedit /etc/frp-ssh-guard/settings.conf
+sudo frp-ssh-guard config-home
+${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
+
+`config-home` copies existing settings and manual lists to the invoking sudo user's
+`~/.frp-ssh-guard/` with private permissions, retaining the accepted runtime policy.
+Use `sudo frp-ssh-guard config-home USER` to select another administrator. Root-only
+installs can use `/root/.frp-ssh-guard/`. Until this command is run, existing system
+paths remain valid. It does not reset jails or change timer configuration.
+This explicit migration reloads systemd units to watch the new files; systemd may
+rebase a custom `OnActiveSec` deadline. Package upgrades do not reload units.
 
 For public ports `22001`, `22003`, and `23000–23010` except `23005`:
 
@@ -228,7 +245,7 @@ trial with `keep` or `disable` before changing policy.
 ### 5. Change settings later
 
 ```bash
-sudoedit /etc/frp-ssh-guard/settings.conf
+${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 sudo frp-ssh-guard check
 sudo frp-ssh-guard reload
 sudo frp-ssh-guard status
@@ -243,13 +260,17 @@ may already be active when such an error is reported.
 ## Configuration
 
 The complete [commented default](etc/settings.conf.example) explains each setting.
-The file contains trusted Bash assignments: keep it root-owned and do not paste
-untrusted shell commands into it. Configuration comments and CLI output are English.
+The file contains literal `KEY=value` assignments. It is parsed as data; shell
+commands and substitutions are not executed. Configuration comments and CLI output
+are English. Keep your home configuration private; it controls firewall policy.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `PROTECTED_PORTS` | Empty; required | Comma/space-separated ports or ranges. `22001:60:40` overrides that port's shared rate/burst. |
 | `EXCLUDE_PORTS` | Empty | Ports/ranges omitted from the protected selection. |
+| `PROTECT_SERVER_SSH` | `off` | `on` adds this server's port 22 and monitors local sshd outcomes. |
+| `JAIL_PER_PORT` | `off` | `off`: automatic/strike bans cover all protected ports. `on`: each port has its own jail. |
+| `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | Local authentication failure threshold, distinct invalid-user connection threshold, and counting window. |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | New SYN rate/minute and burst per source and port. |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | Shared new SYN rate/minute and burst per port, across sources and IP families. |
 | `BAN_TIMEOUT` | `6h` | Temporary source-ban duration. |
@@ -271,19 +292,47 @@ logins to SSH servers behind the FRP tunnel.
 
 | Location | Purpose |
 | --- | --- |
-| `/etc/frp-ssh-guard/settings.conf` | User-edited policy and protected ports. |
+| `~/.frp-ssh-guard/settings.conf` | Editable policy after `config-home`. |
+| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | Editable manual lists after `config-home`. |
+| `/etc/frp-ssh-guard/` | Initial/legacy settings and the selected home location registry. |
 | `/var/lib/frp-ssh-guard/applied.conf` | Generated accepted policy; do not edit. |
-| `/var/lib/frp-ssh-guard/lists/` | Manual lists, learned sources, strike state. |
+| `/var/lib/frp-ssh-guard/lists/` | Cached manual lists, learned sources and strike state. |
 | `/var/log/frp-ssh-guard/` | Ban and learning history. |
 | `/usr/lib/frp-ssh-guard/` | Package-managed runtime programs. |
 
 Manual lists remain separate. Their edits are watched while the guard runs;
 commands apply list changes using accepted policy without adopting pending edits.
+They update list sets without clearing automatic jails or renewing their timers.
+Root-owned accepted settings and cached lists allow startup when the user's home
+is unavailable. Settings changes still require `check` and `reload`.
+
+Local SSH monitoring reads root-owned sshd journal records. It uses sshd's
+invalid-user and failed/accepted authentication results; it never captures
+passwords and discards usernames. A successful login clears recent failure counts.
+The same ban timeout and jail scope apply to SYN and local authentication bans.
+Loopback, established connections and allowed sources retain their precedence.
+Authentication outcomes for SSH behind FRP remain unavailable. Monitoring requires
+local sshd logs in journald and targets the server's standard port 22.
+
+Manual blocks are permanent until `unblock` unless `--for` is specified. Scope
+defaults to all **protected** ports; explicit scopes work in either jail mode:
+
+```bash
+sudo frp-ssh-guard block 198.51.100.20 --all
+sudo frp-ssh-guard block 203.0.113.8 --ports 22001,22003 --for 6h
+sudo frp-ssh-guard unblock 203.0.113.8
+```
+
+Timed entries store an absolute UTC `until=` timestamp, so reload/reboot does not
+renew them. An all-port block follows the protected selection as it changes.
+`ban IP [DURATION]` instead adds a temporary kernel ban (default `BAN_TIMEOUT`);
+use `block --for` for an expiry that survives a reboot.
 
 ## Commands
 
 ```bash
 frp-ssh-guard --help                       # no root needed
+frp-ssh-guard --version                    # version (also: version or -V)
 sudo frp-ssh-guard check                    # validate edited configuration
 sudo frp-ssh-guard enable                   # apply and enable reboot restoration
 sudo frp-ssh-guard reload                   # accept edited settings while active
@@ -327,8 +376,8 @@ Operational limits:
 
 - Sources behind shared NAT/VPN count together. Shared per-port limits can drop legitimate traffic during a flood.
 - Existing established/related connections and loopback traffic bypass this guard. Whitelists precede blocks; they do not override unrelated firewall tables.
-- Applying rules rebuilds the guard table, resetting counters, rate meters, and temporary bans. Manual lists, learned addresses, and persisted strike bans are restored.
-- Persisted addresses do not retain expiry timestamps; restoring rules renews their configured timeout.
+- An explicit policy `reload`, restart or reboot rebuilds the table, resetting rate meters and temporary automatic bans. Package upgrades and manual-list updates leave live jails intact.
+- Learned addresses and persisted strike bans are restored with configured timeouts. Timed manual blocks retain their absolute expiry.
 - History is sampled once a minute; short bans may be missed. Missing-table recovery also waits for that timer and only runs while the guard is active.
 
 ## Troubleshooting
@@ -348,20 +397,29 @@ Operational limits:
 
 ```bash
 sudo apt install ./frp-ssh-guard_NEW_VERSION.deb
-# If previously active, load updated programs without adopting pending settings:
-sudo systemctl restart frp-ssh-guard.service
+frp-ssh-guard --version
 sudo frp-ssh-guard status
 
 sudo frp-ssh-guard disable
 sudo apt remove frp-ssh-guard  # retain settings and state
-sudo apt purge frp-ssh-guard   # also erase settings, state, and logs
+sudo apt purge frp-ssh-guard   # erase system state/logs; home files remain
 ```
 
 If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
-to switch to v0.0.4 while retaining settings.
+to switch to the current version while retaining settings.
 
-Upgrades do not restart services automatically. Existing `guard.conf`/`ports.conf`
+Installing a newer `.deb` upgrades the programs automatically while preserving
+settings, home files, live jails, remaining ban timeouts, service enablement and
+timer schedules. Custom systemd timer settings belong in `/etc/systemd/system/`
+drop-ins, not package-owned `/usr/lib` units. Fail2ban jail configuration is untouched.
+On the first upgrade from v0.0.4, its old removal hook can recalculate a custom
+`OnActiveSec` deadline; see [migration details](docs/MIGRATING.md).
+No restart or reload is required for the package upgrade. Already-running Python
+monitors keep their current code until an explicit policy reload or later restart;
+new commands and timer invocations use updated code. Enable new features explicitly.
+
+Existing `guard.conf`/`ports.conf`
 installations remain supported until migrated; the package does not mask them with
 an empty new settings file. Follow [migration instructions](docs/MIGRATING.md).
 The generated `settings.conf` is preserved by maintainer scripts rather than being
@@ -397,7 +455,8 @@ sudo env GUARD_DIR=/opt/frp-ssh-guard /opt/frp-ssh-guard/bin/frp-ssh-guard statu
 
 Source installation activates protection and defaults to `/opt/frp-ssh-guard`.
 Do not install source and Debian versions side by side. Repeated installs preserve
-settings; explicit installer flags update their corresponding fields.
+settings, units, timers and live jails; installer policy flags affect fresh installs
+only. Fresh source installs also create the administrator's home configuration.
 
 ## Contributing, security, and license
 

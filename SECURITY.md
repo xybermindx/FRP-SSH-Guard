@@ -1,8 +1,15 @@
 # Security
 
-This tool runs as root and changes firewall policy. Configuration is trusted
-shell input; keep it and program files root-owned. Granting access to mutable
-lists grants control over who is trusted or blocked.
+This tool runs as root and changes firewall policy. Editable configuration is
+parsed as literal data, not executed as shell code. Keep program files, accepted
+runtime snapshots and the home-location registry root-owned. Keep editable home
+files private. Granting access to settings or lists grants control over firewall
+policy and who is trusted or blocked.
+
+Local SSH monitoring reads authentication outcomes from the local journal, never
+attempted passwords. Its runtime state contains source addresses and journal
+cursors; keep it private along with settings, lists and logs. Runtime files and
+home configuration must never be included in Git commits or release artifacts.
 
 Report suspected vulnerabilities through this GitHub repository's private
 security reporting facility when enabled. If unavailable, ask the maintainer

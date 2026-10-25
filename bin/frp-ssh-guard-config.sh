@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Shared trusted-shell configuration and runtime serialization.
+# Shared literal configuration parsing and trusted runtime serialization.
 # Sourcing this library does not read user settings or touch the firewall.
 GUARD_DIR="${GUARD_DIR:-/opt/frp-ssh-guard}"
-CONFIG_DIR="${GUARD_ETC_DIR:-$GUARD_DIR/etc}"
+CONFIG_BASE="${GUARD_ETC_DIR:-$GUARD_DIR/etc}"
+INPUT_HELPER="$(dirname -- "${BASH_SOURCE[0]}")/frp-ssh-guard-input.py"
+CONFIG_DIR=$CONFIG_BASE
+MANUAL_DIR="${GUARD_LIST_DIR:-$GUARD_DIR/lists}"
+if [[ -f "$CONFIG_BASE/user-home.json" ]]; then
+    CONFIG_DIR=$(python3 "$INPUT_HELPER" location "$CONFIG_BASE") || return 1
+    MANUAL_DIR=$CONFIG_DIR
+fi
 APPLIED_CONF="${GUARD_APPLIED_CONF:-$GUARD_DIR/applied.conf}"
 LOCK_FILE="${GUARD_LOCK_FILE:-/run/frp-ssh-guard.lock}"
 
@@ -28,15 +35,21 @@ unlock_guard() {
 }
 
 load_guard_config() {
-    local mode=${1:-runtime} file
+    local mode=${1:-runtime} file assignments
     GUARD_TABLE=frp_ssh_persistent_guard
     PORT_MIN=1 PORT_MAX=65535 EXCLUDE_PORTS='' EDIT_USER=root
     PER_IP_RATE=2 PER_IP_BURST=40 GLOBAL_RATE=30 GLOBAL_BURST=20 BAN_TIMEOUT=6h
     LOGIN_USERS='' MAX_LEARNED=500 LEARN_TIMEOUT=90d
     STRIKE_WINDOW=90d STRIKE_MAX=28d STRIKE_LADDER='2:1d 3:3d 4:7d 5:28d'
+    PROTECT_SERVER_SSH=off JAIL_PER_PORT=off
+    SSH_AUTH_FAILURES=5 SSH_INVALID_USER_FAILURES=3 SSH_AUTH_WINDOW=10m
     unset PROTECTED_PORTS
     CONFIG_INPUT_DIGEST=''
     file=$(editable_config)
+    if [[ "$mode" == candidate && "$CONFIG_DIR" != "$CONFIG_BASE" && ! -f "$file" ]]; then
+        echo "Editable settings are unavailable: $file" >&2
+        return 1
+    fi
     if [[ "$mode" == runtime ]]; then
         if [[ -f "$APPLIED_CONF" ]]; then
             file=$APPLIED_CONF
@@ -47,9 +60,14 @@ load_guard_config() {
         fi
     fi
     if [[ -f "$file" ]]; then
-        bash -n "$file" || { echo "Invalid configuration syntax: $file" >&2; return 1; }
-        # Configuration is trusted root-owned shell input, as in previous releases.
-        . "$file"
+        if [[ "$file" == "$APPLIED_CONF" ]]; then
+            # Only the root-owned, generated runtime snapshot is shell input.
+            bash -n "$file" || return 1
+            . "$file"
+        else
+            assignments=$(python3 "$INPUT_HELPER" settings "$file") || return 1
+            eval "$assignments"  # parser emits only known keys and shell-quoted literal values
+        fi
     fi
     DEFAULT_RATE=$GLOBAL_RATE DEFAULT_BURST=$GLOBAL_BURST
 }
@@ -67,7 +85,8 @@ write_accepted_config() {
     local key
     for key in GUARD_TABLE PORT_MIN PORT_MAX EXCLUDE_PORTS EDIT_USER PROTECTED_PORTS \
         PER_IP_RATE PER_IP_BURST GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT LOGIN_USERS \
-        MAX_LEARNED LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER CONFIG_INPUT_DIGEST; do
+        MAX_LEARNED LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER CONFIG_INPUT_DIGEST \
+        PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW; do
         printf '%s=%q\n' "$key" "${!key-}"
     done
 }

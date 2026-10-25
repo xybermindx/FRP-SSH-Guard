@@ -2,23 +2,26 @@
 set -eu
 case "${1:-}" in
     configure)
-        install -d -o root -g root -m 0750 /var/lib/frp-ssh-guard/lists /var/log/frp-ssh-guard
+        for directory in /var/lib/frp-ssh-guard/lists /var/log/frp-ssh-guard; do
+            [ -d "$directory" ] || install -d -o root -g root -m 0750 "$directory"
+        done
         for name in whitelist.conf blocklist.conf learned.conf hardban.conf excused.tsv strikes.tsv; do
             file=/var/lib/frp-ssh-guard/lists/$name
             if [ ! -e "$file" ]; then install -o root -g root -m 0640 /dev/null "$file"; fi
         done
-        install -d -o root -g root -m 0755 /etc/frp-ssh-guard
+        [ -d /etc/frp-ssh-guard ] || install -d -o root -g root -m 0755 /etc/frp-ssh-guard
         if [ ! -e /etc/frp-ssh-guard/settings.conf ] && [ ! -e /etc/frp-ssh-guard/guard.conf ]; then
             install -o root -g root -m 0640 /usr/share/frp-ssh-guard/settings.conf.default /etc/frp-ssh-guard/settings.conf
         fi
-        if [ -d /run/systemd/system ]; then
-            systemctl daemon-reload
-        fi
+        # Even daemon-reload can rebase custom OnActiveSec timer deadlines.
+        # Discover units on explicit activation/reload, never during an upgrade.
         echo 'FRP-SSH-Guard installed; installation does not activate protection.'
-        echo 'Edit /etc/frp-ssh-guard/settings.conf (legacy guard.conf/ports.conf remain supported).'
+        echo 'Optional home-folder setup: sudo frp-ssh-guard config-home'
+        echo 'Edit the settings path shown by: frp-ssh-guard --help'
         echo 'Then run: sudo frp-ssh-guard check && sudo frp-ssh-guard enable'
         echo 'Verify: sudo frp-ssh-guard status | Help: frp-ssh-guard --help'
         echo 'After editing settings: sudo frp-ssh-guard reload'
-        echo 'Existing services keep running; after an upgrade run: sudo systemctl restart frp-ssh-guard.service'
+        echo 'Upgrades preserve settings, live bans, service enablement and timer schedules.'
+        echo 'No firewall or service restart is performed. Apply policy changes explicitly with reload.'
         ;;
 esac

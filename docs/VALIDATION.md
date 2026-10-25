@@ -4,6 +4,46 @@ This document distinguishes expected behavior from tests actually run. It does
 not claim a prevention percentage, maximum throughput, independent audit, or
 production availability guarantee.
 
+## Recorded checks for 0.0.5 local candidate
+
+Validation date: 2026-10-25. This candidate has not been pushed or released.
+Privileged tests run in a disposable Debian 12 amd64 VM using unprivileged QEMU
+TCG, kernel 6.1.0-54-cloud-amd64, nftables 1.0.6, systemd 252 and real FRP 0.71.1.
+No production firewall is used. Test identities, addresses and port choices are
+synthetic; raw host logs and configuration are excluded from the source export.
+
+| Check | Result |
+| --- | --- |
+| Shell/Python syntax and regression suite | Passed locally: 56 tests, one privileged test skipped (57 total). All 57 passed in the Debian VM. |
+| Real nftables kernel validation | Passed in VM: initial/replacement tables, shared/per-port jail types, scoped CIDR blocks and timed IPv6 manual elements. |
+| Active v0.0.4 → v0.0.5 Debian upgrade | Passed: custom settings, accepted policy, manual list, permissions, service invocation, timer settings, active ban and remaining expiry retained. |
+| Home migration and same-version Debian reinstall | Passed: settings/lists moved with correct owner/private permissions; active bans retained; reinstall preserves custom timer deadlines including `OnActiveSec`. |
+| Real FRP connection bursts | Passed: new SYN traffic through actual forwarded SSH listeners triggered shared bans and per-port isolation as configured. |
+| Native SSH invalid-user attempts | Passed: three separate invalid-user connections triggered the authentication monitor; shared and port-22-only scope both verified. |
+| Manual blocks and expiry | Passed: selected-port block, permanent all-protected-port block, automatic expiry, and list updates preserving active automatic bans. |
+| Actual reboot with unavailable home | Passed: accepted native SSH/per-port policy and cached manual lists restored; timed manual block retained its original expiry. Pending home settings were not adopted. |
+| Debian package lifecycle | Passed in VM: fresh install, reinstall, remove, purge and legacy conffile upgrade via `tests/package-smoke.sh`. |
+| Source installation lifecycle | Passed in VM: fresh install with home files, version command, active reinstall with conflicting installer policy flags, unchanged settings/units/bans/timer deadlines, and uninstall retaining home files. |
+| Ubuntu, ARM and 32-bit runtime | Not tested for this candidate. No new GitHub CI run has been triggered. |
+
+The VM acceptance script is `tests/vm-acceptance.py`. It deliberately installs
+packages, changes firewall rules, starts real FRP processes and creates a network
+namespace. Run it **only in a fresh disposable VM** with dependencies available:
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-acceptance.py \
+  /tmp/frp-ssh-guard_0.0.4.deb /tmp/frp-ssh-guard_0.0.5.deb /tmp/frp-binaries
+FRP_GUARD_LIVE_TESTS=1 python3 -m unittest discover -s tests -v
+```
+
+The initial kernel test used an excessively distant expiry that nftables 1.0.6
+rejected. The fixture now uses a one-hour absolute expiry, and the kernel test
+passed on rerun. The first upgrade from v0.0.4 still runs that installed version's
+old `postrm`, which calls `daemon-reload`; it can rebase custom `OnActiveSec`
+deadlines. v0.0.5's upgrade hooks avoid the reload, verified by reinstalling with
+an active custom relative timer. Configured intervals and live ban expiry survive
+both paths. Explicit policy reload/restart still rebuilds temporary firewall state.
+
 ## Recorded checks for 0.0.4
 
 Local preparation environment: Ubuntu 26.04.1 LTS, unprivileged workspace.

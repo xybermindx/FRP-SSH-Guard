@@ -128,6 +128,25 @@ cat "$GUARD_DIR/rules.nft"
         self.assertIn(str(self.root / 'custom-logs'), result.stdout)
         self.assertIn(str(self.root / 'active.nft'), result.stdout)
 
+    def test_per_port_strikes_do_not_combine_different_ports(self):
+        (self.root / 'etc/guard.conf').write_text('JAIL_PER_PORT=on\nSTRIKE_LADDER="2:1d"\n')
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        rows = ['198.51.100.1 22001', '198.51.100.1 22003',
+                '198.51.100.2 22001', '198.51.100.2 22001',
+                '198.51.100.3 22003', '198.51.100.3 22003']
+        (self.root / 'logs/banned.log').write_text(''.join(f'{stamp} ban4 {row}\n' for row in rows))
+        (self.root / 'lists/whitelist.conf').write_text('198.51.100.3 22003\n')
+        real_run = subprocess.run
+        def run_command(args, **kwargs):
+            return real_run(args, **kwargs) if args[0] == 'bash' else subprocess.CompletedProcess(args, 0)
+        with mock.patch.dict(os.environ, self.env, clear=True), \
+             mock.patch('subprocess.run', side_effect=run_command) as run, \
+             mock.patch('shutil.chown'), contextlib.redirect_stdout(io.StringIO()):
+            runpy.run_path(str(ROOT / 'bin/frp-ssh-guard-strike.py'))
+        self.assertEqual((self.root / 'lists/hardban.conf').read_text(), '198.51.100.2 22001\n')
+        self.assertTrue(any('{ 198.51.100.2 . 22001 timeout 86400s }' in str(call.args)
+                            for call in run.call_args_list))
+
     def test_help_without_privileges(self):
         result = subprocess.run(['bash', str(ROOT / 'bin/frp-ssh-guard-persistent.sh'), '--help'],
                                 env=self.env, text=True, capture_output=True)
@@ -136,8 +155,11 @@ cat "$GUARD_DIR/rules.nft"
 
     @unittest.skipUnless(os.environ.get('FRP_GUARD_LIVE_TESTS') == '1', 'requires root and isolated network namespace')
     def test_kernel_accepts_initial_and_replacement_rules(self):
+        expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        (self.root / 'lists/blocklist.conf').write_text(
+            f'203.0.113.0/24 22001,22003\n2001:db8::7 all until={expiry}\n')
         initial = self.rules('22001\n22003\n')
-        replacement = self.rules('22001\n22003\n', active=True)
+        replacement = self.rules('22001\n22003\n', config='JAIL_PER_PORT=on\n', active=True)
         self.assertEqual(initial.returncode, 0, initial.stderr)
         self.assertEqual(replacement.returncode, 0, replacement.stderr)
         a, b = self.root / 'initial.nft', self.root / 'replacement.nft'

@@ -9,7 +9,8 @@ def validate(values):
     def fail(key, expected):
         raise ValueError(f"Invalid {key}={values.get(key)!r}: {expected}. Edit settings.conf and run check.")
 
-    for key in ('PER_IP_RATE', 'PER_IP_BURST', 'GLOBAL_RATE', 'GLOBAL_BURST', 'MAX_LEARNED'):
+    for key in ('PER_IP_RATE', 'PER_IP_BURST', 'GLOBAL_RATE', 'GLOBAL_BURST', 'MAX_LEARNED',
+                'SSH_AUTH_FAILURES', 'SSH_INVALID_USER_FAILURES'):
         value = values[key]
         if not re.fullmatch(r'[1-9][0-9]{0,6}', value) or int(value) > 1000000:
             fail(key, 'expected an integer from 1 to 1000000')
@@ -18,11 +19,14 @@ def validate(values):
             fail(key, 'expected a TCP port from 1 to 65535')
     if int(values['PORT_MIN']) > int(values['PORT_MAX']):
         fail('PORT_MIN', 'must not exceed PORT_MAX')
-    for key in ('BAN_TIMEOUT', 'LEARN_TIMEOUT', 'STRIKE_WINDOW', 'STRIKE_MAX'):
+    for key in ('BAN_TIMEOUT', 'LEARN_TIMEOUT', 'STRIKE_WINDOW', 'STRIKE_MAX', 'SSH_AUTH_WINDOW'):
         if not re.fullmatch(r'[1-9][0-9]{0,8}[smhdw]', values[key]):
             fail(key, 'expected a positive duration, e.g. 30m, 6h, 7d, or 4w')
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', values['GUARD_TABLE']):
         fail('GUARD_TABLE', 'expected a simple nftables identifier')
+    for key in ('PROTECT_SERVER_SSH', 'JAIL_PER_PORT'):
+        if values[key] not in ('on', 'off'):
+            fail(key, 'expected on or off')
     try:
         pwd.getpwnam(values['EDIT_USER'])
     except KeyError:

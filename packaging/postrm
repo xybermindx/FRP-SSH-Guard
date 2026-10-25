@@ -1,10 +1,14 @@
 #!/bin/sh
 set -eu
 if [ "${1:-}" = purge ]; then
+    rm -f /etc/systemd/system/frp-ssh-guard-lists.path.d/50-user-home.conf
     rm -rf /etc/frp-ssh-guard
     rm -rf /var/lib/frp-ssh-guard /var/log/frp-ssh-guard
     rm -f /run/frp-ssh-guard-bans.state /run/frp-ssh-guard-trial.pending /run/frp-ssh-guard.lock /run/frp-ssh-guard.lock.lifecycle
+    echo 'User home settings and manual lists are retained; remove them explicitly if no longer needed.'
 fi
-if [ -d /run/systemd/system ]; then
-    systemctl daemon-reload
-fi
+case "${1:-}" in
+    remove|purge)
+        if [ -d /run/systemd/system ]; then systemctl daemon-reload; fi
+        ;;
+esac

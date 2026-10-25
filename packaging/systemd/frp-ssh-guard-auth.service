@@ -1,0 +1,12 @@
+[Unit]
+Description=Detect repeated local SSH authentication failures
+After=frp-ssh-guard.service
+Requires=frp-ssh-guard.service
+PartOf=frp-ssh-guard.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/frp-ssh-guard/run auth
+Restart=on-failure
+RestartSec=10
+UMask=0077

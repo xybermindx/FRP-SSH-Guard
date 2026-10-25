@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.0.5 (local candidate; not published)
+
+- Add opt-in protection for this server's SSH port 22, including local sshd
+  authentication failures and invalid-user attempts; never collect passwords.
+- Add `PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off`. Default jails cover all
+  selected ports; opt-in per-port jails also separate ban history and escalation.
+- Add `config-home [USER]` for private editable settings and manual lists in
+  `~/.frp-ssh-guard/`, with literal data parsing and root-owned runtime snapshots.
+- Add manual all-port or selected-port blocks, permanent by default, with optional
+  `--for` duration saved as an absolute expiry that survives reload and reboot.
+- Update manual lists without clearing automatic jails or their remaining timeouts.
+- Preserve custom settings, live jails and timer deadlines on Debian/source
+  upgrades; do not restart services, rebuild the firewall or reload systemd units.
+- Add `version`, `--version`, and `-V`; reject overwriting an unrelated command.
+- Extend privacy checks, regression coverage and disposable-VM acceptance testing.
+
 ## 0.0.4
 
 - Use v0.0.4 for the public release.
