@@ -4,6 +4,7 @@
 # Saving alone does not change protection; reboot restores accepted settings.
 
 # REQUIRED: public frps forwarded TCP ports. Default empty = refuse activation.
+# Port numbers below are invented examples, not a deployment configuration.
 # Comma-separated ports/ranges; never include management SSH, frps control ports,
 # or public HTTP(S). Start frps and its forwarded listeners before check/enable.
 # Example: PROTECTED_PORTS="22001,22003,23000-23010"

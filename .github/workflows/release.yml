@@ -10,6 +10,7 @@ concurrency:
 jobs:
   validate:
     uses: ./.github/workflows/ci.yml
+    secrets: inherit
   release:
     needs: validate
     runs-on: ubuntu-24.04
@@ -23,6 +24,10 @@ jobs:
         with:
           name: release-artifacts
           path: dist
+      - name: Check release contents for private deployment details
+        env:
+          FRP_GUARD_PRIVACY_RULES: ${{ secrets.FRP_GUARD_PRIVACY_RULES }}
+        run: python3 scripts/privacy.py --require-private --artifacts dist/*.deb dist/SHA256SUMS
       - name: Check version and create draft with tested artifacts
         env:
           GH_TOKEN: ${{ github.token }}

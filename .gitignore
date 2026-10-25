@@ -1,4 +1,5 @@
 # Local deployment data and original transfer archives.
+/.private-artifacts/
 /lists/
 /logs/
 /etc/guard.conf

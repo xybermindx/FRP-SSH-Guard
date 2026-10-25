@@ -155,7 +155,7 @@ class SourceManifestTests(unittest.TestCase):
         self.assertIn('bin/frp-ssh-guard-persistent.sh', paths)
         self.assertIn('packaging/postinst', paths)
         for p in paths:
-            self.assertFalse(p.startswith(('lists/', 'logs/', '.git/', '.aws/', '.codex/', '.agents/')))
+            self.assertFalse(p.startswith(('lists/', 'logs/', '.git/', '.aws/', '.codex/', '.agents/', '.private-artifacts/')))
             self.assertFalse(p.endswith(('.zip', '.tar.gz', '.deb', '.tsv')))
             self.assertNotIn(p, ('etc/guard.conf', 'etc/settings.conf', 'etc/ports.conf', 'etc/active.nft'))
 

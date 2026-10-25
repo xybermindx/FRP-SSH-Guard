@@ -71,7 +71,19 @@ The filename omits the optional architecture suffix; Debian metadata remains
 GitHub supplies **Source code (zip)** and **Source code (tar.gz)** from the tag.
 Those automatic archives contain all tracked files; inspect the commit before
 publishing and never commit live configuration, secrets, or deployment backups.
+Check for real project/machine/tunnel names, domains, IP addresses, and deployment
+port mappings in every distributed file, including tests and package documentation.
+Use invented port examples and documentation-only IP addresses. Never upload
+`.private-artifacts/` or old transfer backups. An ignore rule does not remove files
+already committed; check Git history, tags, and existing release assets separately.
 The checksum file covers uploaded installable packages, not GitHub-generated archives.
+
+The build scans its source inputs and generated archives. Before publishing, run
+`python3 scripts/privacy.py --history --require-private` and scan every intended
+asset with `python3 scripts/privacy.py --require-private --artifacts PATH...`.
+The Actions release workflow requires private rules stored in a repository secret
+and scans the downloaded artifacts again before upload. See CONTRIBUTING.md for
+local hooks and private-rule setup. Never place the rules in an archive or commit.
 
 ## Build details
 

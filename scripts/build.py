@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -17,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NAME = "frp-ssh-guard"
 SOURCE_FILES = [
     ".gitignore", "VERSION", "LICENSE", "README.md", "README.zh-CN.md", "CHANGELOG.md",
-    "CONTRIBUTING.md", "SECURITY.md", "Makefile", "install.sh", "uninstall.sh",
+    "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "Makefile", "install.sh", "uninstall.sh",
 ]
 SOURCE_DIRS = ["bin", "etc", "packaging", "scripts", "tests", "docs", ".github"]
 
@@ -38,6 +39,7 @@ def source_paths():
 
 def executable(path):
     return (path.suffix in (".sh", ".py") or
+            path.parent.name == "hooks" or
             path.parent.name == "packaging" and path.name in
             ("run", "preinst", "postinst", "prerm", "postrm"))
 
@@ -120,6 +122,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kind", choices=["all", "deb", "source", "release"])
     args = parser.parse_args()
+    subprocess.run([sys.executable, str(ROOT / 'scripts/privacy.py'), '--source'], check=True)
     version = (ROOT / "VERSION").read_text().strip()
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         parser.error("VERSION must be MAJOR.MINOR.PATCH")
@@ -133,6 +136,8 @@ def main():
         sums = output / "SHA256SUMS"
         sums.write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in artifacts))
         artifacts.append(sums)
+    subprocess.run([sys.executable, str(ROOT / 'scripts/privacy.py'), '--artifacts',
+                    *(str(path) for path in artifacts)], check=True)
     for path in artifacts: print(path.relative_to(ROOT))
 
 
