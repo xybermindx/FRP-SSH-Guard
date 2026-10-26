@@ -38,8 +38,8 @@ def jail(name='ban4'):
     result = {}
     for item in doc['nftables']:
         for element in item.get('set', {}).get('elem', []):
-            elem = element['elem']
-            key = elem['val']
+            elem = element.get('elem', {}) if isinstance(element, dict) else {}
+            key = elem.get('val', element)
             if isinstance(key, dict):
                 key = ' '.join(map(str, key['concat']))
             result[key] = elem.get('expires', 0)
@@ -108,10 +108,9 @@ def main():
     fail2ban = Path('/etc/fail2ban/jail.local')
     fail2ban.parent.mkdir(exist_ok=True)
     fail2ban.write_text('# unrelated local customization\n[sshd]\nbantime = 7h\n')
-    files = [Path('/var/lib/frp-ssh-guard/applied.conf'), lists / 'blocklist.conf', fail2ban]
+    files = [Path('/var/lib/frp-ssh-guard/applied.conf'), fail2ban]
     if had_home:
-        files += [home / 'blocklist.conf', home / 'whitelist.conf',
-                  Path('/etc/frp-ssh-guard/user-home.json')]
+        files += [Path('/etc/frp-ssh-guard/user-home.json')]
     files += list(Path('/etc/systemd/system').glob('frp-ssh-guard-*.timer.d/custom.conf'))
     before = {str(path): (path.read_bytes(), path.stat().st_mode) for path in files}
     service_before = properties('frp-ssh-guard.service', ['InvocationID', 'ActiveEnterTimestampMonotonic'])
@@ -149,8 +148,7 @@ def main():
     assert backups[0].stat().st_uid == int(output('id', '-u', 'guardadmin'))
     assert 'BAN_TIMEOUT=43m\n' in Path('/var/lib/frp-ssh-guard/applied.conf').read_text()
     assert 'Pending edits: yes' in guard('status')
-    if not had_home:
-        assert (home / 'blocklist.conf').read_bytes() == (lists / 'blocklist.conf').read_bytes()
+    assert '203.0.113.8' in (home / 'blocklist.conf').read_text()
     # Existing home inputs and their normalized root caches were snapshotted
     # separately above; equivalent list syntax need not have identical bytes.
     assert (home / 'settings.conf').stat().st_mode & 0o777 == 0o600
@@ -202,6 +200,8 @@ def main():
     run('ip', '-n', 'guard-client', 'link', 'set', 'lo', 'up')
     settings = home / 'settings.conf'
     for scope in ('off', 'on'):
+        guard('release', '198.51.100.2')
+        guard('release', '198.51.100.3')
         settings.write_text('PROTECTED_PORTS="22001,22003"\nPROTECT_SERVER_SSH=on\n'
                             f'JAIL_PER_PORT={scope}\nPER_IP_RATE=1\nPER_IP_BURST=3\n'
                             'GLOBAL_RATE=1000\nGLOBAL_BURST=1000\nBAN_TIMEOUT=5m\n')

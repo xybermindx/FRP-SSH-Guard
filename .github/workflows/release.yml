@@ -36,8 +36,8 @@ jobs:
         run: |
           package_version=$(python3 scripts/build.py version)
           application_version=$(cat VERSION)
-          test "$RELEASE_TAG" = "v$application_version" || test "$RELEASE_TAG" = "v$package_version"
-          package="dist/frp-ssh-guard_${package_version}.deb"
+          test "$RELEASE_TAG" = "v$application_version"
+          package="dist/frp-ssh-guard_${application_version}.deb"
           test "$(dpkg-deb -f "$package" Version)" = "$package_version"
           notes="docs/RELEASE-v${application_version}.md"
           test -f "$notes" || notes=CHANGELOG.md

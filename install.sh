@@ -73,7 +73,7 @@ install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-log.sh"         "$BIN/fr
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-strike.py"      "$BIN/frp-ssh-guard-strike"
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-auth.py"        "$BIN/frp-ssh-guard-auth"
 install -o root -g root -m 0644 "$SRC/VERSION" "$BIN/VERSION"
-for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py; do
+for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-learn.py frp-ssh-guard-auth.py; do
   install -o root -g root -m 0755 "$SRC/bin/$helper" "$BIN/$helper"
 done
 
@@ -86,6 +86,7 @@ fi
 if (( UPGRADE )); then
   FRP_GUARD_CONFIG_USER="$CONFIG_USER" python3 "$BIN/frp-ssh-guard-input.py" auto-home "$ETC" "$PREFIX" /etc/systemd/system "$BIN/frp-ssh-guard"
   python3 "$BIN/frp-ssh-guard-input.py" upgrade-settings "$ETC" "$SRC/etc/settings.conf.example"
+  GUARD_DIR="$PREFIX" python3 "$BIN/frp-ssh-guard-lists.py" upgrade
   echo 'Programs upgraded. Existing settings, lists, live jails, units and timer schedules were preserved.'
   echo 'Installer policy flags do not change an existing installation; edit settings and use check/reload.'
   exit 0

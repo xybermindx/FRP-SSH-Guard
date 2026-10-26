@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-**[下载 v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
+**[下载 v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
 FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
@@ -13,7 +13,7 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 > **约 10 天观测：** 已丢弃 **4,255,592** 个恶意数据包（**99.97%**），
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，最近 24 小时后端登录失败 **0** 次。
 
-**版本 0.0.5 · Debian 软件包 0.0.5-3 · MIT 开源许可 · Bash 与 Python**
+**版本 0.0.5 · MIT 开源许可 · Bash 与 Python**
 
 [v0.0.5 更新说明](docs/RELEASE-v0.0.5.md) ·
 [配置及命令示例](docs/EXAMPLES.zh-CN.md) ·
@@ -21,6 +21,8 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 
 [部署步骤](#逐步部署) · [配置说明](#配置说明) · [命令](#常用命令) ·
 [防护范围](#可以防护哪些攻击) · [验证效果](#验证防护是否生效) · [源码构建](#开源与源码构建)
+
+Project credit: [XyberMind team](http://www.xyber-mind.com/).
 
 ## 部署观测数据
 
@@ -127,7 +129,7 @@ flowchart LR
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_0.0.5-3.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [frp-ssh-guard_0.0.5.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | 安装到目标 Debian/Ubuntu 主机。 |
 | [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | 校验下载的 Debian 软件包。 |
 
 完整源码保留在仓库中。GitHub 会根据发布标签自动提供
@@ -167,7 +169,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5-3.deb
+sudo apt install ./frp-ssh-guard_0.0.5.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -179,7 +181,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 安装会自动创建该目录，并迁移现有设置和手动名单。
-普通的 `sudo apt install ./frp-ssh-guard_0.0.5-3.deb` 使用调用 sudo 的用户的家目录；
+普通的 `sudo apt install ./frp-ssh-guard_0.0.5.deb` 使用调用 sudo 的用户的家目录；
 直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
 后续升级保留已选用户及其自定义值，即使换一位管理员安装也不会更换位置。
 
@@ -195,10 +197,10 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 也不会应用尚未确认的自定义修改。补齐默认项后，状态可能显示存在待应用修改。
 准备启用本机 SSH 防护时，将 `PROTECT_SERVER_SSH=on`，然后明确执行 `check`、`reload`。
 若文件不可访问或格式无效，会保留原文件并提示；修复后可用
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-3.deb` 重试。
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.5.deb` 重试。
 
 首次迁移前可用
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-3.deb`
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`
 指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
 不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
 `sudo frp-ssh-guard config-home USERNAME` 重试。
@@ -271,13 +273,16 @@ sudo frp-ssh-guard status
 ```
 
 确认状态显示 `Server SSH protection: on`。首次启用时用 `enable` 代替 `reload`。
-该开关会自动加入 22 端口。显式 reload 会重建防火墙并清空当前临时自动封禁；
-软件包升级不会如此。手动黑名单保留，限时条目保持原来的到期时间。
+该开关会自动加入 22 端口。显式 reload 会重建防火墙及速率计数；
+已保存的封禁和学习条目保留原到期时间。软件包升级保留运行中的表和定时任务。
 
 可继续保留 Fail2ban：两者使用各自的规则，封禁相互独立。
 如果同一个地址被两者封禁，需要分别解除。本工具不会修改 Fail2ban jail 配置；
 可选的 `LOGIN_USERS` 学习功能会把可信地址加入现有 Fail2ban sshd jail 的忽略名单，
 该学习功能默认关闭。
+将 `LOGIN_USERS` 设为可信本机账户名后执行 `check`、`reload`；`status` 会显示学习是否开启。
+支持密码、公钥及 keyboard-interactive/PAM 成功认证。学习的 `[all]` 条目覆盖已启用防护的 22 端口，
+其他端口分节下的条目不会覆盖 22。已允许的来源仍被拦截时，请另行检查 Fail2ban。
 
 仅 FRP、仅本机 SSH、组合防护的配置见[示例](docs/EXAMPLES.zh-CN.md)。
 
@@ -298,10 +303,10 @@ sudo frp-ssh-guard status
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | 每端口共享的新 SYN 每分钟速率及突发额度，跨来源和 IP 协议族共享。 |
 | `BAN_TIMEOUT` | `6h` | 临时封禁来源的时长。 |
 | `LOGIN_USERS` | 空，禁用 | 可信的本机 sshd 账户扩展正则表达式，例如 `alice|bob`。 |
-| `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | 学习来源数量上限和恢复时使用的超时。 |
+| `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | 学习来源数量上限，以及距上次可信登录的有效时长。 |
 | `STRIKE_WINDOW` | `90d` | 观察到的封禁事件的历史统计窗口。 |
 | `STRIKE_LADDER` | `2:1d 3:3d 4:7d 5:28d` | 递增的违规次数及封禁时长；空字符串禁用升级。 |
-| `STRIKE_MAX` | `28d` | 升级封禁的时长上限，也是恢复持久封禁时的超时。 |
+| `STRIKE_MAX` | `28d` | 升级封禁时长上限；恢复时不延长原到期时间。 |
 | `PORT_MIN`, `PORT_MAX` | `1`, `65535` | 端口校验的上下界，包含边界。 |
 | `EDIT_USER` | `root` | 拥有命令管理名单的可信本机账户。 |
 | `GUARD_TABLE` | `frp_ssh_persistent_guard` | 专用 nftables 表名；修改前先停用防护。 |
@@ -315,16 +320,25 @@ sudo frp-ssh-guard status
 | 位置 | 用途 |
 | --- | --- |
 | `~/.frp-ssh-guard/settings.conf` | 安装时自动创建/迁移的可编辑策略。 |
-| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | 安装时自动创建/迁移的手动名单。 |
+| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | 安装时自动创建/迁移的手动与自动合并名单。 |
 | `/etc/frp-ssh-guard/` | 初始/旧版设置，以及选定的家目录位置记录。 |
 | `/var/lib/frp-ssh-guard/applied.conf` | 生成的已接受策略，请勿手动修改。 |
-| `/var/lib/frp-ssh-guard/lists/` | 手动名单缓存、学习来源、累犯状态。 |
+| `/var/lib/frp-ssh-guard/lists/` | root 缓存、迁移元数据和累犯历史；不需要另行编辑。 |
 | `/var/log/frp-ssh-guard/` | 封禁与学习历史。 |
 | `/usr/lib/frp-ssh-guard/` | 软件包管理的运行程序。 |
 
-手动名单独立保存，防护运行期间会监听名单修改。
-名单命令使用已接受策略，不会顺带应用尚未 reload 的配置。
-只更新名单集合，不清空自动封禁或重置其剩余时间。
+手动和自动条目合并保存于 `whitelist.conf` 与 `blocklist.conf`。
+文件内包含说明和 `[all]` / 按端口分节，见[名单示例](docs/EXAMPLES.zh-CN.md#合并名单)。
+仅填写 IP/CIDR 或 `IP forever` 的条目永久有效。黑名单中的 `IP tier=1` 到
+`IP tier=5` 选择已配置时长（默认 6h、1d、3d、7d、28d）。自动条目带有 `source=learned`、`source=runtime`
+或 `source=strike`，以及绝对 UTC `until=` 到期时间。runtime 包括自动检测和 `ban` 命令。
+删除自动行可移除对应信任/封禁；新的攻击或可信登录仍可重新添加。`unban` 还会豁免累犯历史。
+
+防护运行时会监听名单保存；执行 `sudo frp-ssh-guard apply` 可立即应用。
+它使用已接受的设置，保留运行中 jail 的到期时间和速率计数。
+内核封禁在日志定时任务运行后显示（通常 60 秒内），`blocklist` 命令也会立即刷新。
+避免把编辑器中的旧内容覆盖到已有新自动条目的文件上。安装自动导入原有 jail 和旧名单；
+旧的内部数据保留用于兼容，不需要分别维护。
 由 root 保管的已接受设置及名单缓存使家目录暂时不可用时仍能启动防护。
 设置修改仍需执行 `check` 和 `reload`。
 防护仍作为系统服务运行，不要求用户登录。目录权限为 0700，文件权限为 0600。
@@ -349,8 +363,8 @@ sudo frp-ssh-guard unblock 203.0.113.8
 
 限时条目保存绝对 UTC `until=` 时间，reload/重启不会延长有效期。
 全部端口封禁会随受保护端口的选择变化。
-`ban IP [DURATION]` 是内核临时封禁，默认时长为 `BAN_TIMEOUT`；
-需要跨重启保留到期时间时，请使用 `block --for`。
+`ban IP [DURATION]` 创建限时 runtime 封禁（默认 `BAN_TIMEOUT`），到期时间保存于同一黑名单。
+`block --for` 创建可手动指定端口范围的限时条目。
 
 ## 常用命令
 
@@ -398,8 +412,8 @@ sudo journalctl -u frp-ssh-guard.service -u frp-ssh-guard-learn.service --since 
 
 - 共用 NAT/VPN 出口的用户会一起计数；共享端口限制可能在攻击期间影响正常用户。
 - 已建立/相关连接和回环流量绕过此防护。白名单优先于黑名单，但不能覆盖其他防火墙表。
-- 显式策略 `reload`、服务重启或系统重启会重建防护表，重置速率状态和自动临时封禁。软件包升级及手动名单更新保留正在生效的封禁。
-- 学习地址和持久累犯封禁会按配置时长恢复；限时手动封禁保留绝对到期时间。
+- 显式 `reload`、服务重启或系统重启重建防护表及速率计数；已保存的封禁和学习条目保留原到期时间。突然重启可能丢失尚未采样的内核封禁。软件包升级和名单更新保留运行中的 jail。
+- 可信成功登录会刷新学习条目的到期时间；普通 apply/reload/重启不延长已保存的到期时间。
 - 历史每分钟采样一次，可能漏掉短期封禁。防护表丢失的恢复也要等待定时任务，且仅在防护运行期间执行。
 
 ## 故障排查
@@ -431,11 +445,9 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
 切换到当前版本，并保留现有设置。
 
-当前软件包版本为 `0.0.5-3`：程序版本 `0.0.5`，Debian 修订号 `3`。
-从 v0.0.4、较早的本地 v0.0.5、`0.0.5-1` 或 `0.0.5-2` 软件包升级时，
-直接使用上面的普通命令即可，无需 `--reinstall`。后续修订使用 `0.0.5-4`、`0.0.5-5` 或更高的程序版本。
-再次安装相同版本的软件包通常不会执行操作。用 `dpkg-query -W frp-ssh-guard`
-查看完整软件包版本；`frp-ssh-guard --version` 显示程序版本。
+下载 **v0.0.5**，执行 `sudo apt install ./frp-ssh-guard_0.0.5.deb` 即可升级较早构建，
+并保留原有设置。`frp-ssh-guard --version` 显示发布版本；
+`dpkg-query -W frp-ssh-guard` 还会显示 APT 用来识别更新构建的内部软件包修订号。
 
 安装新版 `.deb` 会自动升级程序，保留自定义配置、家目录文件、当前封禁及剩余时长、
 服务启用状态和定时任务安排。自定义 systemd 定时设置请放在 `/etc/systemd/system/`

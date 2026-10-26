@@ -22,6 +22,26 @@ def event(message, index=1, stamp=1700000000, **extra):
 
 
 class AuthTests(unittest.TestCase):
+    def test_whitelisted_native_source_is_not_added_to_auth_jail(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {'GUARD_LOCK_FILE': str(Path(tmp) / 'lock')}), \
+             mock.patch.object(auth, 'load_policy', return_value=POLICY), \
+             mock.patch.object(auth.lists, 'allowed', return_value=True), \
+             mock.patch.object(auth.subprocess, 'run') as run:
+            self.assertIsNone(auth.ban('198.51.100.7'))
+            run.assert_not_called()
+
+    def test_trusted_learning_covers_pam_and_new_sshd_identifiers(self):
+        spec = importlib.util.spec_from_file_location('learning', ROOT / 'bin/frp-ssh-guard-learn.py')
+        learner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(learner)
+        for method in ('password', 'publickey', 'keyboard-interactive/pam'):
+            for identity in ('sshd', 'sshd-session', 'sshd-auth'):
+                record = event(f'Accepted {method} for alice from 198.51.100.7 port 45001 ssh2')
+                record['SYSLOG_IDENTIFIER'] = identity
+                self.assertEqual(learner.accepted(record, 'alice|bob'), ('198.51.100.7', 1700000000))
+                self.assertIsNone(learner.accepted({**record, '_UID': '1001'}, 'alice'))
+                self.assertIsNone(learner.accepted(record, 'bob'))
+
     def test_invalid_user_double_log_is_one_attempt(self):
         tracker = auth.Tracker(POLICY)
         first = event('Invalid user missing-example-user from 198.51.100.7 port 45001')
@@ -63,7 +83,9 @@ class AuthTests(unittest.TestCase):
     def test_auth_ban_uses_configured_scope(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {'GUARD_LOCK_FILE': str(Path(tmp) / 'lock')}):
             for mode, expected in (('off', '{ 198.51.100.7 timeout 6h }'), ('on', '{ 198.51.100.7 . 22 timeout 6h }')):
-                with mock.patch.object(auth, 'load_policy', return_value={**POLICY, 'JAIL_PER_PORT': mode}), \
+                with mock.patch.object(auth.lists, 'allowed', return_value=False), \
+                        mock.patch.object(auth.lists, 'sync'), \
+                        mock.patch.object(auth, 'load_policy', return_value={**POLICY, 'JAIL_PER_PORT': mode}), \
                         mock.patch.object(auth.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
                     self.assertTrue(auth.ban('198.51.100.7'))
                     self.assertEqual(run.call_args.args[0][-1], expected)

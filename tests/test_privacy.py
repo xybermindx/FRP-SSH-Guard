@@ -1,5 +1,6 @@
 """Privacy regression fixtures use invented names and documentation addresses."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import ipaddress
@@ -20,6 +21,20 @@ SPEC.loader.exec_module(privacy)
 
 
 class PrivacyTests(unittest.TestCase):
+    def test_public_attribution_exception_is_exact_and_keeps_ip_checks(self):
+        line = 'Credit: example-private-host team.'
+        rules = privacy.Rules([re.compile('example-private-host')], [hashlib.sha256(line.encode()).hexdigest()])
+        approved = privacy.Audit(rules)
+        approved.text('example', line.encode())
+        self.assertFalse(approved.findings)
+        for changed in (line + ' deployment', 'example-private-host', line + '\nexample-private-host tunnel'):
+            audit = privacy.Audit(rules)
+            audit.text('example', changed.encode())
+            self.assertTrue(audit.findings)
+        audit = privacy.Audit(privacy.Rules([], [hashlib.sha256(str(ipaddress.ip_address(1)).encode()).hexdigest()]))
+        audit.text('example', str(ipaddress.ip_address(1)).encode())
+        self.assertTrue(audit.findings)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

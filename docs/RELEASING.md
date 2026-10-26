@@ -35,11 +35,11 @@ its attribution and package maintainer metadata if appropriate.
 
 ## Versioned releases
 
-The application version, public release tag and Debian revision are distinct.
-The first public release of application 0.0.5 uses tag `v0.0.5` and package
-`0.0.5-3`. A later package revision can use a distinct `v0.0.5-4` tag. Never move
-an already-published tag or replace its package contents.
-
+Public release names, download filenames and CLI output use the application
+version. Debian metadata also includes a monotonically increasing internal
+revision, so APT can upgrade earlier builds. Prefer a new application version
+for future public releases; do not move a published tag without an explicit
+maintainer-approved correction and complete revalidation.
 1. For a new application version, update `VERSION` (plain `MAJOR.MINOR.PATCH`)
    and reset `PACKAGE_REVISION` to `1`. For a changed distribution of the same
    application version, run `make bump-revision` before building. Update
@@ -59,8 +59,9 @@ an already-published tag or replace its package contents.
    git push origin "$release_tag"
    ```
 
-   For another package revision of an already-published application version,
-   use `release_tag="v$(python3 scripts/build.py version)"` instead.
+   Public tags always use `vMAJOR.MINOR.PATCH`. Internal Debian revisions are
+   packaging metadata, not public release names. Normally publish subsequent
+   changes under a new application version.
 
 6. The release workflow runs validation and creates a **draft** GitHub release
    containing only the tested `.deb` and `SHA256SUMS`. GitHub automatically adds
@@ -77,12 +78,12 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-Release tag `v0.0.5` provides `frp-ssh-guard_0.0.5-3.deb` and `SHA256SUMS`.
-The workflow accepts either the application tag or the full package-version tag,
-then independently checks Debian metadata against `VERSION` and `PACKAGE_REVISION`.
+Release tag `v0.0.5` provides `frp-ssh-guard_0.0.5.deb` and `SHA256SUMS`.
+The workflow requires the application tag, then independently checks Debian
+metadata against `VERSION` and `PACKAGE_REVISION`.
 It uses `docs/RELEASE-vVERSION.md` when present, otherwise `CHANGELOG.md`, for notes.
 The existing v0.0.4 release and its filenames remain unchanged.
-The filename omits the optional architecture suffix; Debian metadata remains
+The filename omits the internal Debian revision and optional architecture suffix; Debian metadata remains
 `Architecture: all` because the package contains architecture-independent scripts.
 
 GitHub supplies **Source code (zip)** and **Source code (tar.gz)** from the tag.
@@ -111,7 +112,7 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 - `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.
 
-`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-3`.
+`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-4`.
 APT compares this metadata, not the filename. Revision `1` sorts after the older
 bare `0.0.5`, and increasing revisions allow ordinary `sudo apt install ./FILE.deb`
 upgrades. A new application version sorts after revisions of the previous one.

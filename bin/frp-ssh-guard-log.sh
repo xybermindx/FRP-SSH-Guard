@@ -47,3 +47,6 @@ fi
 
 sort -u "$current" > "$STATE"
 rm -f "$current"
+
+# Export automatic entries with their remaining lifetime into the unified lists.
+python3 "$(dirname -- "${BASH_SOURCE[0]}")/frp-ssh-guard-lists.py" sync

@@ -15,6 +15,9 @@ LIB = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location('guard_input', LIB / 'frp-ssh-guard-input.py')
 data = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(data)
+LIST_SPEC = importlib.util.spec_from_file_location('guard_lists', LIB / 'frp-ssh-guard-lists.py')
+lists = importlib.util.module_from_spec(LIST_SPEC)
+LIST_SPEC.loader.exec_module(lists)
 KEYS = ('PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'GUARD_TABLE', 'BAN_TIMEOUT',
         'SSH_AUTH_FAILURES', 'SSH_INVALID_USER_FAILURES', 'SSH_AUTH_WINDOW')
 OUTCOME = re.compile(r'^(Failed|Accepted) (?:password|publickey|keyboard-interactive(?:/pam)?) '
@@ -107,6 +110,8 @@ def ban(ip):
         policy = load_policy()
         if policy['PROTECT_SERVER_SSH'] != 'on':
             return False
+        if lists.allowed(ip, 22):
+            return None
         table = policy['GUARD_TABLE']
         if subprocess.run(['nft', 'list', 'table', 'inet', table], stdout=subprocess.DEVNULL,
                           stderr=subprocess.DEVNULL).returncode:
@@ -117,7 +122,10 @@ def ban(ip):
         result = subprocess.run(['nft', 'add', 'element', 'inet', table, name,
                                  '{ ' + value + ' timeout ' + policy['BAN_TIMEOUT'] + ' }'],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return result.returncode == 0
+        if result.returncode == 0:
+            lists.sync()
+            return True
+        return False
 
 
 def main():
@@ -147,9 +155,10 @@ def main():
                     continue
                 ip = tracker.process(record)
                 if ip:
-                    if ban(ip):
+                    result = ban(ip)
+                    if result is True:
                         print('SSH authentication threshold reached; guard ban applied.', flush=True)
-                    else:
+                    elif result is False:
                         print('SSH authentication threshold reached; guard ban could not be applied.', file=sys.stderr, flush=True)
                 data.atomic_write(path, json.dumps(tracker.state) + '\n')
         finally:

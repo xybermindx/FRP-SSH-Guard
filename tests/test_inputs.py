@@ -64,7 +64,7 @@ class InputTests(unittest.TestCase):
             data.edit_list(path, 'block', 'add', '198.51.100.7', '22001', 1893456000)
             self.assertEqual(len(data.entries(path.read_text())), 2)
             data.edit_list(path, 'block', 'add', '198.51.100.7', '22001', 0)
-            self.assertNotIn('until=', path.read_text())
+            self.assertTrue(all(row.expiry == 0 for row in data.records(path.read_text())))
             data.edit_list(path, 'block', 'remove', '198.51.100.7')
             self.assertEqual(data.entries(path.read_text()), [])
 

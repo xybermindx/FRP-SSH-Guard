@@ -47,7 +47,7 @@ class PackageVersionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)
             package = build.build_deb(package_version, 1792022400, output)
-            self.assertEqual(package.name, f'frp-ssh-guard_{package_version}.deb')
+            self.assertEqual(package.name, f'frp-ssh-guard_{upstream}.deb')
             metadata = subprocess.check_output(['dpkg-deb', '-f', str(package), 'Version'], text=True)
             self.assertEqual(metadata.strip(), package_version)
             subprocess.run(['dpkg-deb', '-x', str(package), str(output / 'payload')], check=True)

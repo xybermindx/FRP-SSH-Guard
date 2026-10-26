@@ -107,12 +107,26 @@ starts and boots. The transient units stop with the guard. Unchanged manual
 caches are not rewritten, avoiding duplicate work if an old watcher is still
 loaded. See [migration](MIGRATING.md).
 
-`hardban.conf` is the shared strike-state filename. Ban history is sampled, and
-persisted learned/strike addresses lack expiry timestamps. Rule reconstruction
-renews their configured timeout and resets counters, meters, and temporary bans.
-That happens on explicit policy reload, restart or reboot, not package upgrade or
-ordinary manual-list updates. Timed manual blocks retain their original expiry.
-See [verification](VALIDATION.md) for tested behavior and runtime limits.
+`whitelist.conf` and `blocklist.conf` combine manual and automatic entries in
+sectioned home files. `frp-ssh-guard-lists.py` imports legacy persistence and kernel
+snapshots with absolute expiries, tracks exported/deleted generations, preserves
+comments, and writes home files as their registered owner. Root caches retain
+accepted manual policy and automatic state for unavailable homes. Legacy internal
+files remain compatibility inputs, not additional user-maintained lists.
+
+Live kernel bans retain their original sets. Saved automatic blocks restore into
+separate `saved_ban*` sets so overlapping manual CIDRs cannot conflict. List apply
+extends older active tables atomically before their existing first block rule;
+allow precedence, rule handles, counters, rate meters and jail deadlines remain.
+A deleted exported generation is suppressed until expiry; a later attack can
+create a new generation. Strike expiry is based on the latest offense, not each
+periodic timer execution. Successful trusted logins refresh learned expiry.
+
+The installer imports lists under the installation locks without issuing firewall
+mutations or restarting services. An active path watcher may then apply changed
+list files using accepted policy. Explicit policy reload/reboot rebuilds rate
+meters but restores exported entries with remaining time only. Kernel events not
+yet sampled can be lost on abrupt restart. See [verification](VALIDATION.md).
 
 ### Adding missing configuration options
 

@@ -56,12 +56,18 @@ declare -a ALLOW4=()
 declare -a ALLOW6=()
 declare -a LEARNED4=()
 declare -a LEARNED6=()
+declare -a LEARNED_PP4=()
+declare -a LEARNED_PP6=()
 declare -a MANUAL4=()
 declare -a MANUAL6=()
 declare -a ALLOW_PP4=()
 declare -a ALLOW_PP6=()
 declare -a BLOCK_PP4=()
 declare -a BLOCK_PP6=()
+declare -a AUTO4=()
+declare -a AUTO6=()
+declare -a AUTO_PP4=()
+declare -a AUTO_PP6=()
 declare -a HARDBAN4=()
 declare -a HARDBAN6=()
 
@@ -118,7 +124,7 @@ After editing settings: sudo frp-ssh-guard reload
 Help: frp-ssh-guard help (also --help / -h; no sudo required)
 
 TEXT
-    printf '\nSettings: %s\nManual lists: %s\nLogs: %s\n' "$GUARD_CONF" "$MANUAL_DIR" "$LOG_DIR"
+    printf '\nSettings: %s\nLists: %s\nLogs: %s\n' "$GUARD_CONF" "$MANUAL_DIR" "$LOG_DIR"
 }
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
@@ -247,14 +253,29 @@ read_ports() {
 }
 
 read_allow() {
-    local input=${1:-$ALLOW_FILE} parsed family ip scope expiry canonical token
+    local input=${1:-$ALLOW_FILE} parsed family ip scope expiry canonical token suffix remaining now
     ALLOW4=(); ALLOW6=(); ALLOW_PP4=(); ALLOW_PP6=(); ALLOW_SNAPSHOT=''
+    LEARNED4=(); LEARNED6=(); LEARNED_PP4=(); LEARNED_PP6=()
+    now=$(date +%s)
     if [[ ! -f "$input" && "$MANUAL_DIR" != "$LIST_DIR" ]]; then input="$LIST_DIR/whitelist.conf"; fi
     [[ -f "$input" ]] || return 0
     parsed=$(python3 "$INPUT_HELPER" read-list "$input" allow) || die 'Invalid manual allow list; no rules changed.'
     while IFS='|' read -r family ip scope expiry canonical; do
         [[ -n "$family" ]] || continue
         ALLOW_SNAPSHOT+="$canonical"$'\n'
+        if (( expiry > 0 )); then
+            remaining=$((expiry - now))
+            (( remaining > 0 )) || continue
+            suffix=" timeout ${remaining}s"
+            if [[ "$scope" == '*' ]]; then
+                if [[ "$family" == 6 ]]; then LEARNED6+=("$ip$suffix"); else LEARNED4+=("$ip$suffix"); fi
+            else
+                for token in ${scope//,/ }; do
+                    if [[ "$family" == 6 ]]; then LEARNED_PP6+=("$ip . $token$suffix"); else LEARNED_PP4+=("$ip . $token$suffix"); fi
+                done
+            fi
+            continue
+        fi
         if [[ "$scope" == '*' ]]; then
             if [[ "$family" == 6 ]]; then ALLOW6+=("$ip"); else ALLOW4+=("$ip"); fi
         else
@@ -267,7 +288,7 @@ read_allow() {
 
 read_learned() {
     local input=${1:-$LEARNED_FILE} line
-    LEARNED4=(); LEARNED6=()
+    [[ ! -f "$LIST_DIR/unified-state.json" ]] || return 0
     if [[ ! -f "$input" && -n "${SOURCE_SCRIPT:-}" && -f "${LIST_DIR}/learned.conf" ]]; then
         input="${LIST_DIR}/learned.conf"
     fi
@@ -284,9 +305,10 @@ read_learned() {
 read_blocklist() {
     local input=${1:-$BLOCKLIST_FILE} parsed family ip scope expiry canonical token suffix remaining now
     MANUAL4=(); MANUAL6=(); BLOCK_PP4=(); BLOCK_PP6=(); BLOCK_SNAPSHOT=''
+    AUTO4=(); AUTO6=(); AUTO_PP4=(); AUTO_PP6=()
     if [[ ! -f "$input" && "$MANUAL_DIR" != "$LIST_DIR" ]]; then input="$LIST_DIR/blocklist.conf"; fi
     [[ -f "$input" ]] || return 0
-    parsed=$(python3 "$INPUT_HELPER" read-list "$input" block) || die 'Invalid manual block list; no rules changed.'
+    parsed=$(python3 "$INPUT_HELPER" read-list "$input" block "$BAN_TIMEOUT" "$STRIKE_LADDER" "$STRIKE_MAX") || die 'Invalid manual block list; no rules changed.'
     now=$(date +%s)
     while IFS='|' read -r family ip scope expiry canonical; do
         [[ -n "$family" ]] || continue
@@ -297,6 +319,16 @@ read_blocklist() {
             suffix=" timeout ${remaining}s"
         fi
         BLOCK_SNAPSHOT+="$canonical"$'\n'
+        if [[ "$canonical" == *' source=runtime '* || "$canonical" == *' source=strike '* ]]; then
+            if [[ "$scope" == '*' ]]; then
+                if [[ "$family" == 6 ]]; then AUTO6+=("$ip$suffix"); else AUTO4+=("$ip$suffix"); fi
+            else
+                for token in ${scope//,/ }; do
+                    if [[ "$family" == 6 ]]; then AUTO_PP6+=("$ip . $token$suffix"); else AUTO_PP4+=("$ip . $token$suffix"); fi
+                done
+            fi
+            continue
+        fi
         if [[ "$scope" == '*' ]]; then
             if [[ "$family" == 6 ]]; then MANUAL6+=("$ip$suffix"); else MANUAL4+=("$ip$suffix"); fi
         else
@@ -321,6 +353,7 @@ save_manual_snapshot() {
 read_hardban() {
     local input=${1:-$HARDBAN_FILE} parsed family ip scope expiry canonical token spec
     HARDBAN4=(); HARDBAN6=()
+    [[ ! -f "$LIST_DIR/unified-state.json" ]] || return 0
     [[ -f "$input" ]] || input="$LIST_DIR/hardguard.conf"
     [[ -f "$input" ]] || return 0
     parsed=$(python3 "$INPUT_HELPER" read-list "$input" block) || die 'Invalid strike list.'
@@ -379,10 +412,16 @@ compile_rules() {
         echo "    set allow6   { type ipv6_addr; flags interval; }"
         echo "    set learned4 { type ipv4_addr; flags dynamic,timeout; timeout $LEARN_TIMEOUT; }"
         echo "    set learned6 { type ipv6_addr; flags dynamic,timeout; timeout $LEARN_TIMEOUT; }"
+        echo "    set learned_pp4 { type ipv4_addr . inet_service; flags interval,timeout; }"
+        echo "    set learned_pp6 { type ipv6_addr . inet_service; flags interval,timeout; }"
         echo "    set manual4  { type ipv4_addr; flags interval,timeout; }"
         echo "    set manual6  { type ipv6_addr; flags interval,timeout; }"
         echo "    set hardban4 { type ipv4_addr$jail_type; flags dynamic,timeout; timeout $STRIKE_MAX; }"
         echo "    set hardban6 { type ipv6_addr$jail_type; flags dynamic,timeout; timeout $STRIKE_MAX; }"
+        echo "    set saved_ban4 { type ipv4_addr; flags timeout; }"
+        echo "    set saved_ban6 { type ipv6_addr; flags timeout; }"
+        echo "    set saved_ban_pp4 { type ipv4_addr . inet_service; flags timeout; }"
+        echo "    set saved_ban_pp6 { type ipv6_addr . inet_service; flags timeout; }"
         echo "    set rate4 { type ipv4_addr . inet_service; flags dynamic,timeout; timeout $BAN_TIMEOUT; size 65536; }"
         echo "    set rate6 { type ipv6_addr . inet_service; flags dynamic,timeout; timeout $BAN_TIMEOUT; size 65536; }"
         echo "    set ban4     { type ipv4_addr$jail_type; flags dynamic,timeout; timeout $BAN_TIMEOUT; size 65536; }"
@@ -401,8 +440,14 @@ compile_rules() {
         echo "        ip6 saddr @allow6   return"
         echo "        ip  saddr @learned4 return"
         echo "        ip6 saddr @learned6 return"
+        echo "        ip  saddr . tcp dport @learned_pp4 return"
+        echo "        ip6 saddr . tcp dport @learned_pp6 return"
         echo "        ip  saddr . tcp dport @allow_pp4 return comment \"allow-port v4\""
         echo "        ip6 saddr . tcp dport @allow_pp6 return comment \"allow-port v6\""
+        echo "        ip saddr @saved_ban4 counter drop"
+        echo "        ip6 saddr @saved_ban6 counter drop"
+        echo "        ip saddr . tcp dport @saved_ban_pp4 counter drop"
+        echo "        ip6 saddr . tcp dport @saved_ban_pp6 counter drop"
         echo "        tcp dport { $portset } ip  saddr @manual4  counter drop comment \"manual-block v4\""
         echo "        tcp dport { $portset } ip6 saddr @manual6  counter drop comment \"manual-block v6\""
         echo "        ip  saddr . tcp dport @block_pp4 counter drop comment \"block-port v4\""
@@ -444,14 +489,26 @@ compile_rules() {
         if (( ${#BLOCK_PP6[@]} )); then
             echo "add element inet $GUARD_TABLE block_pp6 { $(join_by "${BLOCK_PP6[@]}") }"
         fi
+        if (( ${#LEARNED_PP4[@]} )); then
+            echo "add element inet $GUARD_TABLE learned_pp4 { $(join_by "${LEARNED_PP4[@]}") }"
+        fi
+        if (( ${#LEARNED_PP6[@]} )); then
+            echo "add element inet $GUARD_TABLE learned_pp6 { $(join_by "${LEARNED_PP6[@]}") }"
+        fi
+        if (( ${#AUTO4[@]} )); then echo "add element inet $GUARD_TABLE saved_ban4 { $(join_by "${AUTO4[@]}") }"; fi
+        if (( ${#AUTO6[@]} )); then echo "add element inet $GUARD_TABLE saved_ban6 { $(join_by "${AUTO6[@]}") }"; fi
+        if (( ${#AUTO_PP4[@]} )); then echo "add element inet $GUARD_TABLE saved_ban_pp4 { $(join_by "${AUTO_PP4[@]}") }"; fi
+        if (( ${#AUTO_PP6[@]} )); then echo "add element inet $GUARD_TABLE saved_ban_pp6 { $(join_by "${AUTO_PP6[@]}") }"; fi
         local ip
         for ip in "${LEARNED4[@]:-}"; do
             [[ -n "$ip" ]] || continue
-            echo "add element inet $GUARD_TABLE learned4 { $ip timeout $LEARN_TIMEOUT }"
+            [[ "$ip" == *" timeout "* ]] || ip+=" timeout $LEARN_TIMEOUT"
+            echo "add element inet $GUARD_TABLE learned4 { $ip }"
         done
         for ip in "${LEARNED6[@]:-}"; do
             [[ -n "$ip" ]] || continue
-            echo "add element inet $GUARD_TABLE learned6 { $ip timeout $LEARN_TIMEOUT }"
+            [[ "$ip" == *" timeout "* ]] || ip+=" timeout $LEARN_TIMEOUT"
+            echo "add element inet $GUARD_TABLE learned6 { $ip }"
         done
         for ip in "${HARDBAN4[@]:-}"; do
             [[ -n "$ip" ]] || continue
@@ -561,9 +618,12 @@ verify_unit_owner() {
 
 # ---------- admin commands ----------
 
+sync_lists() { python3 "$LIB_DIR/frp-ssh-guard-lists.py" sync; }
+
 reload_live() {
-    local tmp full set
+    local tmp full set family
     lock_guard
+    sync_lists
     if [[ "$action" != apply ]] && ! table_active; then
         echo 'List saved. Protection is inactive; run enable when ready.'
         return 0
@@ -583,10 +643,11 @@ reload_live() {
         # buckets, counters, and their remaining timeouts stay in the kernel.
         full="$tmp.full"
         mv "$tmp" "$full"
-        for set in allow4 allow6 allow_pp4 allow_pp6 manual4 manual6 block_pp4 block_pp6 learned4 learned6; do
+        python3 "$LIB_DIR/frp-ssh-guard-lists.py" upgrade-sets > "$tmp" || { rm -f "$tmp" "$full"; return 1; }
+        for set in saved_ban4 saved_ban6 saved_ban_pp4 saved_ban_pp6 learned_pp4 learned_pp6 allow4 allow6 allow_pp4 allow_pp6 manual4 manual6 block_pp4 block_pp6 learned4 learned6; do
             printf 'flush set inet %s %s\n' "$GUARD_TABLE" "$set" >> "$tmp"
         done
-        awk '$1=="add" && $2=="element" && $5 ~ /^(allow[46]|allow_pp[46]|manual[46]|block_pp[46]|learned[46])$/ {print}' "$full" >> "$tmp"
+        awk '$1=="add" && $2=="element" && $5 ~ /^(allow[46]|allow_pp[46]|manual[46]|block_pp[46]|learned[46]|learned_pp[46]|saved_ban[46]|saved_ban_pp[46])$/ {print}' "$full" >> "$tmp"
         rm -f "$full"
     fi
     "$NFTP" --check --file "$tmp" || { rm -f "$tmp"; die "Generated rules failed validation."; }
@@ -599,7 +660,7 @@ cmd_banned() {
     table_active || die "Guard is not active."
     local set ip exp s
     printf '%-6s %-40s %s\n' "SET" "IP" "EXPIRES(s)"
-    for set in ban4 ban6; do
+    for set in ban4 ban6 hardban4 hardban6 saved_ban4 saved_ban6 saved_ban_pp4 saved_ban_pp6; do
         if command -v jq >/dev/null 2>&1; then
             "$NFTP" -j list set inet "$GUARD_TABLE" "$set" 2>/dev/null \
                 | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | [$s, (.elem.val | if type == "object" then (.concat | map(tostring) | join(" : ")) else . end), ((.elem.expires // 0)|tostring)] | @tsv' \
@@ -645,6 +706,8 @@ cmd_unban() {
     done
     file_del_ip "$HARDBAN_FILE" "$ip" 2>/dev/null || true
     forgive "$ip"
+    python3 "$LIB_DIR/frp-ssh-guard-lists.py" unban "$ip"
+    reload_live
     echo "Released $ip from auto bans/strikes; past offenses forgiven."
 }
 
@@ -683,41 +746,19 @@ cmd_unblock() {
 }
 
 cmd_blocklist() {
-    echo "=== BLOCKLIST (manual; permanent unless until= is present: $BLOCKLIST_FILE) ==="
-    if [[ -f "$BLOCKLIST_FILE" ]] && grep -qvE '^\s*(#|$)' "$BLOCKLIST_FILE"; then
-        grep -vE '^\s*(#|$)' "$BLOCKLIST_FILE" | sed 's/^/  /'
-    else
-        echo "  (none)"
-    fi
-    echo
-    echo "=== BLOCKED NOW (auto ban + strike hardban) ==="
-    printf '%-8s %-40s %s\n' "SET" "IP" "EXPIRES(s)"
-    local set
-    for set in ban4 ban6 hardban4 hardban6; do
-        command -v jq >/dev/null 2>&1 || continue
-        "$NFTP" -j list set inet "$GUARD_TABLE" "$set" 2>/dev/null \
-            | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | [$s, (.elem.val | if type == "object" then (.concat | map(tostring) | join(" : ")) else . end), ((.elem.expires // 0)|tostring)] | @tsv' \
-            | while IFS=$'\t' read -r s ip exp; do printf '%-8s %-40s %s\n' "$s" "$ip" "$exp"; done
-    done
-    echo
-    echo "=== STRIKES (repeat offenders, window $STRIKE_WINDOW) ==="
-    cmd_strikes
+    sync_lists
+    local display=$BLOCKLIST_FILE
+    [[ -f "$display" ]] || display="$LIST_DIR/blocklist.conf"
+    echo "=== BLOCKLIST (manual + runtime + strike): $display ==="
+    cat "$display"
 }
 
 cmd_whitelist() {
-    echo "=== WHITELIST (manual: $ALLOW_FILE) ==="
-    if [[ -f "$ALLOW_FILE" ]] && grep -qvE '^\s*(#|$)' "$ALLOW_FILE"; then
-        grep -vE '^\s*(#|$)' "$ALLOW_FILE" | sed 's/^/  /'
-    else
-        echo "  (none)"
-    fi
-    echo
-    echo "=== WHITELIST (auto-learned: $LEARNED_FILE) ==="
-    if [[ -f "$LEARNED_FILE" ]] && grep -qvE '^\s*(#|$)' "$LEARNED_FILE"; then
-        grep -vE '^\s*(#|$)' "$LEARNED_FILE" | sed 's/^/  /'
-    else
-        echo "  (none)"
-    fi
+    sync_lists
+    local display=$ALLOW_FILE
+    [[ -f "$display" ]] || display="$LIST_DIR/whitelist.conf"
+    echo "=== WHITELIST (manual + learned): $display ==="
+    cat "$display"
 }
 
 cmd_strikes() {
@@ -742,6 +783,7 @@ cmd_ban() {
     else
         "$NFTP" add element inet "$GUARD_TABLE" "$set" "{ $ip timeout $dur }"
     fi
+    sync_lists
     echo "Banned $ip for $dur (temporary)."
 }
 
@@ -762,14 +804,13 @@ cmd_unallow() {
     echo "Removed from whitelist: $1"
 }
 
-cmd_remember(){ file_add "${LEARNED_FILE:-/dev/null}" "$1"; reload_live; echo "Added to learned whitelist: $1"; }
-cmd_forget()  { file_del "${LEARNED_FILE:-/dev/null}" "$1"; reload_live; echo "Removed from learned whitelist: $1"; }
+cmd_remember() { python3 "$LIB_DIR/frp-ssh-guard-lists.py" remember "$1"; reload_live; }
+cmd_forget() { python3 "$LIB_DIR/frp-ssh-guard-lists.py" forget "$1"; reload_live; }
 
 cmd_learned() {
-    local f=${LEARNED_FILE}
-    [[ -f "$f" ]] || { echo "(no learned list yet)"; return 0; }
-    printf 'LEARNED (auto):\n'
-    grep -vE '^\s*(#|$)' "$f" | sed 's/^/  /'
+    sync_lists
+    echo "LEARNED (see $ALLOW_FILE):"
+    python3 "$INPUT_HELPER" read-list "$ALLOW_FILE" allow | awk -F'|' '$5 ~ /source=learned/ {print $5}'
 }
 
 cmd_report() {
@@ -811,6 +852,7 @@ case "$action" in
         if [[ -f "$APPLIED_CONF" ]]; then
             load_guard_config runtime
             old_table=$GUARD_TABLE
+            if [[ "$action" != check ]]; then sync_lists; fi
         fi
         candidate_digest=$(config_digest)
         load_guard_config candidate
@@ -864,7 +906,7 @@ case "$action" in
         if [[ "${GUARD_PACKAGED:-0}" != 1 ]]; then
             install -d -o root -g root -m 0755 "$BIN_DIR"
             [[ "$SOURCE_SCRIPT" == "$INSTALLED_SCRIPT" ]] || atomic_install "$SOURCE_SCRIPT" "$INSTALLED_SCRIPT" 0755
-            for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py; do
+            for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py; do
                 [[ "$LIB_DIR/$helper" == "$BIN_DIR/$helper" ]] || atomic_install "$LIB_DIR/$helper" "$BIN_DIR/$helper" 0755
             done
             write_unit
@@ -936,7 +978,8 @@ case "$action" in
     status)
         printf 'Boot startup: '; systemctl is-enabled "$SERVICE" 2>/dev/null || true
         printf 'Service state: '; systemctl is-active "$SERVICE" 2>/dev/null || true
-        printf 'Settings: %s\nManual lists: %s\n' "$GUARD_CONF" "$MANUAL_DIR"
+        printf 'Settings: %s\nLists: %s\n' "$GUARD_CONF" "$MANUAL_DIR"
+        if [[ -n "$LOGIN_USERS" ]]; then echo 'Whitelist learning: enabled for configured LOGIN_USERS'; else echo 'Whitelist learning: disabled (set LOGIN_USERS, then check and reload)'; fi
         printf 'Server SSH protection: %s\nPer-port jails: %s\n' "$PROTECT_SERVER_SSH" "$JAIL_PER_PORT"
         if [[ -f "$APPLIED_CONF" ]]; then
             printf 'Accepted ports: %s\n' "$PROTECTED_PORTS"
@@ -949,10 +992,12 @@ case "$action" in
             "$NFTP" list chain inet "$GUARD_TABLE" input | sed -n '1,5p'
             cnt() { "$NFTP" -j list set inet "$GUARD_TABLE" "$1" 2>/dev/null | jq '[.nftables[]?.set?.elem[]?] | length' 2>/dev/null | head -1; }
             echo "allow   (v4/v6): $(read_allow; echo "${#ALLOW4[@]}/${#ALLOW6[@]}")"
-            echo "learned (v4/v6): $(read_learned; echo "${#LEARNED4[@]}/${#LEARNED6[@]}")"
+            echo "learned (v4/v6): $(read_allow; read_learned; echo "${#LEARNED4[@]}/${#LEARNED6[@]}")"
             echo "manual  (v4/v6): $(cnt manual4)/$(cnt manual6)   [manual blocklist]"
             echo "ban     (v4/v6): $(cnt ban4)/$(cnt ban6)         [temporary]"
             echo "hardban (v4/v6): $(cnt hardban4)/$(cnt hardban6) [strikes]"
+            echo "saved   (v4/v6): $(cnt saved_ban4)/$(cnt saved_ban6) [restored shared bans]"
+            echo "saved per-port: $(cnt saved_ban_pp4)/$(cnt saved_ban_pp6)"
             echo "strikes tracked: $(( $(wc -l < "$LIST_DIR/strikes.tsv" 2>/dev/null || echo 0) ))"
         else
             echo "No active guard table. If installed, use reload/install."

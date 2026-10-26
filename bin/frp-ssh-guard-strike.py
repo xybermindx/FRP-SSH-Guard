@@ -135,6 +135,8 @@ def exempt(key):
     ip = ipaddress.ip_address(fields[0])
     port = int(fields[1]) if len(fields) > 1 else None
     for network, scope, expiry in good:
+        if expiry and expiry <= now:
+            continue
         if ip not in ipaddress.ip_network(network, strict=False):
             continue
         if scope == '*':
@@ -155,7 +157,9 @@ for ip, c in counts.items():
     if d:
         d = str(min(parse_dur(d), parse_dur(cfg['STRIKE_MAX']))) + 's'
     if d:
-        target[ip] = d
+        expiry = int(last[ip]) + parse_dur(d)
+        if expiry > now:
+            target[ip] = expiry
 
 cur = set()
 legacy_hardban = os.path.join(LIST_DIR, 'hardguard.conf')
@@ -168,20 +172,30 @@ if os.path.exists(HARDBAN):
             fields = line.split()
             cur.add(' '.join(fields[:2]) if PER_PORT and len(fields) > 1 else fields[0])
 
+# Absolute deadlines are derived from the latest offense, never the timer run.
+import json
+state_path = Path(LIST_DIR) / 'unified-state.json'
+deleted = json.loads(state_path.read_text()).get('deleted', {}) if state_path.exists() else {}
+for ip, expiry in list(target.items()):
+    fields = ip.split()
+    identity = '|'.join((fields[0], fields[1] if len(fields) > 1 else '*', 'strike'))
+    if expiry <= deleted.get(identity, 0) + 2:
+        target.pop(ip)
 if active:
-    for ip, d in target.items():
+    for ip, expiry in target.items():
         fam = "hardban6" if ':' in ip else "hardban4"
         value = ip.replace(' ', ' . ') if PER_PORT else ip
-        nft("add", "element", "inet", TABLE, fam, "{ %s timeout %s }" % (value, d))
+        nft("add", "element", "inet", TABLE, fam, "{ %s timeout %ss }" % (value, max(1, expiry - int(now))))
     for ip in cur - set(target):
         fam = "hardban6" if ':' in ip else "hardban4"
         value = ip.replace(' ', ' . ') if PER_PORT else ip
         nft("delete", "element", "inet", TABLE, fam, "{ %s }" % value)
 
-os.makedirs(os.path.dirname(HARDBAN), exist_ok=True)
-with open(HARDBAN, "w") as f:
-    for ip in sorted(target):
-        f.write(ip + "\n")
+rows = []
+for ip, expiry in sorted(target.items()):
+    fields = ip.split()
+    rows.append(_inputs.format_entry(fields[0], fields[1] if len(fields) > 1 else '*', expiry, 'strike'))
+_inputs.atomic_write(HARDBAN, '\n'.join(rows) + ('\n' if rows else ''))
 
 try:
     import shutil

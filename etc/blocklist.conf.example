@@ -1,8 +1,25 @@
-# MANUAL BLOCKLIST -- permanent by default, or an absolute UTC expiry.
-#   <IP|CIDR> [all|PORTS] [until=YYYY-MM-DDTHH:MM:SSZ]
-# Use `block IP --ports PORTS --for 6h` to calculate and save an expiry.
-# Expiry is not extended by reload or reboot. All means all protected ports.
-# Examples (RFC 5737 documentation ranges):
-#   198.51.100.66
-#   203.0.113.0/24 22001,22003
-# Scoped bans work with either JAIL_PER_PORT setting; allowlist rules take priority.
+# FRP-SSH-Guard unified list
+# [all] means every protected port (including 22 when enabled).
+# [22001] means only that port; comma-separated ports/ranges also work.
+# Add one IP or CIDR per line. A plain entry or explicit forever is permanent.
+# Block periods: forever or tier=1..5 (default 6h,1d,3d,7d,28d).
+# Tier 1 uses BAN_TIMEOUT; tiers 2..5 use STRIKE_LADDER, capped by STRIKE_MAX.
+# First apply saves until=. To start a new tier period, remove the old until=.
+# until=YYYY-MM-DDTHH:MM:SSZ is an absolute UTC expiry; never renewed by apply.
+# source=runtime/strike identifies automatic bans; keep their expiry.
+# Delete an entry to remove it; a new login/attack may add it again.
+# Saves are watched while active. Apply now: sudo frp-ssh-guard apply
+# Settings changes still require check and reload. Do not edit a stale copy.
+# Kernel bans are sampled by the log timer (normally within 60 seconds).
+# Whitelist entries override this guard only; other firewalls are independent.
+
+[all]
+
+# 198.51.100.10 forever
+
+[22]
+# 203.0.113.10
+
+[22001]
+# 2001:db8::10
+# 198.51.100.20 tier=2

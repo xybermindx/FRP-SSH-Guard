@@ -6,9 +6,10 @@ production availability guarantee.
 
 ## Recorded checks for 0.0.5
 
-Local validation dates: 2026-10-25 and 2026-10-26. Runtime checks cover the
-v0.0.5 implementation; package revision 3 updates documentation, examples and
-release-tag handling. The release workflow reruns automated checks before upload.
+Local validation dates: 2026-10-25 and 2026-10-26. The final v0.0.5 package adds
+unified lists, automatic jail migration, trusted SSH learning and manual duration
+tiers. Earlier checks below retain their original package versions for traceability.
+The release workflow reruns automated checks before upload.
 Privileged tests run in a disposable Debian 12 amd64 VM using unprivileged QEMU
 TCG, kernel 6.1.0-54-cloud-amd64, nftables 1.0.6, systemd 252 and real FRP 0.71.1.
 No production firewall is used. Test identities, addresses and port choices are
@@ -16,8 +17,12 @@ synthetic; raw host logs and configuration are excluded from the source export.
 
 | Check | Result |
 | --- | --- |
-| Shell/Python syntax and regression suite | Passed locally: 73 tests, one privileged kernel test skipped (74 total), including Debian version ordering, package metadata and source exports. The seven configuration-upgrade tests also passed as root in the Debian VM. |
+| Shell/Python syntax and regression suite | Passed locally: 85 tests and one privileged kernel test skipped (86 total). Includes section parsing, deletion/reban generations, fixed expiry, manual tiers, trusted PAM/journal parsing, whitelist scope, Debian metadata and privacy exceptions. |
 | Real nftables kernel validation | Passed in VM: initial/replacement tables, shared/per-port jail types, scoped CIDR blocks and timed IPv6 manual elements. |
+| Unified-list upgrade from the published package | Passed: ordinary APT upgrade imports live runtime/strike/learned entries into sectioned home files. Both shared and per-port scope, remaining TTLs, comments, ownership, accepted policy, service identity and custom timer deadlines retained. |
+| Actual successful SSH learning | Passed: a real public-key login to native port 22 creates an expiring learned entry; a newer login refreshes it. Whitelist precedence over blocks verified on native SSH and real FRP; a port-22-only entry does not exempt the FRP port. Whitelisted failed attempts do not create auth bans. |
+| Unified-list edits and duration tiers | Passed: overlapping manual CIDR and automatic host bans, unban after restoration, expiration without resurrection, and tier/forever entries applied together. Repeated apply retains the tier's saved deadline. |
+| Automatic-ban reboot restoration with unavailable home | Passed: actual reboot restores per-port automatic entries from root cache at their original deadlines; returning the home and applying succeeds. |
 | Active v0.0.4 → v0.0.5 Debian upgrade | Passed: custom settings, accepted policy, manual list, permissions, service invocation, timer settings, active ban and remaining expiry retained. |
 | Home migration and same-version Debian reinstall | Passed: settings/lists moved with correct owner/private permissions; active bans retained; reinstall preserves custom timer deadlines including `OnActiveSec`. |
 | Automatic installation migration (2026-10-26) | Passed: actual sudo apt reinstall over the earlier local v0.0.5 build selects the invoking user, copies existing configuration automatically and keeps service identity, live ban expiry and custom relative timer deadlines. A subsequent root reinstall retains that owner. |
@@ -33,6 +38,21 @@ synthetic; raw host logs and configuration are excluded from the source export.
 | Automatic source migration (2026-10-26) | Passed: active v0.0.4 source upgrade copies settings to the selected user's home, retains accepted policy/live bans/relative timer deadlines and immediately watches edits there. |
 | Remaining ban time display | Passed: both ban views display nftables JSON seconds correctly, including per-port IPv6 entries; the VM upgrade test compares the displayed value with the kernel expiry. |
 | Ubuntu full FRP/systemd runtime, ARM and 32-bit | Not tested locally. CI exercises Debian 12/Ubuntu 24.04 package lifecycles; see the release commit’s Actions runs for results. |
+
+The unified-list runtime test is `tests/vm-unified-lists.py`; run it separately
+with `off` and `on` in a fresh disposable systemd VM:
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-unified-lists.py \
+  /tmp/previous.deb /tmp/frp-ssh-guard_0.0.5.deb /tmp/frp-binaries on
+```
+
+It exercises an actual package upgrade, FRP traffic and successful SSH logins.
+The kernel test also covers expiring learned entries in multiple port sections.
+Initial VM test assertions were adjusted for elapsed seconds and nftables' JSON
+representation of permanent elements; these were test-fixture issues. Learning
+also now skips older replayed successes and refreshes even a one-second newer
+login without treating the timestamp as rounded kernel output.
 
 The VM acceptance script is `tests/vm-acceptance.py`. It deliberately installs
 packages, changes firewall rules, starts real FRP processes and creates a network

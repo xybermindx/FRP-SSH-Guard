@@ -123,7 +123,8 @@ def build_deb(version, epoch, output):
             if not path.is_symlink():
                 if path.is_dir(): path.chmod(0o755)
                 os.utime(path, (epoch, epoch))
-        target = output / f"{NAME}_{version}.deb"
+        upstream = version.split("-", 1)[0]
+        target = output / f"{NAME}_{upstream}.deb"
         subprocess.run(["dpkg-deb", "--root-owner-group", "--build", str(stage), str(target)],
                        check=True, env={**os.environ, "SOURCE_DATE_EPOCH": str(epoch)})
     return target

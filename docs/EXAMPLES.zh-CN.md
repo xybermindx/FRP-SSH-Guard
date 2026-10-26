@@ -71,8 +71,8 @@ sudo frp-ssh-guard ports
 已接受的策略，不会应用待确认的修改。启用本机 SSH 防护后，状态应显示
 `Server SSH protection: on`。
 
-显式 reload 会重建防护表，清空临时自动封禁和速率计数。手动名单保留，
-限时手动封禁保持原到期时间。安装软件包及更新名单会保留当前自动封禁和定时任务。
+显式 reload 会重建防护表和速率计数；已保存的封禁及学习条目保留原到期时间。
+突然重启可能丢失尚未采样的内核封禁。安装软件包及更新名单会保留当前自动封禁和定时任务。
 
 ## 手动白名单与黑名单
 
@@ -103,7 +103,7 @@ Fail2ban 及其他防火墙相互独立；在那里被封禁的地址也需要�
 ## 升级时不重载策略
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.5-3.deb
+sudo apt install ./frp-ssh-guard_0.0.5.deb
 dpkg-query -W frp-ssh-guard
 sudo frp-ssh-guard status
 ```
@@ -113,3 +113,57 @@ sudo frp-ssh-guard status
 定时任务触发时间均保留。新开关默认 off，配置完整时重复安装不会更改文件。
 首次从 v0.0.4 升级时，旧版本卸载钩子可能重算自定义 `OnActiveSec` 触发时间，
 详见[迁移说明](MIGRATING.md)（英文）。
+
+## 合并名单
+
+`~/.frp-ssh-guard/whitelist.conf` 和 `blocklist.conf` 都支持以下格式：
+
+```ini
+# 所有受保护端口，包含已开启防护的本机 SSH。
+[all]
+198.51.100.10
+
+# 仅本机 SSH 22 端口（需开启防护）。
+[22]
+203.0.113.10
+
+# 仅此选定的 FRP 端口。
+[22001]
+2001:db8::10
+```
+
+在白名单中表示允许，在黑名单中表示封禁。纯 IP 条目是永久手动条目。
+自动条目在同一文件内显示，白名单标记 `source=learned`，黑名单标记
+`source=runtime` 或 `source=strike`，并带 `until=YYYY-MM-DDTHH:MM:SSZ`。
+请保留绝对到期时间；apply 和重启不延长它。删除条目即可移除，新的登录/攻击可能重新添加；
+`unban` 还会豁免累犯历史。手动条目也支持 CIDR 网段。
+
+防护运行时会监听名单保存；也可立即执行：
+
+```bash
+sudo frp-ssh-guard apply
+sudo frp-ssh-guard whitelist
+sudo frp-ssh-guard blocklist
+```
+
+自动学习需将 `LOGIN_USERS="alice|bob"` 改成自己的可信本机账户，然后执行 `check` 和 `reload`。
+这里的名字仅为虚构示例。仅开启 22 端口防护不会启用学习。学习的 `[all]` 条目覆盖所有受保护端口，
+`[22001]` 白名单不覆盖 22。其他防火墙（包括 Fail2ban）规则仍独立生效。
+
+### 封禁时长
+
+```ini
+[all]
+198.51.100.20 forever
+198.51.100.21 tier=1
+[22]
+203.0.113.20 tier=2
+[22001]
+203.0.113.21 tier=5
+```
+
+在 `blocklist.conf` 中，`forever` 表示永久；默认 1–5 档为 6 小时、1 天、3 天、7 天、28 天。
+第 1 档使用 `BAN_TIMEOUT`；第 2–5 档使用 `STRIKE_LADDER` 中相应次数对应的时长，
+并受 `STRIKE_MAX` 限制。自定义 ladder 缺少某档时会拒绝该档。
+这些是手动时长选择，不会改变自动累犯计数。首次应用写入 `until=`；重复 apply、升级和重启
+保留原到期时间。需要重新开始某档时长时，请删除旧的 `until=`。

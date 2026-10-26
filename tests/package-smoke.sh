@@ -6,7 +6,7 @@ trap 'echo "Package smoke test failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 package_version="$(cat /src/VERSION)-$(cat /src/PACKAGE_REVISION)"
-package="/src/dist/frp-ssh-guard_${package_version}.deb"
+package="/src/dist/frp-ssh-guard_$(cat /src/VERSION).deb"
 apt-get install -y "$package"
 frp-ssh-guard --help
 [[ $(frp-ssh-guard --version) == "FRP-SSH-Guard $(cat /src/VERSION)" ]]

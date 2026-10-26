@@ -1,5 +1,7 @@
 """Deployment behavior using the real shell functions and isolated command fakes."""
 import os
+import json
+import time
 from pathlib import Path
 import shlex
 import subprocess
@@ -27,6 +29,7 @@ class DeploymentTests(unittest.TestCase):
         (self.root / 'unit').write_text('# Managed by frp-ssh-guard-persistent.sh\n')
         self.fake('nft', '''#!/bin/bash
 case "$1" in
+ -j) echo '{"nftables":[{"rule":{"comment":"manual-block v4","handle":42}}]}' ;;
  list) test -f "$TEST_ROOT/live.nft" ;;
  --check) test ! -f "$TEST_ROOT/fail-check" ;;
  --file)
@@ -274,7 +277,12 @@ else:
         self.assertTrue((self.root / 'live.nft').exists())
 
     def test_learning_uses_accepted_settings_and_ignores_pending_edits(self):
-        self.fake('journalctl', '#!/bin/sh\necho "Accepted publickey for alice from 198.51.100.55 port 12345 ssh2"\n')
+        record = dict(_UID='0', SYSLOG_IDENTIFIER='sshd-auth', _PID='42', __CURSOR='sample',
+                      __REALTIME_TIMESTAMP=str(int(time.time() * 1000000)),
+                      MESSAGE='Accepted publickey for alice from 198.51.100.55 port 12345 ssh2')
+        self.fake('journalctl', '#!/bin/sh\nprintf "%s\\n" ' + shlex.quote(json.dumps(record)) + '\n')
+        self.fake('guard-test-command', '#!/bin/sh\nexit 0\n')
+        self.env['GUARD_COMMAND'] = str(self.root / 'fakebin/guard-test-command')
         self.fake('fail2ban-client', '#!/bin/sh\nexit 1\n')
         self.require_ok(self.run_guard('enable'))
         self.settings('PROTECTED_PORTS="22001"\nLOGIN_USERS="alice"\n')
@@ -283,8 +291,9 @@ else:
         self.assertEqual((self.root / 'lists/learned.conf').read_text(), '')
         self.require_ok(self.run_guard('reload'))
         self.settings('LOGIN_USERS="unterminated')
-        self.require_ok(subprocess.run(helper, env=self.env, text=True, capture_output=True))
-        self.assertEqual((self.root / 'lists/learned.conf').read_text(), '198.51.100.55\n')
+        result = subprocess.run(helper, env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 1, result.stderr)  # closed journal stream requests restart
+        self.assertIn('198.51.100.55 source=learned until=', (self.root / 'lists/whitelist.conf').read_text())
 
     def test_strike_helper_uses_accepted_policy_with_broken_edits(self):
         self.settings('PROTECTED_PORTS="22001"\nGUARD_TABLE=accepted_table\n')

@@ -19,6 +19,8 @@ case "${1:-}" in
             /etc/frp-ssh-guard /var/lib/frp-ssh-guard /etc/systemd/system /usr/sbin/frp-ssh-guard
         python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py upgrade-settings \
             /etc/frp-ssh-guard /usr/share/frp-ssh-guard/settings.conf.default
+        GUARD_DIR=/var/lib/frp-ssh-guard GUARD_ETC_DIR=/etc/frp-ssh-guard \
+            python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-lists.py upgrade
         echo 'FRP-SSH-Guard installed; installation does not activate protection.'
         echo 'Edit the settings path shown by: frp-ssh-guard --help'
         echo 'Then run: sudo frp-ssh-guard check && sudo frp-ssh-guard enable'

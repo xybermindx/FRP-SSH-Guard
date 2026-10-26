@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from typing import NamedTuple
 
 POLICY_KEYS = set('GUARD_TABLE PORT_MIN PORT_MAX EXCLUDE_PORTS EDIT_USER PROTECTED_PORTS '
     'PER_IP_RATE PER_IP_BURST GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT LOGIN_USERS MAX_LEARNED '
@@ -64,33 +65,166 @@ def ports(value):
     return ','.join(dict.fromkeys(result))
 
 
-def entries(text, kind='block', now=None):
-    now = int(time.time()) if now is None else now
+class Row(NamedTuple):
+    ip: str
+    scope: str = '*'
+    expiry: int = 0
+    source: str = 'manual'
+    tier: int = 0
+
+    @property
+    def key(self):
+        return (self.ip, self.scope, self.source)
+
+
+def list_lines(text, kind='block'):
     result = []
+    section = '*'
     for number, line in enumerate(text.splitlines(), 1):
         words = line.split('#', 1)[0].split()
         if not words:
             continue
         try:
+            if words[0].startswith('['):
+                header = ' '.join(words)
+                if not re.fullmatch(r'\[[^\[\]]+\]', header):
+                    raise ValueError('Invalid section.')
+                section = ports(header[1:-1])
+                continue
             ip = address(words.pop(0))
-            expiry = 0
-            if words and words[-1].startswith('until='):
-                if kind != 'block':
-                    raise ValueError('Only block entries support expiry.')
-                stamp = words.pop()[6:]
+            expiry, source, tier, scopes, seen, forever = 0, 'manual', 0, [], set(), False
+            for word in words:
+                if word == 'forever':
+                    if forever:
+                        raise ValueError('Duplicate forever.')
+                    forever = True
+                    continue
+                if '=' not in word:
+                    scopes.append(word)
+                    continue
+                key, value = word.split('=', 1)
+                if key in seen or key not in ('until', 'source', 'tier'):
+                    raise ValueError('Invalid metadata.')
+                seen.add(key)
+                if key == 'source':
+                    source = value
+                    continue
+                if key == 'tier':
+                    if kind != 'block' or not re.fullmatch('[1-5]', value):
+                        raise ValueError('Block tiers are 1 through 5.')
+                    tier = int(value)
+                    continue
+                stamp = value
                 expiry = int(dt.datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=dt.timezone.utc).timestamp())
-            scope = ports(' '.join(words))
-            result.append((ip, scope, expiry))
+                if expiry <= 0:
+                    raise ValueError('Expiry must be after the epoch.')
+            if source not in (('manual', 'learned') if kind == 'allow' else ('manual', 'runtime', 'strike')):
+                raise ValueError('Invalid entry source.')
+            if source != 'manual' and not expiry:
+                raise ValueError('Automatic entries need an absolute expiry.')
+            if source != 'manual' and '/' in ip:
+                raise ValueError('Automatic entries must be individual addresses.')
+            if forever and (tier or expiry or source != 'manual'):
+                raise ValueError('Choose forever or an expiry/tier.')
+            if tier and source != 'manual':
+                raise ValueError('Tiers apply to manual blocks.')
+            if kind == 'allow' and expiry and '/' in ip:
+                raise ValueError('Timed whitelist entries must be individual addresses.')
+            if kind == 'allow' and expiry and source != 'learned':
+                raise ValueError('Whitelist expiry belongs to learned entries.')
+            scope = ports(' '.join(scopes)) if scopes else section
+            result.append((number, Row(ip, scope, expiry, source, tier)))
         except ValueError as error:
             raise ValueError(f'Invalid {kind} list entry on line {number}.') from error
     return result
 
 
-def format_entry(ip, scope, expiry=0):
+def records(text, kind='block'):
+    return [row for _, row in list_lines(text, kind)]
+
+
+def entries(text, kind='block', now=None):
+    return [(row.ip, row.scope, row.expiry) for row in records(text, kind)]
+
+
+def format_entry(ip, scope, expiry=0, source='manual', tier=0):
     line = address(ip) + (' ' + scope if scope != '*' else ' all')
+    if source != 'manual':
+        line += ' source=' + source
+    if tier:
+        line += ' tier=' + str(tier)
+    elif source == 'manual' and not expiry:
+        line += ' forever'
     if expiry:
         line += ' until=' + dt.datetime.fromtimestamp(expiry, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     return line
+
+
+def resolve_tiers(rows, base, ladder, cap, now=None):
+    now = int(time.time()) if now is None else now
+    levels = {1: duration(base)}
+    for token in ladder.split():
+        threshold, value = token.split(':', 1)
+        levels[int(threshold)] = min(duration(value), duration(cap))
+    result = []
+    for row in rows:
+        if row.tier and not row.expiry:
+            if row.tier not in levels:
+                raise ValueError('This tier is absent from STRIKE_LADDER; configure its duration or use until=.')
+            row = row._replace(expiry=now + levels[row.tier])
+        result.append(row)
+    return result
+
+
+def render_list(original, rows, kind):
+    """Preserve comments and section order while replacing individual records."""
+    pending = {row.key: row for row in rows}
+    indexed = dict(list_lines(original, kind))
+    lines, scope = [], '*'
+    marker = '# FRP-SSH-Guard unified list'
+    if marker not in original.splitlines():
+        lines.extend([marker,
+            '# [all] means every protected port (including 22 when enabled).',
+            '# [22001] means only that port; comma-separated ports/ranges also work.',
+            '# Add one IP or CIDR per line. A plain entry or explicit forever is permanent.',
+            '# Block periods: forever or tier=1..5 (default 6h,1d,3d,7d,28d).',
+            '# Tier 1 uses BAN_TIMEOUT; tiers 2..5 use STRIKE_LADDER, capped by STRIKE_MAX.',
+            '# First apply saves until=. To start a new tier period, remove the old until=.',
+            '# until=YYYY-MM-DDTHH:MM:SSZ is an absolute UTC expiry; never renewed by apply.',
+            ('# source=learned identifies learned trust; keep its expiry.' if kind == 'allow' else
+             '# source=runtime/strike identifies automatic bans; keep their expiry.'),
+            '# Delete an entry to remove it; a new login/attack may add it again.',
+            '# Saves are watched while active. Apply now: sudo frp-ssh-guard apply',
+            '# Settings changes still require check and reload. Do not edit a stale copy.',
+            '# Kernel bans are sampled by the log timer (normally within 60 seconds).',
+            '# Whitelist entries override this guard only; other firewalls are independent.', '', '[all]'])
+    for number, line in enumerate(original.splitlines(), 1):
+        old = indexed.get(number)
+        if old is None:
+            lines.append(line)
+            stripped = line.split('#', 1)[0].strip()
+            if stripped.startswith('['):
+                scope = ports(stripped[1:-1])
+            continue
+        row = pending.pop(old.key, None)
+        if row is None:
+            continue
+        if scope != row.scope:
+            lines.append('[' + ('all' if row.scope == '*' else row.scope) + ']')
+            scope = row.scope
+        content = format_entry(*row).split(' ', 1)[1].split(' ', 1)
+        # Scope belongs to the section, not to each address line.
+        value = row.ip + (' ' + content[1] if len(content) > 1 else '')
+        if '#' in line:
+            value += ' #' + line.split('#', 1)[1]
+        lines.append(value)
+    for row in pending.values():
+        if scope != row.scope:
+            lines.extend(['', '[' + ('all' if row.scope == '*' else row.scope) + ']'])
+            scope = row.scope
+        flat = format_entry(*row).split(' ', 2)
+        lines.append(row.ip + (' ' + flat[2] if len(flat) > 2 else ''))
+    return '\n'.join(lines).rstrip() + '\n'
 
 
 def atomic_write(path, data, mode=0o600):
@@ -106,6 +240,16 @@ def atomic_write(path, data, mode=0o600):
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def replace_list(path, original, content):
+    path = Path(path)
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError('List paths must not be symbolic links.')
+    current = path.read_text() if path.exists() else ''
+    if current != original:
+        raise ValueError('List changed while updating; retry apply.')
+    atomic_write(path, content)
 
 
 def location(base):
@@ -133,21 +277,13 @@ def as_user(user, args, data):
 def edit_list(path, kind, operation, ip, scope='*', expiry=0):
     path = Path(path)
     original = path.read_text() if path.exists() else ''
-    entries(original, kind)  # reject malformed input before changing anything
+    rows = records(original, kind)  # reject malformed input before changing anything
     ip = address(ip)
-    lines = []
-    for line in original.splitlines():
-        words = line.split('#', 1)[0].split()
-        if words and address(words[0]) == ip:
-            if operation == 'remove':
-                continue
-            previous = entries(line, kind)[0]
-            if previous[1] == scope:
-                continue  # replace this address/scope, including its expiry
-        lines.append(line)
+    rows = [row for row in rows if not (row.ip == ip and
+            (operation == 'remove' or row.scope == scope and row.source == 'manual'))]
     if operation == 'add':
-        lines.append(format_entry(ip, scope, expiry))
-    atomic_write(path, '\n'.join(lines) + '\n')
+        rows.append(Row(ip, scope, expiry))
+    atomic_write(path, render_list(original, rows, kind))
 
 
 def installer_user():
@@ -380,12 +516,28 @@ def main():
                 elif isinstance(value, str):
                     print(name, ipaddress.ip_address(value))
     elif action == 'read-list':
-        path, kind = args
+        path, kind, *tier_settings = args
         now = int(time.time())
-        for ip, scope, expiry in entries(Path(path).read_text(), kind):
+        rows = records(Path(path).read_text(), kind)
+        if any(row.tier and not row.expiry for row in rows):
+            if len(tier_settings) != 3:
+                raise ValueError('Apply tier entries first so their expiry can be saved.')
+            rows = resolve_tiers(rows, *tier_settings, now=now)
+        # A runtime ban and a strike can share a key; restore the longer deadline
+        # once. Keep both origins in the editable file, outside kernel encoding.
+        automatic = {}
+        for row in rows:
+            if row.source in ('runtime', 'strike'):
+                identity = (row.ip, row.scope)
+                if identity not in automatic or row.expiry > automatic[identity].expiry:
+                    automatic[identity] = row
+        rows = [row for row in rows if row.source not in ('runtime', 'strike')] + list(automatic.values())
+        for ip, scope, expiry, source, tier in rows:
             if expiry and expiry <= now:
                 continue
-            print(f'{6 if ":" in ip else 4}|{ip}|{scope}|{expiry}|{format_entry(ip, scope, expiry)}')
+            print(f'{6 if ":" in ip else 4}|{ip}|{scope}|{expiry}|{format_entry(ip, scope, expiry, source, tier)}')
+    elif action == 'replace-list':
+        replace_list(*json.load(sys.stdin))
     elif action == 'edit-list':
         base, path, kind, operation, ip, scope, lifetime = args
         scope = ports(scope)

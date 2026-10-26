@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**[Download v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb)** · [All release files](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
+**[Download v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [All release files](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
 FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
@@ -14,7 +14,7 @@ custom values and active protection. Both new protection switches default to off
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
 > failed logins in the latest 24-hour window.
 
-**Version 0.0.5 · Debian package 0.0.5-3 · MIT licensed · Bash and Python**
+**Version 0.0.5 · MIT licensed · Bash and Python**
 
 [What's new in v0.0.5](docs/RELEASE-v0.0.5.md) ·
 [Configuration and command examples](docs/EXAMPLES.md) ·
@@ -23,6 +23,8 @@ custom values and active protection. Both new protection switches default to off
 [Deployment](#deploy-step-by-step) · [Configuration](#configuration) ·
 [Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
 [Verification](#verify-that-protection-takes-effect) · [Build from source](#open-source-and-building)
+
+Project credit: [XyberMind team](http://www.xyber-mind.com/).
 
 ## Observed deployment results
 
@@ -143,7 +145,7 @@ Release v0.0.5 contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_0.0.5-3.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb) | Install on the target Debian/Ubuntu host. |
+| [frp-ssh-guard_0.0.5.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | Install on the target Debian/Ubuntu host. |
 | [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | Verify the downloaded Debian package. |
 
 The complete source remains in the repository. GitHub automatically provides
@@ -184,7 +186,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5-3.deb
+sudo apt install ./frp-ssh-guard_0.0.5.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -197,7 +199,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 Installation automatically creates this folder and migrates existing settings
-and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5-3.deb` uses the
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5.deb` uses the
 invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
 customized values, even when another administrator installs the package.
@@ -217,10 +219,10 @@ deadlines stay unchanged; pending custom edits remain unapplied. Status can show
 pending edits after defaults are added. Set `PROTECT_SERVER_SSH=on` and explicitly
 run `check` then `reload` when ready to activate local SSH protection. An unavailable
 or invalid file is left alone with a notice; fix it and reinstall using
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-3.deb` to retry.
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.5.deb` to retry.
 
 To choose an owner before the first migration, use
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-3.deb`.
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`.
 Conflicting existing home files or an unavailable home leave the old configuration
 in use; the installer reports this instead of overwriting data. Use
 `frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
@@ -299,13 +301,18 @@ sudo frp-ssh-guard status
 
 Confirm `Server SSH protection: on`. For first activation, use `enable` instead
 of `reload`. The switch automatically includes port 22. An explicit reload
-rebuilds the firewall and clears temporary automatic bans; package upgrades do
-not. Manual blocklists remain, with timed entries keeping their original expiry.
+rebuilds the firewall and rate meters. Exported bans and learned entries retain
+their original expiry; package upgrades preserve the live table and timers.
 
 Fail2ban can remain installed: the tools have separate rules and independent bans.
 If both block an address, release it in both tools. The guard does not modify
 Fail2ban jail settings; optional `LOGIN_USERS` learning can add trusted addresses
 to an existing Fail2ban sshd jail's ignore list. Learning defaults to disabled.
+Set `LOGIN_USERS` to your trusted local account names, then run `check` and
+`reload`; `status` reports whether learning is enabled. Password, public-key and
+keyboard-interactive/PAM successes are supported. Learned `[all]` entries cover
+port 22 when protected; an entry under another port does not. Check Fail2ban
+separately if an allowed source is still blocked.
 
 See [examples](docs/EXAMPLES.md) for FRP-only, local-SSH-only and combined setups.
 
@@ -327,10 +334,10 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | Shared new SYN rate/minute and burst per port, across sources and IP families. |
 | `BAN_TIMEOUT` | `6h` | Temporary source-ban duration. |
 | `LOGIN_USERS` | Empty; disabled | Extended regex of trusted local sshd accounts, e.g. `alice|bob`. |
-| `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | Learned-source cap and restored timeout. |
+| `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | Learned-source cap and time since the last trusted login. |
 | `STRIKE_WINDOW` | `90d` | History window for observed ban events. |
 | `STRIKE_LADDER` | `2:1d 3:3d 4:7d 5:28d` | Increasing strike thresholds and ban durations; empty disables escalation. |
-| `STRIKE_MAX` | `28d` | Maximum escalation duration and timeout when persisted hardbans are restored. |
+| `STRIKE_MAX` | `28d` | Maximum escalation duration; saved deadlines are not renewed on restore. |
 | `PORT_MIN`, `PORT_MAX` | `1`, `65535` | Inclusive validation bounds. |
 | `EDIT_USER` | `root` | Trusted local account owning command-managed lists. |
 | `GUARD_TABLE` | `frp_ssh_persistent_guard` | Dedicated nftables table; disable before changing its name. |
@@ -345,16 +352,28 @@ logins to SSH servers behind the FRP tunnel.
 | Location | Purpose |
 | --- | --- |
 | `~/.frp-ssh-guard/settings.conf` | Editable policy, created/migrated automatically by installation. |
-| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | Editable manual lists, created/migrated automatically. |
+| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | Combined manual/automatic lists, created/migrated automatically. |
 | `/etc/frp-ssh-guard/` | Initial/legacy settings and the selected home location registry. |
 | `/var/lib/frp-ssh-guard/applied.conf` | Generated accepted policy; do not edit. |
-| `/var/lib/frp-ssh-guard/lists/` | Cached manual lists, learned sources and strike state. |
+| `/var/lib/frp-ssh-guard/lists/` | Root caches, migration metadata and strike history; not additional user lists. |
 | `/var/log/frp-ssh-guard/` | Ban and learning history. |
 | `/usr/lib/frp-ssh-guard/` | Package-managed runtime programs. |
 
-Manual lists remain separate. Their edits are watched while the guard runs;
-commands apply list changes using accepted policy without adopting pending edits.
-They update list sets without clearing automatic jails or renewing their timers.
+Manual and automatic entries share `whitelist.conf` and `blocklist.conf`.
+Each file has instructions and `[all]` / per-port sections; see the
+[list examples](docs/EXAMPLES.md#unified-lists). A plain IP/CIDR or `IP forever` is permanent. In the blocklist, `IP tier=1`
+through `IP tier=5` select configured durations (defaults: 6h, 1d, 3d, 7d, 28d).
+Automatic rows include `source=learned`, `source=runtime` or `source=strike` and
+an absolute UTC `until=` expiry. Runtime includes automatic detection and the
+`ban` command. Deleting an automatic row removes that ban/trust entry; a new
+attack or trusted login may add it again. Use `unban` to also forgive strike history.
+
+List saves are watched while active. Run `sudo frp-ssh-guard apply` to apply now;
+it uses accepted settings and preserves active jail deadlines and rate meters.
+Kernel bans appear after the log timer runs (normally within 60 seconds), or
+immediately when `blocklist` refreshes the view. Avoid saving a stale editor
+buffer over newer automatic entries. Installation imports existing jails and
+legacy lists automatically; it retains legacy internal data for compatibility.
 Root-owned accepted settings and cached lists allow startup when the user's home
 is unavailable. Settings changes still require `check` and `reload`.
 The guard continues to run as a system service; user login is not required.
@@ -382,8 +401,8 @@ sudo frp-ssh-guard unblock 203.0.113.8
 
 Timed entries store an absolute UTC `until=` timestamp, so reload/reboot does not
 renew them. An all-port block follows the protected selection as it changes.
-`ban IP [DURATION]` instead adds a temporary kernel ban (default `BAN_TIMEOUT`);
-use `block --for` for an expiry that survives a reboot.
+`ban IP [DURATION]` adds a timed runtime ban (default `BAN_TIMEOUT`) and saves
+its expiry in the same blocklist. `block --for` creates a manually scoped timed entry.
 
 ## Commands
 
@@ -433,8 +452,8 @@ Operational limits:
 
 - Sources behind shared NAT/VPN count together. Shared per-port limits can drop legitimate traffic during a flood.
 - Existing established/related connections and loopback traffic bypass this guard. Whitelists precede blocks; they do not override unrelated firewall tables.
-- An explicit policy `reload`, restart or reboot rebuilds the table, resetting rate meters and temporary automatic bans. Package upgrades and manual-list updates leave live jails intact.
-- Learned addresses and persisted strike bans are restored with configured timeouts. Timed manual blocks retain their absolute expiry.
+- Explicit `reload`, restart or reboot rebuilds the table and resets rate meters. Exported bans and learned entries retain their deadlines; kernel bans not yet sampled can be lost on an abrupt restart. Package upgrades and list updates retain live jails.
+- Successful trusted logins refresh learned expiry. Ordinary apply/reload/reboot does not renew saved deadlines.
 - History is sampled once a minute; short bans may be missed. Missing-table recovery also waits for that timer and only runs while the guard is active.
 
 ## Troubleshooting
@@ -466,12 +485,10 @@ If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
 to switch to the current version while retaining settings.
 
-The current package is `0.0.5-3`: application version `0.0.5`, Debian revision `3`.
-It upgrades v0.0.4, earlier local v0.0.5 builds, `0.0.5-1` and `0.0.5-2` with the
-normal command above; no `--reinstall` is needed. Later revised packages use `0.0.5-4`, `0.0.5-5`,
-or a newer application version. Installing the same package version again is
-normally a no-op. Use `dpkg-query -W frp-ssh-guard` to see the full package version;
-`frp-ssh-guard --version` shows the application version.
+Download **v0.0.5** and install it with `sudo apt install ./frp-ssh-guard_0.0.5.deb`.
+APT upgrades earlier builds while keeping your settings. `frp-ssh-guard --version`
+shows the release version; `dpkg-query -W frp-ssh-guard` also shows the internal
+package revision used by APT to recognize newer builds.
 
 Installing a newer `.deb` upgrades the programs automatically while preserving
 settings, home files, live jails, remaining ban timeouts, service enablement and

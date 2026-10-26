@@ -4,17 +4,14 @@
 ## Upgrade while preserving settings and live jails
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.5-3.deb
+sudo apt install ./frp-ssh-guard_0.0.5.deb
 frp-ssh-guard --version
 sudo frp-ssh-guard status
 ```
 
-Package `0.0.5-3` is newer than `0.0.4`, the earlier local `0.0.5` builds,
-and packages `0.0.5-1`/`0.0.5-2`, so the normal APT command upgrades them without
-`--reinstall`. The
-application remains v0.0.5. Check the Debian revision with
-`dpkg-query -W frp-ssh-guard`. Future changed distributions must increment the
-revision or application version; an identical version normally needs no action.
+The release filename is `frp-ssh-guard_0.0.5.deb`. Its internal Debian revision
+lets APT recognize it as newer than earlier builds; no `--reinstall` is needed
+for an upgrade. Use `frp-ssh-guard --version` to see the application version.
 
 Do not purge, restart or reload just to upgrade. The installer replaces programs
 and fills in missing commented options; it preserves custom values, manual lists,
@@ -52,7 +49,7 @@ unmigrated legacy config), mode 0600. Home updates run as the registered owner,
 even if another administrator installs the package. Reinstalling without missing
 keys leaves the file and backups unchanged. Invalid/unavailable files or unsafe
 links are left alone with a notice; after correcting access or format, retry
-using `sudo apt install --reinstall ./frp-ssh-guard_0.0.5-3.deb`.
+using `sudo apt install --reinstall ./frp-ssh-guard_0.0.5.deb`.
 
 Accepted policy and its digest are not rewritten. Existing pending edits remain
 unapplied, so status may show pending edits after defaults are added. No services,
@@ -67,7 +64,7 @@ Once selected, the location remains unchanged on subsequent upgrades, regardless
 of who installs them. To select a different owner before the first migration:
 
 ```bash
-sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-3.deb
+sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb
 ```
 
 Legacy port-list input is converted when needed. Files have mode 0600 in a 0700
@@ -111,12 +108,12 @@ is not extended by reload or reboot. `unblock IP` removes all its manual scopes.
 
 ## Corrected public version numbering
 
-The public release is **v0.0.5**, with Debian package **0.0.5-3**. Earlier
+The public release and download filename use **v0.0.5**. Earlier
 pre-release packages used numerically higher Debian versions.
 To replace one of those installations while preserving settings and state:
 
 ```bash
-sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-3.deb
+sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5.deb
 sudo frp-ssh-guard status
 ```
 
@@ -131,7 +128,7 @@ Earlier pre-release builds are superseded by the current version.
 2. Install the corrected version without purging or restarting the guard:
 
    ```bash
-   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-3.deb
+   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5.deb
    frp-ssh-guard --help
    sudo frp-ssh-guard status
    ```
@@ -206,3 +203,20 @@ installer policy flags apply only on fresh installations. Upgrades do not rewrit
 units, reapply rules or restart timers.
 
 Private transfer backups are not imported automatically or included in releases.
+
+## Automatic list migration
+
+Installing the new `.deb` replaces package-owned program files and imports active
+jails and legacy learned/strike entries into the home `whitelist.conf` and
+`blocklist.conf`. Existing scopes and remaining kernel timeouts become section
+headers and absolute UTC expiry timestamps. Existing manual entries and comments
+are retained. The hooks do not restart the firewall or timers, and they do not
+adopt pending settings. Legacy entries without a live kernel timeout or saved
+expiry receive the accepted configured duration once during migration.
+
+No manual uninstall or IP copying is required. Root caches, strike history and
+legacy compatibility inputs are retained internally; do not delete these while
+old monitors may still be running. Newly invoked commands/timers use the upgraded
+programs; an explicit `check`/`reload` starts updated long-running SSH monitors.
+If a home is unavailable or a list is malformed, installation reports a deferred
+migration and preserves original data. Fix access/format and run `apply` to retry.

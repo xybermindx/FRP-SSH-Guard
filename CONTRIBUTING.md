@@ -32,6 +32,12 @@ export inputs and generated archives, rejecting non-documentation IPs and privat
 data paths. Set `FRP_GUARD_PRIVACY_RULES_FILE` for private checks outside a Git clone.
 Failures report categories and redacted paths, never the matched content.
 
+An owner-approved public attribution line can be recorded as a SHA-256 digest
+in the private JSON's optional `public_line_hashes` array. Only that exact line
+is exempt from identifier matching; IP and key-material checks still apply.
+Keep all deployment patterns intact. Never use this exception for deployment
+data, and keep the local rules and encrypted Actions secret synchronized.
+
 After a privacy history rewrite, discard old clones and clone again instead of
 merging old branches, which would restore the removed history.
 

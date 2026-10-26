@@ -2,8 +2,15 @@
 
 ## 0.0.5
 
-Released under tag `v0.0.5`; Debian package version `0.0.5-3`.
+Released under tag `v0.0.5`; install `frp-ssh-guard_0.0.5.deb`.
 
+- Merge manual and automatic whitelist/blocklist entries into commented home files
+  with `[all]` and per-port sections, source labels and absolute expiry timestamps.
+  Installation imports existing jails and legacy lists without resetting live bans.
+- Fix local SSH learning for trusted sshd journal records, including PAM successes;
+  refresh expiry on trusted login and honor whitelist scope in the auth detector.
+- Keep the public download filename at the application version; retain an internal
+  Debian revision so APT upgrades earlier builds automatically.
 - Add optional server SSH port-22 protection using connection limits and local
   sshd failure/invalid-user outcomes. Passwords are never collected.
 - Add `PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off` beside port selection.

@@ -61,7 +61,7 @@ LOGIN_USERS=""
 # Maximum learned addresses (integer 1–1000000); oldest entries evicted. Default 500.
 MAX_LEARNED=500
 # Learned-address timeout: positive integer + s/m/h/d/w; default 90 days.
-# Existing persisted entries have their timeout renewed when rules are reapplied.
+# Trusted successful logins refresh this expiry; apply/reload/reboot do not.
 LEARN_TIMEOUT=90d
 
 # Repeat-offender history window; positive integer + s/m/h/d/w. Default 90 days.
@@ -70,7 +70,7 @@ STRIKE_WINDOW=90d
 # Increasing "strike-count:duration" pairs, counts >=2. Empty disables escalation.
 # Default: 2 offenses=1 day, 3=3 days, 4=7 days, 5 or more=28 days.
 STRIKE_LADDER="2:1d 3:3d 4:7d 5:28d"
-# Default timeout when persisted strike bans are restored. Default 28 days.
+# Maximum strike duration from the latest offense. Default 28 days.
 # The strike helper caps ladder durations at this value.
 STRIKE_MAX=28d
 

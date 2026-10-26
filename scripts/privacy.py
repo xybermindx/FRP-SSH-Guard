@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check public source and packages without printing private values."""
 import argparse
+import hashlib
 import importlib.util
 import io
 import ipaddress
@@ -22,12 +23,18 @@ EXAMPLES = tuple(ipaddress.ip_network(n) for n in (
 LOCAL = tuple(ipaddress.ip_address(n) for n in ('0.0.0.0', '127.0.0.1', '::', '::1'))
 PRIVATE_DIRS = {'.private-artifacts', '.aws', '.codex', '.agents', '.frp-ssh-guard', 'lists', 'logs'}
 LIVE_FILES = {'etc/settings.conf', 'etc/guard.conf', 'etc/ports.conf', 'etc/active.nft',
-              'applied.conf', 'auth-state.json', 'etc/user-home.json'}
+              'applied.conf', 'auth-state.json', 'unified-state.json', 'learn-cursor.json', 'etc/user-home.json'}
 ARCHIVES = ('.zip', '.tar.gz', '.tgz', '.tar.xz', '.tar', '.deb', '.bundle')
 
 
 def git(*args):
     return subprocess.check_output(['git', *args], cwd=ROOT, stderr=subprocess.DEVNULL)
+
+
+class Rules(list):
+    def __init__(self, patterns, public_line_hashes=()):
+        super().__init__(patterns)
+        self.public_line_hashes = set(public_line_hashes)
 
 
 def load_rules(required):
@@ -44,10 +51,14 @@ def load_rules(required):
         if required:
             raise ValueError('private rules required')
         return []
-    patterns = json.loads(value)['patterns']
+    config = json.loads(value)
+    patterns = config['patterns']
     if not isinstance(patterns, list) or not patterns or not all(isinstance(p, str) and p for p in patterns):
         raise ValueError('invalid private rules')
-    return [re.compile(p, re.IGNORECASE) for p in patterns]
+    approved = config.get('public_line_hashes', [])
+    if not isinstance(approved, list) or not all(isinstance(h, str) and re.fullmatch(r'[0-9a-f]{64}', h) for h in approved):
+        raise ValueError('invalid public line hashes')
+    return Rules([re.compile(p, re.IGNORECASE) for p in patterns], approved)
 
 
 def private_ips(text):
@@ -79,7 +90,12 @@ class Audit:
         text = data.decode('utf-8', 'replace')
         # Source fixtures can encode line boundaries rather than contain newlines.
         text = re.sub(r'\\[nrt]', '\n', text)
-        if any(rule.search(text) for rule in self.rules):
+        # Exact owner-approved public attribution can be exempted without
+        # weakening deployment-name rules elsewhere. IP/key checks still apply.
+        approved = getattr(self.rules, 'public_line_hashes', set())
+        private_text = '\n'.join('' if hashlib.sha256(line.encode()).hexdigest() in approved else line
+                                 for line in text.splitlines())
+        if any(rule.search(private_text) for rule in self.rules):
             self.report(location, 'private identifier or deployment port')
         if any(private_ips(text)):
             self.report(location, 'non-documentation IP address')

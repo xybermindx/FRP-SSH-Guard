@@ -101,7 +101,7 @@ cat "$GUARD_DIR/rules.nft"
             {'elem': {'val': '198.51.100.7', 'expires': 1140}},
             {'elem': {'val': {'concat': ['2001:db8::7', 22001]}, 'expires': 900}}
         ]}}]}))
-        for command in ('cmd_banned', 'cmd_blocklist'):
+        for command in ('cmd_banned',):
             result = self.run_guard('fake_nft() { cat "$GUARD_DIR/ban.json"; }\n'
                                     'NFTP=fake_nft\ntable_active() { return 0; }\n' + command)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -130,10 +130,11 @@ cat "$GUARD_DIR/rules.nft"
              mock.patch('subprocess.run', side_effect=run_command) as run, \
              mock.patch('shutil.chown'), contextlib.redirect_stdout(io.StringIO()):
             runpy.run_path(str(ROOT / 'bin/frp-ssh-guard-strike.py'))
-        self.assertEqual((self.root / 'lists/hardban.conf').read_text(), '198.51.100.1\n')
+        self.assertTrue((self.root / 'lists/hardban.conf').read_text().startswith('198.51.100.1 all source=strike until='))
         self.assertIn('198.51.100.1\t2\t', (self.root / 'lists/strikes.tsv').read_text())
         self.assertTrue(all('custom_guard' in call.args[0] for call in run.call_args_list if call.args[0][0] != 'bash'))
-        self.assertTrue(any('timeout 10800s' in str(call.args[0]) for call in run.call_args_list))
+        timeouts = [int(call.args[0][-1].split('timeout ')[1].split('s')[0]) for call in run.call_args_list if 'timeout ' in str(call.args[0])]
+        self.assertTrue(timeouts and all(10790 <= seconds <= 10800 for seconds in timeouts))
 
     def test_packaged_paths(self):
         self.env.update(GUARD_ETC_DIR=str(self.root / 'etc'), GUARD_LIST_DIR=str(self.root / 'custom-lists'),
@@ -159,9 +160,10 @@ cat "$GUARD_DIR/rules.nft"
              mock.patch('subprocess.run', side_effect=run_command) as run, \
              mock.patch('shutil.chown'), contextlib.redirect_stdout(io.StringIO()):
             runpy.run_path(str(ROOT / 'bin/frp-ssh-guard-strike.py'))
-        self.assertEqual((self.root / 'lists/hardban.conf').read_text(), '198.51.100.2 22001\n')
-        self.assertTrue(any('{ 198.51.100.2 . 22001 timeout 86400s }' in str(call.args)
-                            for call in run.call_args_list))
+        self.assertTrue((self.root / 'lists/hardban.conf').read_text().startswith('198.51.100.2 22001 source=strike until='))
+        timeouts = [int(call.args[0][-1].split('timeout ')[1].split('s')[0])
+                    for call in run.call_args_list if '{ 198.51.100.2 . 22001 timeout ' in str(call.args)]
+        self.assertTrue(timeouts and all(86390 <= value <= 86400 for value in timeouts))
 
     def test_help_without_privileges(self):
         result = subprocess.run(['bash', str(ROOT / 'bin/frp-ssh-guard-persistent.sh'), '--help'],
@@ -174,6 +176,8 @@ cat "$GUARD_DIR/rules.nft"
         expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
         (self.root / 'lists/blocklist.conf').write_text(
             f'203.0.113.0/24 22001,22003\n2001:db8::7 all until={expiry}\n')
+        (self.root / 'lists/whitelist.conf').write_text(
+            f'[22,22001]\n198.51.100.77 source=learned until={expiry}\n')
         initial = self.rules('22001\n22003\n')
         replacement = self.rules('22001\n22003\n', config='JAIL_PER_PORT=on\n', active=True)
         self.assertEqual(initial.returncode, 0, initial.stderr)
