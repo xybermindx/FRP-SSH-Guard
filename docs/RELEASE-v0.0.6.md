@@ -3,8 +3,6 @@
 Add observation-first slow SSH detection, private local alerts and timestamped reports.
 Existing fast protection, jail scope and ban lifetimes stay in place.
 
-Project credit: [XyberMind team](http://www.xyber-mind.com/).
-
 [English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.6/README.md) ·
 [Chinese guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.6/README.zh-CN.md)
 
@@ -54,3 +52,5 @@ configuration; Fail2ban and other firewalls remain independent.
 See the [validation record](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.6/docs/VALIDATION.md)
 for platforms and tests. Full Ubuntu FRP/systemd runtime and ARM/32-bit runtime
 have not been verified. The v0.0.5 tag and package remain unchanged.
+
+<sub>An X-project by [XyberMind](http://www.xyber-mind.com/).</sub>

@@ -24,8 +24,6 @@ custom values and active protection. Both new protection switches default to off
 [Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
 [Verification](#verify-that-protection-takes-effect) · [Build from source](#open-source-and-building)
 
-Project credit: [XyberMind team](http://www.xyber-mind.com/).
-
 ## Observed deployment results
 
 An operator-reported dataset from a live deployment during a **~10-day observation window**, together with a **~30-day backend log window**.
@@ -599,3 +597,5 @@ recent legacy short-window attempts are imported without inventing long history.
 Observation tables are bounded to 200,000 rows each; capacity loss is shown in reports.
 Subnet reports group distinct automatically banned sources by jail scope and
 IPv4 /24 or IPv6 /64; manual and restored bans do not count. No subnet is auto-blocked.
+
+<sub>An X-project by [XyberMind](http://www.xyber-mind.com/).</sub>

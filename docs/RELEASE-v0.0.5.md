@@ -3,8 +3,6 @@
 Protect FRP-forwarded SSH ports and optionally the server's SSH port 22, with
 shared or per-port jails and upgrades that preserve your configuration.
 
-Project credit: [XyberMind team](http://www.xyber-mind.com/).
-
 [English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/README.md) ·
 [Chinese guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/README.zh-CN.md) ·
 [Examples](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/docs/EXAMPLES.md) ·
@@ -69,3 +67,5 @@ Saved entries retain their original expiry across reload and reboot.
 
 The uploaded assets are the `.deb` and its checksum file. GitHub also provides
 source ZIP and tar.gz downloads from the tag.
+
+<sub>An X-project by [XyberMind](http://www.xyber-mind.com/).</sub>
