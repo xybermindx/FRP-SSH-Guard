@@ -180,7 +180,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5-1.deb
+sudo apt install ./frp-ssh-guard_0.0.5-2.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -193,13 +193,30 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 Installation automatically creates this folder and migrates existing settings
-and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5-1.deb` uses the
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5-2.deb` uses the
 invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
-customized files, even when another administrator installs the package.
+customized values, even when another administrator installs the package.
+
+Starting with package `0.0.5-2`, installation also adds missing settings and their
+comments from the current template. Missing `PROTECT_SERVER_SSH=off` and
+`JAIL_PER_PORT=off` switches are inserted immediately below `PROTECTED_PORTS` and
+`EXCLUDE_PORTS`, before other settings. Existing assignments and comments stay
+intact, including switches already set to `on`. Before changing a file, the
+installer saves an exact private copy beside it as `settings.conf.before-upgrade-*`
+(mode 0600). Reinstalling a complete config makes no changes or extra backups.
+Other missing defaults are appended; a missing `PROTECTED_PORTS` is never filled
+with an empty value that would override a legacy port list.
+
+This updates the editable file only. Accepted policy, active bans and timer
+deadlines stay unchanged; pending custom edits remain unapplied. Status can show
+pending edits after defaults are added. Set `PROTECT_SERVER_SSH=on` and explicitly
+run `check` then `reload` when ready to activate local SSH protection. An unavailable
+or invalid file is left alone with a notice; fix it and reinstall using
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-2.deb` to retry.
 
 To choose an owner before the first migration, use
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-1.deb`.
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-2.deb`.
 Conflicting existing home files or an unavailable home leave the old configuration
 in use; the installer reports this instead of overwriting data. Use
 `frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
@@ -211,6 +228,8 @@ For public ports `22001`, `22003`, and `23000–23010` except `23005`:
 ```bash
 PROTECTED_PORTS="22001,22003,23000-23010"
 EXCLUDE_PORTS="23005"
+PROTECT_SERVER_SSH=off
+JAIL_PER_PORT=off
 PER_IP_RATE=2
 PER_IP_BURST=40
 GLOBAL_RATE=30
@@ -419,9 +438,9 @@ If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
 to switch to the current version while retaining settings.
 
-The current package is `0.0.5-1`: application version `0.0.5`, Debian revision `1`.
-It upgrades both v0.0.4 and earlier local v0.0.5 packages with the normal command
-above; no `--reinstall` is needed. Later revised packages use `0.0.5-2`, `0.0.5-3`,
+The current package is `0.0.5-2`: application version `0.0.5`, Debian revision `2`.
+It upgrades v0.0.4, earlier local v0.0.5 builds and `0.0.5-1` with the normal command
+above; no `--reinstall` is needed. Later revised packages use `0.0.5-3`, `0.0.5-4`,
 or a newer application version. Installing the same package version again is
 normally a no-op. Use `dpkg-query -W frp-ssh-guard` to see the full package version;
 `frp-ssh-guard --version` shows the application version.
@@ -439,8 +458,9 @@ new commands and timer invocations use updated code. Enable new features explici
 Existing `guard.conf`/`ports.conf`
 installations remain supported until migrated; the package does not mask them with
 an empty new settings file. Follow [migration instructions](docs/MIGRATING.md).
-The generated `settings.conf` is preserved by maintainer scripts rather than being
-replaced on package upgrades; updated defaults are available in the installed docs.
+Maintainer scripts retain existing `settings.conf` values and add only missing
+commented options, with a private backup. The complete defaults remain available
+in the installed docs.
 
 ## Open source and building
 

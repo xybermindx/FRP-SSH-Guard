@@ -72,9 +72,9 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-The local candidate builds `frp-ssh-guard_0.0.5-1.deb` and `SHA256SUMS`.
-After publication is authorized, use tag `v0.0.5-1`; a later packaging revision
-uses `v0.0.5-2`, and so on. The workflow checks the tag against the full Debian
+The local candidate builds `frp-ssh-guard_0.0.5-2.deb` and `SHA256SUMS`.
+After publication is authorized, use tag `v0.0.5-2`; a later packaging revision
+uses `v0.0.5-3`, and so on. The workflow checks the tag against the full Debian
 version and verifies the package metadata before creating a draft.
 The existing public v0.0.4 release and its filenames remain unchanged.
 The filename omits the optional architecture suffix; Debian metadata remains
@@ -106,7 +106,7 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 - `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.
 
-`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-1`.
+`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-2`.
 APT compares this metadata, not the filename. Revision `1` sorts after the older
 bare `0.0.5`, and increasing revisions allow ordinary `sudo apt install ./FILE.deb`
 upgrades. A new application version sorts after revisions of the previous one.
@@ -137,7 +137,9 @@ repository. Checksums detect changes but do not replace artifact signatures.
   archives provide the full MIT-licensed runtime, packaging, build scripts, and tests.
 - Check install, migration, source build, language links, and license links from
   the resulting repository and extracted archives.
-- Retain user settings on upgrade; ship updated defaults as examples.
+- Retain user values/comments on upgrade; back up the file before adding missing
+  commented defaults. Never override a legacy port list with an empty selection.
+  Test custom on/off values and idempotent reinstallation.
 - Test an active upgrade with `tests/vm-acceptance.py`: preserve accepted policy,
   custom home files, jail membership and remaining expiry, timer configuration
   and deadlines. Do not add service restarts, firewall reapplication, or

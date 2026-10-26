@@ -2,6 +2,15 @@
 
 ## 0.0.5 (local candidate; not published)
 
+- Debian revision `0.0.5-2`: merge missing commented settings during package/source
+  installation, keeping existing values, comments, permissions and registered
+  owner. Save an exact private backup before changes; complete configs are untouched.
+- Place missing local SSH and per-port jail switches just below the port selection
+  and exclusions. Retain explicit switch values and legacy port-file behavior.
+- Keep accepted policy, pending edits, live bans and timer deadlines unchanged
+  while updating editable settings; defer unavailable/invalid files with a notice.
+- Clarify the settings path in CLI help and group template controls near ports.
+
 - Package as Debian version `0.0.5-1` so ordinary `sudo apt install ./FILE.deb`
   upgrades earlier local `0.0.5` builds without `--reinstall`. Track packaging
   revisions separately, add `make bump-revision`, and validate revisioned release

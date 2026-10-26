@@ -84,12 +84,17 @@ def main():
     home = Path('/home/guardadmin/.frp-ssh-guard')
     had_home = (home / 'settings.conf').exists()
     settings = home / 'settings.conf' if had_home else Path('/etc/frp-ssh-guard/settings.conf')
-    settings.write_text('PROTECTED_PORTS="22001,22003"\nPER_IP_RATE=9\nPER_IP_BURST=13\n'
+    settings.write_text('# Custom policy kept during upgrades\nPROTECTED_PORTS="22001,22003"\n'
+                        'EXCLUDE_PORTS=""\nPER_IP_RATE=9\nPER_IP_BURST=13\n'
                         'BAN_TIMEOUT=43m\nSTRIKE_LADDER="2:7h 3:2d"\n')
     lists = Path('/var/lib/frp-ssh-guard/lists')
     manual = home if had_home else lists
     (manual / 'blocklist.conf').write_text('203.0.113.8\n')
     guard('enable')
+    # A pending edit must survive installation without changing accepted policy.
+    settings.write_text(settings.read_text().replace('BAN_TIMEOUT=43m', 'BAN_TIMEOUT=47m'))
+    original_settings = settings.read_bytes()
+    original_mode = settings.stat().st_mode
     for unit, duration in [('log', '17min'), ('strike', '23min')]:
         directory = Path(f'/etc/systemd/system/frp-ssh-guard-{unit}.timer.d')
         directory.mkdir(exist_ok=True)
@@ -103,7 +108,7 @@ def main():
     fail2ban = Path('/etc/fail2ban/jail.local')
     fail2ban.parent.mkdir(exist_ok=True)
     fail2ban.write_text('# unrelated local customization\n[sshd]\nbantime = 7h\n')
-    files = [settings, Path('/var/lib/frp-ssh-guard/applied.conf'), lists / 'blocklist.conf', fail2ban]
+    files = [Path('/var/lib/frp-ssh-guard/applied.conf'), lists / 'blocklist.conf', fail2ban]
     if had_home:
         files += [home / 'blocklist.conf', home / 'whitelist.conf',
                   Path('/etc/frp-ssh-guard/user-home.json')]
@@ -129,7 +134,21 @@ def main():
     assert 'tcp dport 22 ' not in output('nft', 'list', 'table', 'inet', 'frp_ssh_persistent_guard')
     print('PASS: plain sudo apt install upgrades the package and preserves custom files, active service, timers and ban expiry', flush=True)
 
-    assert (home / 'settings.conf').read_bytes() == settings.read_bytes()
+    upgraded = (home / 'settings.conf').read_text()
+    for line in original_settings.decode().splitlines():
+        assert line in upgraded.splitlines()
+    assert upgraded.index('EXCLUDE_PORTS=') < upgraded.index('PROTECT_SERVER_SSH=off')
+    assert upgraded.index('PROTECT_SERVER_SSH=off') < upgraded.index('JAIL_PER_PORT=off') < upgraded.index('PER_IP_RATE=9')
+    assert 'SSH_AUTH_FAILURES=5\n' in upgraded
+    assert 'SSH_INVALID_USER_FAILURES=3\n' in upgraded
+    assert 'SSH_AUTH_WINDOW=10m\n' in upgraded
+    assert (home / 'settings.conf').stat().st_mode == original_mode or not had_home
+    backups = list(home.glob('settings.conf.before-upgrade-*'))
+    assert len(backups) == 1 and backups[0].read_bytes() == original_settings
+    assert backups[0].stat().st_mode & 0o777 == 0o600
+    assert backups[0].stat().st_uid == int(output('id', '-u', 'guardadmin'))
+    assert 'BAN_TIMEOUT=43m\n' in Path('/var/lib/frp-ssh-guard/applied.conf').read_text()
+    assert 'Pending edits: yes' in guard('status')
     if not had_home:
         assert (home / 'blocklist.conf').read_bytes() == (lists / 'blocklist.conf').read_bytes()
     # Existing home inputs and their normalized root caches were snapshotted
@@ -150,6 +169,10 @@ def main():
         assert expected == properties(f'frp-ssh-guard-{unit}.timer', list(expected))
     assert 0 < jail()['198.51.100.88'] <= ttl_after
     guard('config-home', 'guardadmin')  # idempotent; no manager reload
+    settings = home / 'settings.conf'
+    settings.write_text(settings.read_text().replace('PROTECT_SERVER_SSH=off', 'PROTECT_SERVER_SSH=on')
+                       .replace('JAIL_PER_PORT=off', 'JAIL_PER_PORT=on'))
+    files.append(settings)
     for unit in ('log', 'strike'):
         path = Path(f'/etc/systemd/system/frp-ssh-guard-{unit}.timer.d/custom.conf')
         path.write_text(path.read_text() + 'OnActiveSec=31min\n')
@@ -161,10 +184,12 @@ def main():
                      for unit, expected in timers_before.items()}
     run('dpkg', '-i', str(new))
     assert before == {str(path): (path.read_bytes(), path.stat().st_mode) for path in files}
-    assert (home / 'settings.conf').read_bytes() == settings.read_bytes()
+    assert list(home.glob('settings.conf.before-upgrade-*')) == backups
+    assert 'PROTECT_SERVER_SSH=on\n' in settings.read_text() and 'JAIL_PER_PORT=on\n' in settings.read_text()
+    assert 'tcp dport 22 ' not in output('nft', 'list', 'table', 'inet', 'frp_ssh_persistent_guard')
     for unit, expected in timers_before.items():
         assert expected == properties(f'frp-ssh-guard-{unit}.timer', list(expected))
-    print('PASS: automatic sudo-user home configuration, immediate file watching, and root reinstall retain policy/bans/owner/timers', flush=True)
+    print('PASS: missing settings added beside ports with private backup; custom values, pending edits, owner, bans and timers retained on reinstall', flush=True)
 
     run('ip', 'netns', 'add', 'guard-client')
     run('ip', 'link', 'add', 'guard-host', 'type', 'veth', 'peer', 'name', 'guard-peer')

@@ -16,6 +16,8 @@ frp-ssh-guard --help
 home_dir=$(python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py location /etc/frp-ssh-guard)
 [[ "$home_dir" == /root/.frp-ssh-guard ]]
 [[ $(stat -c %a "$home_dir") == 700 && $(stat -c %a "$home_dir/settings.conf") == 600 ]]
+grep -qx 'PROTECT_SERVER_SSH=off' "$home_dir/settings.conf"
+grep -qx 'JAIL_PER_PORT=off' "$home_dir/settings.conf"
 printf '\nPROTECTED_PORTS=22001\nPER_IP_RATE=9\n' >> "$home_dir/settings.conf"
 printf '198.51.100.1\n' > /var/lib/frp-ssh-guard/lists/learned.conf
 cp "$home_dir/settings.conf" /tmp/expected-settings.conf
@@ -58,6 +60,9 @@ grep -qx 'BAN_TIMEOUT=3h' /etc/frp-ssh-guard/guard.conf
 grep -qx '22001' /etc/frp-ssh-guard/ports.conf
 grep -qx 'BAN_TIMEOUT=3h' /home/guardlegacy/.frp-ssh-guard/settings.conf
 grep -qx 'PROTECTED_PORTS=22001' /home/guardlegacy/.frp-ssh-guard/settings.conf
+grep -qx 'PROTECT_SERVER_SSH=off' /home/guardlegacy/.frp-ssh-guard/settings.conf
+grep -qx 'JAIL_PER_PORT=off' /home/guardlegacy/.frp-ssh-guard/settings.conf
+[[ $(find /home/guardlegacy/.frp-ssh-guard -maxdepth 1 -name 'settings.conf.before-upgrade-*' | wc -l) == 1 ]]
 [[ $(stat -c %U /home/guardlegacy/.frp-ssh-guard/settings.conf) == guardlegacy ]]
 # Minimal images can configure dpkg to exclude /usr/share/doc. Verify the
 # shipped payload independently of those image-level installation filters.

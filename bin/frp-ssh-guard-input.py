@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Parse editable data without executing it; manage an administrator's home files."""
+from contextlib import contextmanager
 import datetime as dt
 import fcntl
 import ipaddress
@@ -9,6 +10,7 @@ from pathlib import Path
 import pwd
 import re
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -231,9 +233,9 @@ def migrate(base, state, units, user, command=None):
     return directory
 
 
-def auto_home(base, state, units, command):
-    # Match lifecycle/CLI lock order. Serializes migration with manual edits,
-    # helper writes and explicit policy changes, without applying any policy.
+@contextmanager
+def installation_lock():
+    # Match lifecycle/CLI lock order; installation never applies policy.
     lock_path = os.environ.get('GUARD_LOCK_FILE', '/run/frp-ssh-guard.lock')
     with open(lock_path + '.lifecycle', 'a') as lifecycle, open(lock_path, 'a') as runtime:
         deadline = time.monotonic() + 30
@@ -244,12 +246,113 @@ def auto_home(base, state, units, command):
                     break
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
-                        raise OSError('Another guard operation is running; home migration was deferred.')
+                        raise OSError('Another guard operation is running; configuration update was deferred.')
                     time.sleep(0.1)
+        yield
+
+
+def auto_home(base, state, units, command):
+    with installation_lock():
         existing = location(base)
         if existing:
             return Path(existing['directory'])  # later upgrades retain the selected owner
         return migrate(base, state, units, installer_user(), command)
+
+
+def merge_defaults(original, template):
+    present = settings(original)
+    settings(template)  # validate the trusted template before changing anything
+    additions, switches, comments, keys = [], [], [], []
+    for line in template.splitlines(keepends=True):
+        parsed = settings(line)
+        if not parsed:
+            comments.append(line)
+            continue
+        key = next(iter(parsed))
+        # An absent port selection can intentionally use legacy ports.conf.
+        # Never shadow it with the template's empty selection.
+        if key not in present and key != 'PROTECTED_PORTS':
+            block = ''.join(comments) + line.rstrip('\r\n') + '\n'
+            (switches if key in ('EXCLUDE_PORTS', 'PROTECT_SERVER_SSH', 'JAIL_PER_PORT') else additions).append(block)
+            present[key] = parsed[key]
+            keys.append(key)
+        comments = []
+    updated = original
+    if switches:
+        lines = original.splitlines(keepends=True)
+        position = 0
+        for number, line in enumerate(lines, 1):
+            if {'PROTECTED_PORTS', 'EXCLUDE_PORTS'} & settings(line).keys():
+                position = number
+        before = ''.join(lines[:position])
+        updated = (before + ('\n' if before and not before.endswith('\n') else '')
+                   + '\n# Missing port settings and protection switches added during installation.\n'
+                   + ''.join(switches) + '\n' + ''.join(lines[position:]))
+    if additions:
+        updated += ('\n\n# Missing defaults added by FRP-SSH-Guard during installation.\n'
+                    '# Existing values are retained; policy changes need check/reload.\n'
+                    + ''.join(additions))
+    return updated, keys
+
+
+def append_defaults(path, template):
+    """Preserve the original bytes and metadata; save a private backup first."""
+    path = Path(path)
+    if path.parent.is_symlink():
+        raise ValueError('Configuration directory must not be a symbolic link.')
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, 'rb') as source:
+        fcntl.flock(source, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid():
+            raise ValueError('Configuration must be a regular file owned by its selected administrator.')
+        original = source.read()
+        updated, keys = merge_defaults(original.decode('utf-8'), template)
+        if not keys:
+            return []
+        descriptor, temporary = tempfile.mkstemp(prefix='.guard-', dir=path.parent)
+        try:
+            with os.fdopen(descriptor, 'wb') as output:
+                # Changing files in a user home always runs as that user.
+                target_info = os.fstat(output.fileno())
+                if (target_info.st_uid, target_info.st_gid) != (info.st_uid, info.st_gid):
+                    os.fchown(output.fileno(), info.st_uid, info.st_gid)
+                os.fchmod(output.fileno(), stat.S_IMODE(info.st_mode))
+                output.write(updated.encode('utf-8'))
+                output.flush()
+                os.fsync(output.fileno())
+            descriptor, backup = tempfile.mkstemp(prefix=path.name + '.before-upgrade-', dir=path.parent)
+            with os.fdopen(descriptor, 'wb') as saved:
+                os.fchmod(saved.fileno(), 0o600)
+                saved.write(original)
+                saved.flush()
+                os.fsync(saved.fileno())
+            # Detect a concurrent editor before replacing the file. Guard CLI
+            # operations are already serialized by the installation locks.
+            current = path.lstat()
+            fields = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+            if any(getattr(current, field) != getattr(info, field) for field in fields):
+                raise ValueError('Configuration changed during the update; retry installation.')
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    print('Added missing settings: ' + ', '.join(keys) + '. Original saved as ' + Path(backup).name)
+    return keys
+
+
+def upgrade_settings(base, template):
+    with installation_lock():
+        selected = location(base)
+        directory = Path(selected['directory']) if selected else Path(base)
+        path = directory / 'settings.conf'
+        if not path.exists() and not path.is_symlink() and (directory / 'guard.conf').exists():
+            path = directory / 'guard.conf'
+        defaults = Path(template).read_text()
+        if selected:
+            as_user(selected['user'], ['upgrade-user-settings'], [str(path), defaults])
+        else:
+            append_defaults(path, defaults)
 
 
 def main():
@@ -324,6 +427,14 @@ def main():
             print('Automatic home setup could not complete; existing configuration was retained. '
                   'Check the settings path with frp-ssh-guard --help and retry config-home when ready.',
                   file=sys.stderr)
+    elif action == 'upgrade-settings':
+        try:
+            upgrade_settings(*args)
+        except (ValueError, OSError, KeyError, subprocess.CalledProcessError):
+            print('Missing settings could not be added; existing configuration and active policy were retained. '
+                  'Check file access/format and retry package installation with --reinstall.', file=sys.stderr)
+    elif action == 'upgrade-user-settings':
+        append_defaults(*json.load(sys.stdin))
     else:
         raise ValueError('Unknown input operation.')
 

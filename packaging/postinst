@@ -17,6 +17,8 @@ case "${1:-}" in
         # Discover units on explicit activation/reload, never during an upgrade.
         python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py auto-home \
             /etc/frp-ssh-guard /var/lib/frp-ssh-guard /etc/systemd/system /usr/sbin/frp-ssh-guard
+        python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py upgrade-settings \
+            /etc/frp-ssh-guard /usr/share/frp-ssh-guard/settings.conf.default
         echo 'FRP-SSH-Guard installed; installation does not activate protection.'
         echo 'Edit the settings path shown by: frp-ssh-guard --help'
         echo 'Then run: sudo frp-ssh-guard check && sudo frp-ssh-guard enable'

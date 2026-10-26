@@ -110,7 +110,7 @@ PORTS argument (optional) for allow/block makes the entry fine-grained:
 
 Settings edits take effect only after enable/reload. Manual list edits are watched.
 Quick start:
-  sudoedit /etc/frp-ssh-guard/settings.conf
+  Edit the Settings file shown below, then:
   sudo frp-ssh-guard check
   sudo frp-ssh-guard enable
   sudo frp-ssh-guard status

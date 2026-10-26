@@ -14,18 +14,19 @@ synthetic; raw host logs and configuration are excluded from the source export.
 
 | Check | Result |
 | --- | --- |
-| Shell/Python syntax and regression suite | Passed locally: 66 tests, one privileged test skipped (67 total). All 67 passed in the Debian VM, including Debian version ordering and actual package metadata/source export checks. |
+| Shell/Python syntax and regression suite | Passed locally: 73 tests, one privileged kernel test skipped (74 total), including Debian version ordering, package metadata and source exports. The seven configuration-upgrade tests also passed as root in the Debian VM. |
 | Real nftables kernel validation | Passed in VM: initial/replacement tables, shared/per-port jail types, scoped CIDR blocks and timed IPv6 manual elements. |
 | Active v0.0.4 → v0.0.5 Debian upgrade | Passed: custom settings, accepted policy, manual list, permissions, service invocation, timer settings, active ban and remaining expiry retained. |
 | Home migration and same-version Debian reinstall | Passed: settings/lists moved with correct owner/private permissions; active bans retained; reinstall preserves custom timer deadlines including `OnActiveSec`. |
 | Automatic installation migration (2026-10-26) | Passed: actual sudo apt reinstall over the earlier local v0.0.5 build selects the invoking user, copies existing configuration automatically and keeps service identity, live ban expiry and custom relative timer deadlines. A subsequent root reinstall retains that owner. |
 | Ordinary APT revision upgrade (2026-10-26) | Passed: `sudo apt install ./frp-ssh-guard_0.0.5-1.deb` upgrades the earlier local `0.0.5` package without `--reinstall`. Existing home settings/manual lists, owner registry, accepted policy, service identity, timer deadlines and active ban expiry remain unchanged. |
+| Missing defaults during revision upgrade | Passed: actual `0.0.5-1` → `0.0.5-2` APT upgrade inserts commented switches below ports and makes an exact owner-only backup. Custom values/comments, owner/mode, pending edits, accepted policy, bans and timer deadlines remain intact. Root reinstall preserves switches set to `on` and creates no extra backup. |
 | Automatic migration list watcher | Passed: editing the home blocklist as its owner updates the live firewall without a policy reload or timer tick. After reboot, the persistent watcher handles edits when the temporarily unavailable home returns. |
 | Real FRP connection bursts | Passed: new SYN traffic through actual forwarded SSH listeners triggered shared bans and per-port isolation as configured. |
 | Native SSH invalid-user attempts | Passed: three separate invalid-user connections triggered the authentication monitor; shared and port-22-only scope both verified. |
 | Manual blocks and expiry | Passed: selected-port block, permanent all-protected-port block, automatic expiry, and list updates preserving active automatic bans. |
 | Actual reboot with unavailable home | Passed: accepted native SSH/per-port policy and cached manual lists restored; timed manual block retained its original expiry. Pending home settings were not adopted. |
-| Debian package lifecycle | Passed in VM: fresh root install automatically creates private home files; reinstall preserves them; remove/purge retain home files; legacy conffile migration honors an explicitly selected owner via `tests/package-smoke.sh`. |
+| Debian package lifecycle | Passed again for `0.0.5-2` in VM: fresh root install creates complete private home files; reinstall preserves custom values; remove/purge retain home files. Legacy conffile migration keeps custom settings/ports, adds missing SSH/jail switches and creates one private backup for the explicitly selected owner. |
 | Source installation lifecycle | Passed in VM: fresh install with home files, version command, active reinstall with conflicting installer policy flags, unchanged settings/units/bans/timer deadlines, and uninstall retaining home files. |
 | Automatic source migration (2026-10-26) | Passed: active v0.0.4 source upgrade copies settings to the selected user's home, retains accepted policy/live bans/relative timer deadlines and immediately watches edits there. |
 | Remaining ban time display | Passed: both ban views display nftables JSON seconds correctly, including per-port IPv6 entries; the VM upgrade test compares the displayed value with the kernel expiry. |
@@ -37,7 +38,7 @@ namespace. Run it **only in a fresh disposable VM** with dependencies available:
 
 ```bash
 FRP_GUARD_DISPOSABLE=1 python3 tests/vm-acceptance.py \
-  /tmp/frp-ssh-guard_0.0.4.deb /tmp/frp-ssh-guard_0.0.5-1.deb /tmp/frp-binaries
+  /tmp/frp-ssh-guard_0.0.5-1.deb /tmp/frp-ssh-guard_0.0.5-2.deb /tmp/frp-binaries
 FRP_GUARD_LIVE_TESTS=1 python3 -m unittest discover -s tests -v
 ```
 

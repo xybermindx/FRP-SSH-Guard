@@ -85,6 +85,7 @@ if [[ ! -e /etc/systemd/system/frp-ssh-guard-auth.service ]]; then
 fi
 if (( UPGRADE )); then
   FRP_GUARD_CONFIG_USER="$CONFIG_USER" python3 "$BIN/frp-ssh-guard-input.py" auto-home "$ETC" "$PREFIX" /etc/systemd/system "$BIN/frp-ssh-guard"
+  python3 "$BIN/frp-ssh-guard-input.py" upgrade-settings "$ETC" "$SRC/etc/settings.conf.example"
   echo 'Programs upgraded. Existing settings, lists, live jails, units and timer schedules were preserved.'
   echo 'Installer policy flags do not change an existing installation; edit settings and use check/reload.'
   exit 0
@@ -125,6 +126,7 @@ chmod 0644 "$LISTS"/* 2>/dev/null || true
 
 # apply rules + create the (boot-persistent) guard service
 FRP_GUARD_CONFIG_USER="$CONFIG_USER" python3 "$BIN/frp-ssh-guard-input.py" auto-home "$ETC" "$PREFIX" /etc/systemd/system "$BIN/frp-ssh-guard"
+python3 "$BIN/frp-ssh-guard-input.py" upgrade-settings "$ETC" "$SRC/etc/settings.conf.example"
 GUARD_DIR="$PREFIX" "$BIN/frp-ssh-guard" enable
 
 # ---- helper units (learn / history / strike / list watcher) ----

@@ -3,6 +3,7 @@
 # First activation: sudo frp-ssh-guard enable
 # Saving alone does not change protection; reboot restores accepted settings.
 
+# === Ports and protection switches ===
 # Public frps forwarded TCP ports. Empty refuses activation unless local SSH is on.
 # Port numbers below are invented examples, not a deployment configuration.
 # Comma-separated ports/ranges; never include management SSH, frps control ports,
@@ -15,21 +16,25 @@ PROTECTED_PORTS=""
 # Example: EXCLUDE_PORTS="23005,23008-23009"
 EXCLUDE_PORTS=""
 
+# PROTECT_SERVER_SSH: local SSH protection switch (on/off).
 # Protect this server's SSH port 22, including observed authentication failures.
 # Default off. When enabled, port 22 is added to the protected ports automatically.
 PROTECT_SERVER_SSH=off
 
+# JAIL_PER_PORT: jail scope switch (on/off); port rate limits remain enabled.
 # Default off: a banned IP is blocked across ALL protected ports.
 # On: automatic and authentication bans apply only to the offending port.
 # Explicit manual block scopes are independent of this switch.
 JAIL_PER_PORT=off
 
+# === Local SSH authentication thresholds ===
 # Local sshd journal outcomes only; attempted passwords are never read or stored.
 # Count repeated invalid-user connections or failed authentications in this window.
 SSH_AUTH_FAILURES=5
 SSH_INVALID_USER_FAILURES=3
 SSH_AUTH_WINDOW=10m
 
+# === Connection limits and ban duration ===
 # Per source AND destination port: sustained new SYN packets/minute, not logins.
 # Positive integers 1–1000000. Default 2/minute with a burst allowance of 40.
 # Shared NAT/VPN users count together. Bursts replenish over time, not per minute.

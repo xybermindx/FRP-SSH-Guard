@@ -113,3 +113,15 @@ renews their configured timeout and resets counters, meters, and temporary bans.
 That happens on explicit policy reload, restart or reboot, not package upgrade or
 ordinary manual-list updates. Timed manual blocks retain their original expiry.
 See [verification](VALIDATION.md) for tested behavior and runtime limits.
+
+### Adding missing configuration options
+
+Installation merges commented template defaults into the selected editable file,
+retaining existing assignments and comments. Missing port exclusions and SSH/jail
+switches go beside port selection; other missing options go at the end. It never
+adds an empty `PROTECTED_PORTS` over legacy port-file input. The original file is
+backed up privately before atomic replacement, preserving its owner and mode.
+Home writes run as the registered user. Inaccessible/invalid files are deferred
+with a notice; complete files are left untouched. Both installation locks cover
+the merge. Accepted policy/digests, pending edits, live jails and timer schedules
+are not changed by this operation.

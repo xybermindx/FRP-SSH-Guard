@@ -4,19 +4,19 @@
 ## Upgrade while preserving settings and live jails
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.5-1.deb
+sudo apt install ./frp-ssh-guard_0.0.5-2.deb
 frp-ssh-guard --version
 sudo frp-ssh-guard status
 ```
 
-Package `0.0.5-1` is newer than both `0.0.4` and the earlier local `0.0.5`
-builds, so the normal APT command upgrades them without `--reinstall`. The
+Package `0.0.5-2` is newer than `0.0.4`, the earlier local `0.0.5` builds,
+and package `0.0.5-1`, so the normal APT command upgrades them without `--reinstall`. The
 application remains v0.0.5. Check the Debian revision with
 `dpkg-query -W frp-ssh-guard`. Future changed distributions must increment the
 revision or application version; an identical version normally needs no action.
 
 Do not purge, restart or reload just to upgrade. The installer replaces programs
-and creates only missing files; it preserves custom settings, manual lists,
+and fills in missing commented options; it preserves custom values, manual lists,
 accepted policy, history, live bans with their remaining timeouts, and service
 and timer configuration. Store custom timer units/drop-ins in
 `/etc/systemd/system/`, not package-owned `/usr/lib` files. Fail2ban's configuration
@@ -36,6 +36,27 @@ To enable a new feature, edit settings, then `check` and `reload`. An explicit
 policy reload rebuilds the table: temporary automatic bans and rate meters reset;
 persisted strike bans restore. Package upgrades themselves do not rebuild it.
 
+## Adding new settings to an existing file
+
+Package `0.0.5-2` merges missing commented defaults during installation. Missing
+`PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off` are inserted directly below the
+port selection/exclusion lines; other missing defaults go at the end. Existing
+assignments, comments, owner and permissions are retained. Explicit `on` values,
+empty values and duplicate custom assignments are not overwritten. A missing
+`PROTECTED_PORTS` remains absent to preserve legacy port-file behavior.
+
+Before the atomic update, an exact private backup is saved beside the selected
+file as `settings.conf.before-upgrade-*` (or `guard.conf.before-upgrade-*` for an
+unmigrated legacy config), mode 0600. Home updates run as the registered owner,
+even if another administrator installs the package. Reinstalling without missing
+keys leaves the file and backups unchanged. Invalid/unavailable files or unsafe
+links are left alone with a notice; after correcting access or format, retry
+using `sudo apt install --reinstall ./frp-ssh-guard_0.0.5-2.deb`.
+
+Accepted policy and its digest are not rewritten. Existing pending edits remain
+unapplied, so status may show pending edits after defaults are added. No services,
+jails or timers are restarted. Source upgrades use the same merge procedure.
+
 ## Automatic home configuration
 
 Installing the `.deb` now creates `~/.frp-ssh-guard/` automatically and copies
@@ -45,7 +66,7 @@ Once selected, the location remains unchanged on subsequent upgrades, regardless
 of who installs them. To select a different owner before the first migration:
 
 ```bash
-sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-1.deb
+sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-2.deb
 ```
 
 Legacy port-list input is converted when needed. Files have mode 0600 in a 0700
@@ -94,7 +115,7 @@ numerically higher Debian versions.
 To replace one of those installations while preserving settings and state:
 
 ```bash
-sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-1.deb
+sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-2.deb
 sudo frp-ssh-guard status
 ```
 
@@ -115,7 +136,7 @@ restore the accepted policy, not later edits.
 2. Install the new `.deb` without restarting the guard:
 
    ```bash
-   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-1.deb
+   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-2.deb
    sudo frp-ssh-guard status
    ```
 

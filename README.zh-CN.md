@@ -161,7 +161,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5-1.deb
+sudo apt install ./frp-ssh-guard_0.0.5-2.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -173,12 +173,26 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 安装会自动创建该目录，并迁移现有设置和手动名单。
-普通的 `sudo apt install ./frp-ssh-guard_0.0.5-1.deb` 使用调用 sudo 的用户的家目录；
+普通的 `sudo apt install ./frp-ssh-guard_0.0.5-2.deb` 使用调用 sudo 的用户的家目录；
 直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
-后续升级保留已选用户及其自定义文件，即使换一位管理员安装也不会更换位置。
+后续升级保留已选用户及其自定义值，即使换一位管理员安装也不会更换位置。
+
+从软件包 `0.0.5-2` 开始，安装器会从当前模板补齐缺失的设置及说明注释。
+缺失的 `PROTECT_SERVER_SSH=off` 和 `JAIL_PER_PORT=off` 开关会放在
+`PROTECTED_PORTS`、`EXCLUDE_PORTS` 的紧下方，位于其他设置之前。
+现有赋值和注释保留，包括已经设为 `on` 的开关。修改前会在同一目录保存完整原文件，
+命名为 `settings.conf.before-upgrade-*`，权限为 0600。配置完整时重复安装不会修改文件，
+也不会产生额外备份。其他缺失默认项追加到末尾；不会用空的 `PROTECTED_PORTS`
+覆盖旧式端口文件的选择。
+
+此操作只更新可编辑文件，不改变已接受策略、当前封禁或定时任务触发时间，
+也不会应用尚未确认的自定义修改。补齐默认项后，状态可能显示存在待应用修改。
+准备启用本机 SSH 防护时，将 `PROTECT_SERVER_SSH=on`，然后明确执行 `check`、`reload`。
+若文件不可访问或格式无效，会保留原文件并提示；修复后可用
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-2.deb` 重试。
 
 首次迁移前可用
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-1.deb`
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-2.deb`
 指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
 不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
 `sudo frp-ssh-guard config-home USERNAME` 重试。
@@ -190,6 +204,8 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```bash
 PROTECTED_PORTS="22001,22003,23000-23010"
 EXCLUDE_PORTS="23005"
+PROTECT_SERVER_SSH=off
+JAIL_PER_PORT=off
 PER_IP_RATE=2
 PER_IP_BURST=40
 GLOBAL_RATE=30
@@ -387,9 +403,9 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
 切换到当前版本，并保留现有设置。
 
-当前软件包版本为 `0.0.5-1`：程序版本 `0.0.5`，Debian 修订号 `1`。
-从 v0.0.4 或较早的本地 v0.0.5 软件包升级时，直接使用上面的普通命令即可，
-无需 `--reinstall`。后续修订使用 `0.0.5-2`、`0.0.5-3` 或更高的程序版本。
+当前软件包版本为 `0.0.5-2`：程序版本 `0.0.5`，Debian 修订号 `2`。
+从 v0.0.4、较早的本地 v0.0.5 或 `0.0.5-1` 软件包升级时，直接使用上面的普通命令即可，
+无需 `--reinstall`。后续修订使用 `0.0.5-3`、`0.0.5-4` 或更高的程序版本。
 再次安装相同版本的软件包通常不会执行操作。用 `dpkg-query -W frp-ssh-guard`
 查看完整软件包版本；`frp-ssh-guard --version` 显示程序版本。
 
@@ -403,7 +419,7 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 
 原有 `guard.conf`/`ports.conf` 部署在迁移前仍可使用，
 不会被空的新配置文件覆盖。详细操作见[迁移说明](docs/MIGRATING.md)（英文）。
-`settings.conf` 由维护脚本创建并保留，不会在升级时被替换；新版本默认示例随软件包文档提供。
+`settings.conf` 由维护脚本保留原有值，补齐缺失的设置及注释，并保存私密备份；完整默认示例仍随软件包文档提供。
 
 ## 开源与源码构建
 
