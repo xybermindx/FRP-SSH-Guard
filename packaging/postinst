@@ -13,20 +13,30 @@ case "${1:-}" in
         if [ ! -e /etc/frp-ssh-guard/settings.conf ] && [ ! -e /etc/frp-ssh-guard/guard.conf ]; then
             install -o root -g root -m 0640 /usr/share/frp-ssh-guard/settings.conf.default /etc/frp-ssh-guard/settings.conf
         fi
-        # Even daemon-reload can rebase custom OnActiveSec timer deadlines.
-        # Discover units on explicit activation/reload, never during an upgrade.
+        # Do not reload the systemd manager: this can rebase timer deadlines.
         python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py auto-home \
             /etc/frp-ssh-guard /var/lib/frp-ssh-guard /etc/systemd/system /usr/sbin/frp-ssh-guard
         python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py upgrade-settings \
             /etc/frp-ssh-guard /usr/share/frp-ssh-guard/settings.conf.default
         GUARD_DIR=/var/lib/frp-ssh-guard GUARD_ETC_DIR=/etc/frp-ssh-guard \
             python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-lists.py upgrade
-        echo 'FRP-SSH-Guard installed; installation does not activate protection.'
-        echo 'Edit the settings path shown by: frp-ssh-guard --help'
-        echo 'Then run: sudo frp-ssh-guard check && sudo frp-ssh-guard enable'
+        if [ -d /run/systemd/system ] && systemctl is-active --quiet frp-ssh-guard.service; then
+            # Honor administrator service policy in images and managed installs.
+            permitted=0
+            if [ -x /usr/sbin/policy-rc.d ]; then
+                /usr/sbin/policy-rc.d frp-ssh-guard restart || permitted=$?
+            fi
+            case "$permitted" in
+                0) /usr/sbin/frp-ssh-guard _upgrade ;;
+                101) echo 'Automatic refresh deferred by policy-rc.d; existing protection remains active.' ;;
+                *) echo 'Service policy check failed; automatic refresh was not attempted.' >&2; exit "$permitted" ;;
+            esac
+        else
+            echo 'FRP-SSH-Guard installed; fresh or inactive installations are not enabled automatically.'
+            echo 'Edit the settings path shown by: frp-ssh-guard --help'
+            echo 'Then run: sudo frp-ssh-guard check && sudo frp-ssh-guard enable'
+        fi
         echo 'Verify: sudo frp-ssh-guard status | Help: frp-ssh-guard --help'
-        echo 'After editing settings: sudo frp-ssh-guard reload'
-        echo 'Upgrades preserve settings, live bans, service enablement and timer schedules.'
-        echo 'No firewall or service restart is performed. Apply policy changes explicitly with reload.'
+        echo 'Later settings edits still need: sudo frp-ssh-guard reload'
         ;;
 esac

@@ -7,7 +7,13 @@
 - Bounded newest-first local alerts, owner-safe writes, offline-home spool, and report-only subnet clusters.
 - Timestamped reports, persistent sampled packet deltas, and read-only doctor diagnostics.
 - Direct authentication ban history avoids double-counting sampled bans and strikes.
-- Preserve settings, active jails and timer deadlines during package installation; activate monitors explicitly.
+- Package revision 2 automatically refreshes an active guard after installation:
+  atomically recompile accepted firewall policy and restart SSH monitors. No manual
+  reload is needed. Preserve custom settings, pending edits, saved ban scope and
+  absolute expiry, boot enablement and timer schedules. Rate meters reset.
+- Fresh, disabled and service-policy-denied installations are not activated.
+  Refresh failures are reported to APT; firewall validation/application failures
+  retain the previous accepted policy and rules.
 - Release titles use only the version number. English release notes link both language guides.
 
 ## 0.0.5

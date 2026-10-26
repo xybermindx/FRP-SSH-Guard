@@ -90,17 +90,23 @@ Package units are dpkg-owned; activation does not generate overriding `/etc` uni
 The source installer generates equivalent units for its prefix.
 
 The main packaged service brings up authentication monitoring, learning, history/strike timers, and manual-list
-watching. They stop with it. Package installation initializes only missing state
+watching. They stop with it. Fresh package installation initializes only missing state
 and settings, without activating protection. `settings.conf` is maintainer-script
 managed so upgrades cannot mask existing legacy configurations; it is preserved
 on remove. Purge erases system state but intentionally retains user home files.
 Updated examples ship under `/usr/share/doc`.
 
-Package and source upgrades replace programs without restarting services or
-reloading systemd units. Even `daemon-reload` can rebase custom `OnActiveSec`
-deadlines. The installed v0.0.4 post-removal hook still invokes it once during the
-first upgrade; v0.0.5 hooks avoid it on upgrade. New CLI/timer invocations use the
-new programs; existing Python processes adopt new code on explicit reload/restart.
+Starting with package revision 0.0.6-2, postinst refreshes an active guard through
+the internal `_upgrade` action. Under the lifecycle/runtime locks it snapshots
+live lists, compiles and validates accepted policy, atomically replaces the nftables
+table, and restarts SSH readers after releasing the runtime lock. It preserves
+pending edits and their digest; only newly supported runtime defaults and the
+observation marker are added. Failed nft application restores the accepted file.
+Helper failures are reported, rather than claiming successful activation.
+Main-service enablement, trial expiry and timers are untouched. No systemd manager
+reload is performed. The installed v0.0.4 removal hook can still invoke one during
+its first upgrade. Inactive installs and service-policy-denied installs do not
+activate. Source reinstalls retain their earlier explicit activation workflow.
 Home migration retargets an active list watcher using a transient systemd
 path/service pair, then stops the old path watcher. It does not reload systemd,
 restart the guard or touch timer deadlines. A persistent drop-in handles later
@@ -123,11 +129,12 @@ A deleted exported generation is suppressed until expiry; a later attack can
 create a new generation. Strike expiry is based on the latest offense, not each
 periodic timer execution. Successful trusted logins refresh learned expiry.
 
-The installer imports lists under the installation locks without issuing firewall
-mutations or restarting services. An active path watcher may then apply changed
-list files using accepted policy. Explicit policy reload/reboot rebuilds rate
-meters but restores exported entries with remaining time only. Kernel events not
-yet sampled can be lost on abrupt restart. See [verification](VALIDATION.md).
+The installer first imports lists under the installation locks, then automatically
+refreshes active package installations. A path watcher may also apply changed
+lists using accepted policy. Automatic refresh, explicit reload and reboot rebuild
+rate meters but restore exported entries with remaining time only. Upgrades export
+live entries before replacement; abrupt restarts can lose unsampled kernel events.
+See [verification](VALIDATION.md).
 
 ### Adding missing configuration options
 

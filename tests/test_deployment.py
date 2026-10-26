@@ -113,6 +113,68 @@ else:
         self.assertFalse((self.root / 'applied.conf').exists())
         self.assertFalse((self.root / 'service-enabled').exists())
 
+    def test_upgrade_uses_accepted_policy_and_refreshes_monitors(self):
+        self.require_ok(self.run_guard('enable'))
+        accepted = (self.root / 'applied.conf').read_text()
+        # Simulate a previously accepted pre-observation policy and broken edits.
+        (self.root / 'applied.conf').write_text(accepted.replace('OBSERVABILITY_VERSION=1', 'OBSERVABILITY_VERSION=0'))
+        self.settings('PROTECTED_PORTS="22003"\nPER_IP_RATE=invalid\n')
+        (self.root / 'no-listener').touch()
+        (self.root / 'systemctl.calls').write_text('')
+        self.require_ok(self.run_guard('_upgrade'))
+        self.assertEqual((self.root / 'applied.conf').read_text(), accepted)
+        self.assertIn('tcp dport 22001 ', (self.root / 'live.nft').read_text())
+        self.assertNotIn('tcp dport 22003 ', (self.root / 'live.nft').read_text())
+        self.assertIn('PER_IP_RATE=invalid', (self.root / 'etc/settings.conf').read_text())
+        calls = (self.root / 'systemctl.calls').read_text()
+        self.assertIn('restart frp-ssh-guard-auth.service', calls)
+        self.assertIn('restart frp-ssh-guard-learn.service', calls)
+        self.assertNotIn('daemon-reload', calls)
+        self.assertNotIn('restart frp-ssh-guard.service', calls)
+        self.assertNotIn('enable ', calls)
+        self.assertNotIn('.timer', calls)
+
+    def test_upgrade_does_not_activate_fresh_or_disabled_installations(self):
+        self.require_ok(self.run_guard('_upgrade'))
+        self.assertFalse((self.root / 'applied.conf').exists())
+        self.require_ok(self.run_guard('enable'))
+        self.require_ok(self.run_guard('disable'))
+        self.require_ok(self.run_guard('_upgrade'))
+        self.assertFalse((self.root / 'live.nft').exists())
+        self.assertFalse((self.root / 'service-enabled').exists())
+
+    def test_upgrade_preserves_trial_without_enabling_boot(self):
+        self.require_ok(self.run_guard('trial'))
+        (self.root / 'systemctl.calls').write_text('')
+        self.require_ok(self.run_guard('_upgrade'))
+        self.assertTrue((self.root / 'trial.pending').exists())
+        self.assertFalse((self.root / 'service-enabled').exists())
+        self.assertNotIn('enable ', (self.root / 'systemctl.calls').read_text())
+        self.assertNotIn('stop ', (self.root / 'systemctl.calls').read_text())
+
+    def test_upgrade_failure_keeps_previous_rules_and_policy(self):
+        self.require_ok(self.run_guard('enable'))
+        previous = (self.root / 'applied.conf').read_bytes()
+        rules = (self.root / 'live.nft').read_bytes()
+        for failure in ('fail-check', 'fail-apply'):
+            with self.subTest(failure=failure):
+                (self.root / failure).touch()
+                (self.root / 'systemctl.calls').write_text('')
+                result = self.run_guard('_upgrade')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.root / 'applied.conf').read_bytes(), previous)
+                self.assertEqual((self.root / 'live.nft').read_bytes(), rules)
+                self.assertNotIn('restart ', (self.root / 'systemctl.calls').read_text())
+                (self.root / failure).unlink()
+
+    def test_upgrade_helper_failure_is_reported(self):
+        self.require_ok(self.run_guard('enable'))
+        (self.root / 'fail-helper').touch()
+        result = self.run_guard('_upgrade')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Updated rules active', result.stderr)
+        self.assertTrue((self.root / 'live.nft').exists())
+
     def test_pending_settings_do_not_leak_through_apply_or_allow(self):
         self.require_ok(self.run_guard('enable'))
         self.settings('PROTECTED_PORTS="22003"\nPER_IP_RATE=8\n')

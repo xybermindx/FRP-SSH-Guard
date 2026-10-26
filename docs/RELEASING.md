@@ -113,7 +113,7 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 - `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.
 
-`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-4`.
+`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.6-2`.
 APT compares this metadata, not the filename. Revision `1` sorts after the older
 bare `0.0.5`, and increasing revisions allow ordinary `sudo apt install ./FILE.deb`
 upgrades. A new application version sorts after revisions of the previous one.
@@ -147,7 +147,8 @@ repository. Checksums detect changes but do not replace artifact signatures.
 - Retain user values/comments on upgrade; back up the file before adding missing
   commented defaults. Never override a legacy port list with an empty selection.
   Test custom on/off values and idempotent reinstallation.
-- Test an active upgrade with `tests/vm-acceptance.py`: preserve accepted policy,
-  custom home files, jail membership and remaining expiry, timer configuration
-  and deadlines. Do not add service restarts, firewall reapplication, or
-  `daemon-reload` to upgrade hooks. Test new defaults against missing old keys.
+- Test active upgrades with `tests/vm-auto-upgrade.py`: apply updated rules and
+  refresh monitor processes automatically while preserving accepted policy choices,
+  pending edits, custom home files, jail scope/expiry, boot enablement and timer
+  schedules. Do not restart timers or reload the systemd manager. Test inactive
+  installs, trials, failure reporting, reinstallation and reboot restoration.

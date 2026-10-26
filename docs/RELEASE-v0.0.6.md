@@ -1,6 +1,6 @@
 # v0.0.6
 
-Add observation-first slow SSH detection, private local alerts and timestamped reports.
+Add automatic upgrade activation, observation-first slow SSH detection, private local alerts and timestamped reports.
 Existing fast protection, jail scope and ban lifetimes stay in place.
 
 [English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.6/README.md) ·
@@ -8,6 +8,10 @@ Existing fast protection, jail scope and ban lifetimes stay in place.
 
 ## Changes
 
+- Package revision `0.0.6-2` automatically refreshes an active guard during
+  `apt install`, including the running SSH monitors. No manual reload is needed.
+  Accepted policy choices, pending edits, saved ban scope/expiry, boot enablement
+  and timer schedules are retained. Firewall rate meters reset.
 - Independent 20-failure / 24-hour slow detector, default `SSH_SLOW_MODE=observe`.
   Observation adds no bans or strikes; `enforce` is an explicit opt-in.
 - Shared journal deduplication and classification of successful logins before learning.
@@ -27,15 +31,19 @@ Download `frp-ssh-guard_0.0.6.deb` and `SHA256SUMS` from Assets:
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 sudo apt install ./frp-ssh-guard_0.0.6.deb
-sudo frp-ssh-guard check && sudo frp-ssh-guard reload
-sudo frp-ssh-guard doctor
-sudo frp-ssh-guard report 24h
 ```
 
-Use `enable` instead of `reload` for first activation. Installation merges missing
-settings and preserves custom values, accepted policy, active jails and timer
-deadlines. It does not restart services; explicit reload starts updated monitors.
-Native SSH protection and whitelist learning are not enabled automatically.
+For an already active installation, the updated guard takes effect automatically.
+The download filename is unchanged; Debian version `0.0.6-2` upgrades `0.0.6-1`.
+This maintainer-requested correction replaces the earlier v0.0.6 package and
+checksum; download both files again. Older v0.0.4 and v0.0.5 releases are unchanged.
+
+Fresh or disabled installations still require port selection and `enable`.
+Native SSH protection, whitelist learning and slow-probe enforcement remain opt-in;
+pending settings edits are not applied by the upgrade. An active trial remains
+temporary. Administrator service policy can defer refresh with a notice.
+Refresh failures are reported to APT; failed firewall validation/application
+retains previous protection. `status`, `doctor` and `report 24h` are optional checks.
 
 ## Limits
 

@@ -140,7 +140,7 @@ case "$action" in
         printf 'FRP-SSH-Guard %s\n' "$version"; exit 0 ;;
     -h|--help|help) usage; exit 0 ;;
     install|trial|check|config-home) (( $# <= 2 )) || { usage >&2; exit 2; } ;;
-    keep|reload|ports|status|doctor|remove|rollback|banned|learned|blocklist|whitelist|strikes|apply|_expire|_stop)
+    keep|reload|ports|status|doctor|remove|rollback|banned|learned|blocklist|whitelist|strikes|apply|_upgrade|_expire|_stop)
         (( $# == 1 )) || { usage >&2; exit 2; } ;;
     report)
         (( $# <= 2 )) || { usage >&2; exit 2; } ;;
@@ -590,8 +590,10 @@ commit_candidate() {
         previous=1
     fi
     PROTECTED_PORTS=$(join_by "${SPECS[@]}")
-    CONFIG_INPUT_DIGEST=${candidate_digest:-$(config_digest)}
-    if [[ -n "${input:-}" ]]; then CONFIG_INPUT_DIGEST="override:$CONFIG_INPUT_DIGEST"; fi
+    if [[ "${action:-}" != _upgrade ]]; then
+        CONFIG_INPUT_DIGEST=${candidate_digest:-$(config_digest)}
+        if [[ -n "${input:-}" ]]; then CONFIG_INPUT_DIGEST="override:$CONFIG_INPUT_DIGEST"; fi
+    fi
     write_accepted_config > "$STAGE/accepted.conf"
     atomic_install "$STAGE/accepted.conf" "$APPLIED_CONF" 0640
     if ! "$NFTP" --file "$STAGE/candidate.nft"; then
@@ -831,7 +833,7 @@ cmd_report() {
 # Lifecycle operations have a separate lock: never hold the runtime lock while
 # waiting for systemd, whose ExecStart/ExecStop also takes that lock.
 case "$action" in
-    install|trial|reload|keep|remove|rollback|_expire|config-home)
+    install|trial|reload|keep|remove|rollback|_upgrade|_expire|config-home)
         exec 8>"${LOCK_FILE}.lifecycle"
         flock -w 30 8 || die 'Another lifecycle operation is running.' ;;
 esac
@@ -860,6 +862,34 @@ case "$action" in
 esac
 
 case "$action" in
+    _upgrade)
+        # Package upgrades refresh running code from the accepted policy. Never
+        # activate an inactive installation or adopt unreviewed settings edits.
+        if ! systemctl is-active --quiet "$SERVICE"; then
+            echo 'Guard is inactive; automatic upgrade activation skipped.'
+            exit 0
+        fi
+        [[ -f "$APPLIED_CONF" ]] || die 'Active guard has no accepted policy; automatic refresh refused.'
+        verify_unit_owner
+        sync_lists
+        STAGE=$(mktemp -d "${TMPDIR:-/run}/frp-ssh-guard.XXXXXX")
+        validate_policy
+        selected_ports > "$STAGE/list.conf"
+        read_ports "$STAGE/list.conf"
+        read_allow; read_learned; read_blocklist; read_hardban
+        # List snapshots retain absolute expiry and port scope. Replace rules in
+        # one nftables transaction; no listener probe is needed for saved ports.
+        compile_rules "$STAGE/candidate.nft"
+        "$NFTP" --check --file "$STAGE/candidate.nft"
+        commit_candidate
+        unlock_guard
+        # Existing unit definitions use stable launcher paths. Restart only the
+        # long-running readers; leave guard enablement and timer deadlines alone.
+        systemctl restart frp-ssh-guard-learn.service || die 'Updated rules active, but automatic learning-monitor refresh failed.'
+        systemctl restart frp-ssh-guard-auth.service || die 'Updated rules active, but automatic SSH-monitor refresh failed.'
+        echo 'Upgrade applied automatically; updated rules and monitors are active.'
+        echo 'Accepted settings, saved ban expiry, boot enablement and timer schedules retained.'
+        ;;
     config-home)
         owner=${2:-${SUDO_USER:-root}}
         directory=$(python3 "$INPUT_HELPER" migrate "$CONFIG_BASE" "$GUARD_DIR" "${GUARD_SYSTEMD_DIR:-/etc/systemd/system}" "$owner" "$INSTALLED_SCRIPT") || exit 1

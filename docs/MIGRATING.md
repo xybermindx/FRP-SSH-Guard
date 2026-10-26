@@ -1,10 +1,26 @@
 # Migration to 0.0.6
 
 Install `frp-ssh-guard_0.0.6.deb` with `sudo apt install ./frp-ssh-guard_0.0.6.deb`.
-APT upgrades v0.0.5 automatically. Missing commented settings are merged;
-custom values, accepted policy, active jails and timer deadlines are retained.
-No service restarts occur during installation. Run `check && reload` explicitly
-using `sudo frp-ssh-guard` for each command to activate the new monitors.
+Package revision `0.0.6-2` upgrades v0.0.5 and the earlier `0.0.6-1` build.
+For an active guard, installation automatically recompiles its accepted policy
+and restarts the long-running SSH monitors. No manual reload is needed.
+Missing commented settings are merged without changing custom values. Pending
+settings edits remain unapplied, including invalid edits. Newly supported runtime
+defaults and the observation activation marker are added to the accepted snapshot;
+its existing policy values and editable-input digest are retained.
+
+Before the atomic firewall replacement, live bans and learned entries are saved
+with their port scope and absolute expiry. They are restored with remaining time;
+rate meters reset. The main service, its boot enablement, timers and trial deadline
+are not restarted or re-enabled. No systemd manager reload is performed.
+Validation/application failures retain the previous policy and rules and fail
+package configuration. A monitor failure is reported even if new rules are active.
+
+Fresh or inactive installations still require port selection and first activation.
+An active trial is refreshed without making it persistent. An administrator's
+`policy-rc.d` denial defers refresh with a notice. Installations without a running
+systemd manager do not attempt service activation. Source installs retain their
+existing explicit activation workflow.
 
 Slow detection defaults to observation only. Existing fast thresholds, SSH enablement,
 jail scope, learning preferences and ban/strike lifetimes are unchanged.
@@ -21,6 +37,8 @@ Use `doctor`, `status` and `report 24h` to review operation and coverage limits.
 
 ## Earlier migration details (v0.0.5)
 
+The following sections describe the older v0.0.5 behavior. For automatic package
+refresh in v0.0.6 revision 2, use the instructions above.
 
 
 ## Upgrade while preserving settings and live jails

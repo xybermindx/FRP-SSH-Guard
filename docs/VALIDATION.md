@@ -1,5 +1,42 @@
 # v0.0.6 validation
 
+## Automatic upgrade correction: package 0.0.6-2
+
+Validated on 2026-10-26 using a separate disposable Debian 12 QEMU overlay,
+Linux 6.1.0-54-cloud-amd64, systemd 252, nftables 1.0.6 and actual FRP 0.71.1.
+No production firewall was changed.
+
+- All 109 regression cases passed in the VM, including the privileged network
+  namespace case. The unprivileged workspace passed 108 with that one case skipped.
+- Actual ordinary APT upgrades from published v0.0.5 in shared-jail mode and
+  published `0.0.6-1` in per-port mode applied the new rules and changed both
+  long-running monitor PIDs without a user reload.
+- Accepted policy values and input digest, invalid pending edits, custom settings,
+  scoped manual rules, saved ban membership and remaining expiry were retained.
+  Older accepted snapshots gained observation defaults/activation metadata.
+- Main-service invocation and boot enablement were unchanged. Timer activation
+  timestamps and next deadlines were unchanged; firewall rate meters were rebuilt.
+- Reinstall refreshed running code without renewing saved bans. Disabled installs
+  remained disabled. Active trials retained their expiry and stayed temporary;
+  `keep` enabled persistent startup.
+- An actual `policy-rc.d` denial deferred refresh, kept monitor PIDs unchanged and
+  reported the deferral. Unit regressions cover nftables validation/application
+  rollback and reporting a monitor restart failure.
+- A real VM reboot restored enabled, active protection and the saved ban. Accepted
+  policy, user settings and the blocklist's absolute deadlines matched their
+  pre-reboot hashes.
+
+Reproduce each upgrade mode on a disposable VM without an installed guard and
+with unused test accounts:
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-auto-upgrade.py OLD.deb NEW.deb FRP_DIR off
+# Clean the disposable fixtures before the second scenario.
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-auto-upgrade.py OLD.deb NEW.deb FRP_DIR on
+```
+
+## Original 0.0.6-1 checks
+
 Validated on 2026-10-26, using invented identities, ports and documentation IPs.
 No production firewall was modified.
 

@@ -43,7 +43,10 @@ jobs:
           test -f "$notes" || notes=CHANGELOG.md
           (cd dist && sha256sum -c SHA256SUMS)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+            if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" != true ]; then
+              echo 'Published release unchanged; validated artifacts are available for a maintainer-approved correction.'
+              exit 0
+            fi
             gh release upload "$RELEASE_TAG" "$package" dist/SHA256SUMS --clobber
           else
             gh release create "$RELEASE_TAG" "$package" dist/SHA256SUMS --verify-tag --draft \

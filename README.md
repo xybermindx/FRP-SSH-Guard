@@ -187,8 +187,10 @@ sha256sum --ignore-missing -c SHA256SUMS
 sudo apt install ./frp-ssh-guard_0.0.6.deb
 ```
 
-Confirm the `.deb` reports `OK`. **Installation does not activate protection or
-change firewall rules.** Dependencies are resolved through apt.
+Confirm the `.deb` reports `OK`. **Upgrading an active guard automatically applies
+the updated rules and monitors; no manual reload is needed.** A fresh or disabled
+installation stays inactive until ports are configured and protection is enabled.
+Dependencies are resolved through apt.
 
 ### 3. Configure your public forwarded ports
 
@@ -300,7 +302,8 @@ sudo frp-ssh-guard status
 Confirm `Server SSH protection: on`. For first activation, use `enable` instead
 of `reload`. The switch automatically includes port 22. An explicit reload
 rebuilds the firewall and rate meters. Exported bans and learned entries retain
-their original expiry; package upgrades preserve the live table and timers.
+their original expiry. Package upgrades also refresh the rules automatically,
+preserving saved ban deadlines and timer schedules.
 
 Fail2ban can remain installed: the tools have separate rules and independent bans.
 If both block an address, release it in both tools. The guard does not modify
@@ -453,7 +456,7 @@ Operational limits:
 
 - Sources behind shared NAT/VPN count together. Shared per-port limits can drop legitimate traffic during a flood.
 - Existing established/related connections and loopback traffic bypass this guard. Whitelists precede blocks; they do not override unrelated firewall tables.
-- Explicit `reload`, restart or reboot rebuilds the table and resets rate meters. Exported bans and learned entries retain their deadlines; kernel bans not yet sampled can be lost on an abrupt restart. Package upgrades and list updates retain live jails.
+- Explicit `reload`, restart, reboot and automatic package refresh rebuild the table and reset rate meters. Exported bans and learned entries retain their deadlines. Upgrades snapshot live bans before replacement; an abrupt restart can lose unsampled bans. List-only updates retain the live table.
 - Successful trusted logins refresh learned expiry. Ordinary apply/reload/reboot does not renew saved deadlines.
 - History is sampled once a minute; short bans may be missed. Missing-table recovery also waits for that timer and only runs while the guard is active.
 
@@ -497,9 +500,17 @@ timer schedules. Custom systemd timer settings belong in `/etc/systemd/system/`
 drop-ins, not package-owned `/usr/lib` units. Fail2ban jail configuration is untouched.
 On the first upgrade from v0.0.4, its old removal hook can recalculate a custom
 `OnActiveSec` deadline; see [migration details](docs/MIGRATING.md).
-No restart or reload is required for the package upgrade. Already-running Python
-monitors keep their current code until an explicit policy reload or later restart;
-new commands and timer invocations use updated code. Enable new features explicitly.
+Starting with package revision `0.0.6-2`, an active installation automatically
+recompiles the accepted firewall policy and restarts its long-running Python
+monitors. The new code takes effect during `apt install`; no manual reload or
+reboot is needed. Live bans are saved and restored with their original scope and
+expiry. Rate meters reset; main-service enablement and timer deadlines are retained.
+Pending settings edits are not applied. Optional local SSH protection, learning
+and slow-probe enforcement still require your explicit configuration choices.
+
+Fresh or disabled installations remain inactive. An active trial remains temporary.
+Administrator `policy-rc.d` restrictions defer refresh with a notice. Refresh errors
+are reported by APT; firewall validation/application failures retain previous rules.
 
 Existing `guard.conf`/`ports.conf`
 installations remain supported until migrated; the package does not mask them with
@@ -554,10 +565,11 @@ notice retained. The software is provided without warranty. See the license for 
 
 ## Local observations in v0.0.6
 
-After installing, run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`
-to start the updated monitors. Use `enable` for first activation. Installation
-merges missing settings while retaining custom values, accepted firewall policy,
-existing jail expiries and timer deadlines; it does not restart the services.
+Upgrading an active guard to package revision `0.0.6-2` starts the updated monitors
+automatically. Use `enable` for first activation. Installation merges missing
+settings while retaining custom values, accepted policy choices, pending edits,
+saved ban expiries and timer deadlines. No extra activation command is needed
+after an active package upgrade.
 
 The fast SSH detector keeps its 5 failures / 3 invalid-user connections / 10-minute
 window. `SSH_SLOW_MODE=observe` adds an independent 20-failure / 24-hour window.
