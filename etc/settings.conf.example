@@ -34,6 +34,20 @@ SSH_AUTH_FAILURES=5
 SSH_INVALID_USER_FAILURES=3
 SSH_AUTH_WINDOW=10m
 
+# Independent long-window detector. observe reports without adding bans/strikes.
+# off disables it; enforce opts into the existing ban duration and jail scope.
+SSH_SLOW_MODE=observe
+SSH_SLOW_FAILURES=20
+SSH_SLOW_WINDOW=24h
+
+# Local alerts: newest complete record first, discard oldest records at the cap.
+# No rotated archives or remote notifications. Accepted settings change on reload.
+ALERT_LOG_MAX_SIZE=10MiB
+# Report suspected subnet clusters only; never automatically block a subnet.
+# Count distinct automatically banned sources per jail scope (IPv4 /24, IPv6 /64).
+SUBNET_REPORT_MIN_SOURCES=5
+SUBNET_REPORT_WINDOW=24h
+
 # === Connection limits and ban duration ===
 # Per source AND destination port: sustained new SYN packets/minute, not logins.
 # Positive integers 1–1000000. Default 2/minute with a burst allowance of 40.

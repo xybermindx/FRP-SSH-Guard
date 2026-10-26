@@ -76,6 +76,7 @@ usage() {
 Usage: sudo frp-ssh-guard ACTION [ARG]
 
 Lifecycle / service:
+  doctor               Read-only checks of SSH monitoring, lists and alert access.
   version / --version   Show the installed software version (no sudo needed).
   config-home [USER]    Put editable settings/manual lists in USER's ~/.frp-ssh-guard.
   enable [FILE]    Validate, apply now, and enable restoration after reboot.
@@ -139,7 +140,7 @@ case "$action" in
         printf 'FRP-SSH-Guard %s\n' "$version"; exit 0 ;;
     -h|--help|help) usage; exit 0 ;;
     install|trial|check|config-home) (( $# <= 2 )) || { usage >&2; exit 2; } ;;
-    keep|reload|ports|status|remove|rollback|banned|learned|blocklist|whitelist|strikes|apply|_expire|_stop)
+    keep|reload|ports|status|doctor|remove|rollback|banned|learned|blocklist|whitelist|strikes|apply|_expire|_stop)
         (( $# == 1 )) || { usage >&2; exit 2; } ;;
     report)
         (( $# <= 2 )) || { usage >&2; exit 2; } ;;
@@ -166,7 +167,8 @@ validate_policy() {
     local key args=()
     for key in PORT_MIN PORT_MAX EXCLUDE_PORTS EDIT_USER GUARD_TABLE PER_IP_RATE PER_IP_BURST \
         GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT MAX_LEARNED LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER \
-        PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW; do
+        PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW \
+        SSH_SLOW_MODE SSH_SLOW_FAILURES SSH_SLOW_WINDOW ALERT_LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW; do
         args+=("$key=${!key}")
     done
     python3 "$LIB_DIR/frp-ssh-guard-validate.py" "${args[@]}" || exit 1
@@ -577,8 +579,12 @@ trap cleanup EXIT
 
 # Called under the runtime lock. The accepted file is a normalized, complete
 # snapshot, independent of further edits and legacy override files.
+observe() { python3 "$LIB_DIR/frp-ssh-guard-events.py" "$@" || echo 'Observation update unavailable; protection continues.' >&2; }
+
 commit_candidate() {
     local previous=0
+    observe checkpoint
+    OBSERVABILITY_VERSION=1
     if [[ -f "$APPLIED_CONF" ]]; then
         cp "$APPLIED_CONF" "$STAGE/previous.conf"
         previous=1
@@ -598,6 +604,7 @@ commit_candidate() {
         die 'Firewall application failed; previous accepted settings and live rules retained.'
     fi
     save_manual_snapshot
+    observe activate
     atomic_install "$STAGE/candidate.nft" "$ACTIVE_RULES" 0640 || \
         die 'Rules and accepted settings are active, but writing the diagnostic rules snapshot failed.'
 }
@@ -680,7 +687,7 @@ cmd_banned() {
 
 forgive() {
     local ip=$1 now tmp
-    now=$(date +%s)
+    now=$(date +%s.%N)
     mkdir -p "$(dirname "$EXCUSED_FILE")"
     touch "$EXCUSED_FILE"
     tmp=$(mktemp)
@@ -688,6 +695,7 @@ forgive() {
     printf '%s\t%s\n' "$ip" "$now" >> "$tmp"
     mv "$tmp" "$EXCUSED_FILE"
     fix_owner "$EXCUSED_FILE"
+    observe forgive "$ip"
 }
 
 cmd_unban() {
@@ -783,6 +791,7 @@ cmd_ban() {
     else
         "$NFTP" add element inet "$GUARD_TABLE" "$set" "{ $ip timeout $dur }"
     fi
+    observe manual "$ip" "$dur"
     sync_lists
     echo "Banned $ip for $dur (temporary)."
 }
@@ -814,23 +823,7 @@ cmd_learned() {
 }
 
 cmd_report() {
-    local win=${1:-24h}
-    echo "=== frp-ssh-guard report (window: $win) ==="
-    if table_active; then
-        echo "-- nft counters (since last reload/boot) --"
-        "$NFTP" -a list chain inet "$GUARD_TABLE" input 2>/dev/null | grep -E 'counter packets [1-9]' | sed 's/^/  /' || true
-        echo "-- currently banned --"
-        cmd_banned || true
-    else
-        echo "  (guard table not active)"
-    fi
-    echo "-- auto-learned whitelist --"
-    cmd_learned
-    echo "-- port 22 failed logins (auth.log total) --"
-    grep -c "Failed password" /var/log/auth.log 2>/dev/null || echo "  n/a"
-    echo "-- ban history tail --"
-    local h="$LOG_DIR/banned.log"
-    [[ -f "$h" ]] && tail -n 20 "$h" || echo "  (no history yet)"
+    python3 "$LIB_DIR/frp-ssh-guard-events.py" report "${1:-24h}"
 }
 
 # ---------- main dispatch ----------
@@ -906,7 +899,7 @@ case "$action" in
         if [[ "${GUARD_PACKAGED:-0}" != 1 ]]; then
             install -d -o root -g root -m 0755 "$BIN_DIR"
             [[ "$SOURCE_SCRIPT" == "$INSTALLED_SCRIPT" ]] || atomic_install "$SOURCE_SCRIPT" "$INSTALLED_SCRIPT" 0755
-            for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py; do
+            for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-events.py frp-ssh-guard-alerts.py; do
                 [[ "$LIB_DIR/$helper" == "$BIN_DIR/$helper" ]] || atomic_install "$LIB_DIR/$helper" "$BIN_DIR/$helper" 0755
             done
             write_unit
@@ -954,7 +947,7 @@ case "$action" in
         echo "Trial retained; reboot restoration enabled. Counters were not reset."
         ;;
     _stop)
-        if table_active; then "$NFTP" delete table inet "$GUARD_TABLE"; fi
+        if table_active; then observe checkpoint; "$NFTP" delete table inet "$GUARD_TABLE"; fi
         ;;
     remove|rollback|_expire)
         if [[ "$action" == _expire && ! -e "$PENDING" ]]; then exit 0; fi
@@ -967,7 +960,7 @@ case "$action" in
         if [[ -f "$UNIT_FILE" ]]; then systemctl disable --now "$SERVICE" 2>/dev/null || true; fi
         lock_guard
         load_guard_config runtime
-        if table_active; then "$NFTP" delete table inet "$GUARD_TABLE"; fi
+        if table_active; then observe checkpoint; "$NFTP" delete table inet "$GUARD_TABLE"; fi
         if [[ "$action" == _expire ]]; then rm -f "$PENDING"; else cancel_trial; fi
         echo "Guard disabled for boot and removed from the firewall. Config files are saved."
         ;;
@@ -975,7 +968,9 @@ case "$action" in
         if [[ ! -f "$APPLIED_CONF" ]]; then load_guard_config candidate; fi
         selected_ports
         ;;
+    doctor) python3 "$LIB_DIR/frp-ssh-guard-events.py" doctor ;;
     status)
+        observe status
         printf 'Boot startup: '; systemctl is-enabled "$SERVICE" 2>/dev/null || true
         printf 'Service state: '; systemctl is-active "$SERVICE" 2>/dev/null || true
         printf 'Settings: %s\nLists: %s\n' "$GUARD_CONF" "$MANUAL_DIR"

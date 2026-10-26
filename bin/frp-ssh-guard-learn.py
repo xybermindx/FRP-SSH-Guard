@@ -70,6 +70,12 @@ def learn(record):
 
 
 def main():
+    events = module('events')
+    current = events.policy()
+    if current['OBSERVABILITY_VERSION'] == '1':
+        if not current['LOGIN_USERS']:
+            return 0
+        return events.follow('learn')
     config = lists.policy()
     if not config['LOGIN_USERS']:
         print('Auto-learning disabled: set LOGIN_USERS, then check and reload.')

@@ -22,6 +22,12 @@ if ! "$NFTP" list table inet "$TABLE" >/dev/null 2>&1; then
 fi
 "$NFTP" list table inet "$TABLE" >/dev/null 2>&1 || exit 0
 
+if [[ "$OBSERVABILITY_VERSION" == 1 ]]; then
+    python3 "$(dirname -- "${BASH_SOURCE[0]}")/frp-ssh-guard-events.py" sample
+    python3 "$(dirname -- "${BASH_SOURCE[0]}")/frp-ssh-guard-lists.py" sync
+    exit
+fi
+
 current=$(mktemp)
 for set in ban4 ban6; do
     if command -v jq >/dev/null 2>&1; then

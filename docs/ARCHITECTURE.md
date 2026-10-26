@@ -53,8 +53,9 @@ invalid-user messages, and clears recent failure counts on successful login.
 It discards usernames and never reads passwords. Loopback events are ignored,
 including connections forwarded to a local SSH backend by frpc.
 
-The journal cursor, bounded recent cursors and recent failure counters are kept
-in root-owned `auth-state.json`, avoiding replay on restart. A threshold event
+Before v0.0.6 activation, legacy monitoring retains its root-owned `auth-state.json`.
+Explicit activation migrates recent short-window state to the shared SQLite store
+described below; journal cursor deduplication prevents replay. A threshold event
 adds to the existing automatic ban set under the shared runtime lock: IP for
 shared jails or IP/22 for per-port jails. Authentication monitoring does not
 inspect outcomes on remote FRP backends. Explicit policy reload restarts it.
@@ -139,3 +140,25 @@ Home writes run as the registered user. Inaccessible/invalid files are deferred
 with a notice; complete files are left untouched. Both installation locks cover
 the merge. Accepted policy/digests, pending edits, live jails and timer schedules
 are not changed by this operation.
+
+## Shared observations (v0.0.6)
+
+Explicit activation writes an internal accepted-state version. Upgrades of an
+older installation leave that marker absent and retain the legacy monitor/timer
+path until reload. Both journal readers then use the same handler and runtime
+lock. A private versioned SQLite database deduplicates cursor hashes, stores
+short/long failure windows and timestamped observations, tracks ban generations,
+and checkpoints packet counters. No usernames or raw journal messages persist.
+Successful login classification happens before any whitelist addition.
+
+The timer and direct authentication enforcement share ban accounting; the strike
+manager combines earlier rotated ban logs with the new database. Initial/restored
+bans and explicit CLI temporary bans are excluded from automatic campaign counts.
+Database tables are bounded by time and a 200,000-row limit; reports expose capacity
+loss. SQLite retains reusable free pages rather than vacuuming during protection.
+
+Alert delivery uses owner-privilege subprocesses, pinned directory descriptors,
+O_NOFOLLOW, private modes, fsync and atomic rename. The runtime lock serializes
+writers. Each line has a stable event ID; spool retries deduplicate complete lines.
+The bounded spool is separate from logrotate. Alert failures do not stop enforcement.
+Reports and doctor open existing observation state read-only.

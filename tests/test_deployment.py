@@ -291,6 +291,8 @@ else:
         self.assertEqual((self.root / 'lists/learned.conf').read_text(), '')
         self.require_ok(self.run_guard('reload'))
         self.settings('LOGIN_USERS="unterminated')
+        record['__REALTIME_TIMESTAMP'] = str(int(time.time() * 1000000))
+        self.fake('journalctl', '#!/bin/sh\nprintf "%s\\n" ' + shlex.quote(json.dumps(record)) + '\n')
         result = subprocess.run(helper, env=self.env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 1, result.stderr)  # closed journal stream requests restart
         self.assertIn('198.51.100.55 source=learned until=', (self.root / 'lists/whitelist.conf').read_text())

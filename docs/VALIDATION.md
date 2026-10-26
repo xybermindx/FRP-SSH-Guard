@@ -1,3 +1,54 @@
+# v0.0.6 validation
+
+Validated on 2026-10-26, using invented identities, ports and documentation IPs.
+No production firewall was modified.
+
+- `make release`: 103 cases, 102 passing and one optional privileged kernel skip
+  in the unprivileged workspace. Private source/artifact checks passed.
+- Debian 12 disposable QEMU VM: Linux 6.1.0-54-cloud-amd64, nftables 1.0.6,
+  systemd 252, OpenSSH and actual FRP 0.71.1. The initial complete 99-case suite,
+  including the kernel namespace case, passed; subsequent observation regressions
+  also pass locally. CI reruns the final suite with privileged namespace coverage.
+- Actual APT upgrades from the released v0.0.5 package to v0.0.6 in both shared and
+  per-port jail modes preserved the accepted policy bytes, jail remaining times,
+  service invocation, timer activation/deadline properties, list scope, comments,
+  ownership and permissions. New settings merged without applying pending edits.
+- Actual SSH public-key login learning/refresh, native-22 whitelist precedence,
+  FRP port scope, timed expiry and manual tier entries passed in both jail modes.
+- Real sshd invalid-user events triggered the long-window observation alert without
+  a ban. Explicit enforce/reload applied one ban; repeated sampling and monitor
+  restart did not duplicate its event or extend its remaining lifetime.
+- Real dropped packets appeared as sampled deltas. Per-port native fast detection
+  and a two-source test subnet alert passed without installing a subnet ban.
+- Owner-private newest-first alerts, explicit reload trimming to 1KiB, no rotated
+  archives, report-window filtering and live SSH rule diagnostics passed in the VM.
+- Unit coverage includes both readers racing under the real runtime lock, accepted
+  password/public-key/PAM classification before learning, overlap/replay dedup,
+  short-state migration, allowed sources, IPv4/IPv6 scoped subnet grouping,
+  manual/restored exclusions, existing-jail expiry protection, counter resets and
+  inserted counters, offline-home spool recovery, symlink/hardlink refusal, and
+  read-only observation queries.
+
+Reproduce on a disposable VM with a purged package and unused test account:
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-unified-lists.py OLD.deb NEW.deb FRP_DIR off
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-observations.py
+# Clean the disposable fixtures, then repeat with JAIL_PER_PORT=on.
+```
+
+The observation continuation explicitly releases only its invented test sources:
+a reused journal can cause the old package to ban them before upgrading. It waits
+for asynchronous alert delivery separately from the committed database event.
+
+CI additionally checks reproducible builds and Debian 12 / Ubuntu 24.04 package
+installation, reinstall, removal and purge. Full Ubuntu FRP/systemd runtime,
+ARM/32-bit runtime and hostile high-volume performance have not been verified.
+Short kernel bans can escape timer sampling; power loss can lose unsampled packet
+deltas. Bounded state loss and sampling boundaries are disclosed in reports.
+
+---
+
 # Verification procedure and results
 
 This document distinguishes expected behavior from tests actually run. It does

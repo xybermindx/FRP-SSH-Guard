@@ -107,6 +107,19 @@ for log_path in sorted(glob.glob(LOG + '*')):
                 counts[key] = counts.get(key, 0) + 1
                 last[key] = max(last.get(key, 0), ep)
 
+# New monitors record each automatic ban once in the private event store.
+# The old log remains readable for pre-upgrade strikes and their deadlines.
+import sqlite3
+observation_path = Path(GUARD_DIR) / 'observations/events.sqlite3'
+if observation_path.is_file():
+    with sqlite3.connect(observation_path.as_uri() + '?mode=ro', uri=True) as observations:
+        for ep, ip, scope in observations.execute("SELECT stamp,ip,scope FROM events WHERE kind='ban' AND stamp>=?", (now - window,)):
+            if ep < excused.get(ip, 0) or PER_PORT and scope == '*':
+                continue
+            key = ip + ' ' + scope if PER_PORT else ip
+            counts[key] = counts.get(key, 0) + 1
+            last[key] = max(last.get(key, 0), ep)
+
 # strikes view
 os.makedirs(os.path.dirname(STRIKES), exist_ok=True)
 with open(STRIKES, "w") as f:

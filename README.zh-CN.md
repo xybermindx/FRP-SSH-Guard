@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-**[下载 v0.0.5 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)
+**[下载 v0.0.6 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb)** · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
 FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
@@ -13,9 +13,9 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 > **约 10 天观测：** 已丢弃 **4,255,592** 个恶意数据包（**99.97%**），
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，最近 24 小时后端登录失败 **0** 次。
 
-**版本 0.0.5 · MIT 开源许可 · Bash 与 Python**
+**版本 0.0.6 · MIT 开源许可 · Bash 与 Python**
 
-[v0.0.5 更新说明](docs/RELEASE-v0.0.5.md) ·
+[v0.0.6 更新说明](docs/RELEASE-v0.0.6.md) ·
 [配置及命令示例](docs/EXAMPLES.zh-CN.md) ·
 [升级说明](docs/MIGRATING.md)（英文）
 
@@ -124,17 +124,17 @@ flowchart LR
 
 ## 下载发布版本
 
-请从 **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)** 下载。Debian `.deb` 文件作为发布附件提供，
-不会显示在 GitHub 的 **Packages** 栏目中。v0.0.5 发布版本包含：
+请从 **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)** 下载。Debian `.deb` 文件作为发布附件提供，
+不会显示在 GitHub 的 **Packages** 栏目中。v0.0.6 发布版本包含：
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_0.0.5.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | 安装到目标 Debian/Ubuntu 主机。 |
-| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | 校验下载的 Debian 软件包。 |
+| [frp-ssh-guard_0.0.6.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/SHA256SUMS) | 校验下载的 Debian 软件包。 |
 
 完整源码保留在仓库中。GitHub 会根据发布标签自动提供
-[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
-和 [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)，
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.6.zip)
+和 [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.6.tar.gz)，
 包含运行代码、构建脚本、打包文件、文档及测试。无需再上传重复的源码附件。
 `SHA256SUMS` 仅校验 `.deb` 文件。
 
@@ -169,7 +169,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5.deb
+sudo apt install ./frp-ssh-guard_0.0.6.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -181,7 +181,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 安装会自动创建该目录，并迁移现有设置和手动名单。
-普通的 `sudo apt install ./frp-ssh-guard_0.0.5.deb` 使用调用 sudo 的用户的家目录；
+普通的 `sudo apt install ./frp-ssh-guard_0.0.6.deb` 使用调用 sudo 的用户的家目录；
 直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
 后续升级保留已选用户及其自定义值，即使换一位管理员安装也不会更换位置。
 
@@ -197,10 +197,10 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 也不会应用尚未确认的自定义修改。补齐默认项后，状态可能显示存在待应用修改。
 准备启用本机 SSH 防护时，将 `PROTECT_SERVER_SSH=on`，然后明确执行 `check`、`reload`。
 若文件不可访问或格式无效，会保留原文件并提示；修复后可用
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.5.deb` 重试。
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.6.deb` 重试。
 
 首次迁移前可用
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.6.deb`
 指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
 不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
 `sudo frp-ssh-guard config-home USERNAME` 重试。
@@ -299,6 +299,9 @@ sudo frp-ssh-guard status
 | `PROTECT_SERVER_SSH` | `off` | `on` 添加本机 22 端口防护，并监控本机 sshd 认证结果。 |
 | `JAIL_PER_PORT` | `off` | `off`：自动/累犯封禁共享所有受保护端口；`on`：按端口独立封禁。 |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | 本机认证失败阈值、不同连接的无效用户阈值、统计窗口。 |
+| `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `observe`, `20`, `24h` | 独立长窗口检测；`off` 关闭，`observe` 仅记录，`enforce` 明确启用封禁。 |
+| `ALERT_LOG_MAX_SIZE` | `10MiB` | 本地告警按最新在前排列，超限删除最旧完整行；允许 1KiB–100MiB，不保留轮转档案。 |
+| `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | 按 /24 或 /64 及 jail 范围统计不同自动封禁来源，仅报告，不自动封禁子网。 |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | 每来源、每端口的新 SYN 每分钟速率及突发额度。 |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | 每端口共享的新 SYN 每分钟速率及突发额度，跨来源和 IP 协议族共享。 |
 | `BAN_TIMEOUT` | `6h` | 临时封禁来源的时长。 |
@@ -445,7 +448,7 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
 切换到当前版本，并保留现有设置。
 
-下载 **v0.0.5**，执行 `sudo apt install ./frp-ssh-guard_0.0.5.deb` 即可升级较早构建，
+下载 **v0.0.6**，执行 `sudo apt install ./frp-ssh-guard_0.0.6.deb` 即可升级较早构建，
 并保留原有设置。`frp-ssh-guard --version` 显示发布版本；
 `dpkg-query -W frp-ssh-guard` 还会显示 APT 用来识别更新构建的内部软件包修订号。
 
@@ -500,3 +503,41 @@ sudo env GUARD_DIR=/opt/frp-ssh-guard /opt/frp-ssh-guard/bin/frp-ssh-guard statu
 
 [MIT 许可证](LICENSE)允许使用、修改及再分发，但须保留版权和许可声明。
 软件不提供担保，完整条款以许可证文件为准。
+
+## v0.0.6 本地观察记录
+
+安装后执行 `sudo frp-ssh-guard check && sudo frp-ssh-guard reload` 启动新版监控；
+首次启用使用 `enable`。安装会补齐缺失设置，保留自定义值、已接受的防火墙策略、
+原封禁到期时间和定时器截止时间，不会重启服务。
+
+短窗口仍为 10 分钟内 5 次失败或 3 个无效用户连接。
+`SSH_SLOW_MODE=observe` 增加独立的 24 小时 20 次失败窗口，只记录告警，
+不会添加封禁或累犯次数。改为 `enforce` 并执行 check/reload 后，慢速探测才使用
+现有封禁时长和 jail 范围。成功登录清空短窗口失败，长窗口失败按时间自然过期。
+
+`~/.frp-ssh-guard/alerts.log` 每行一个事件，最新在前，记录此前不受信任来源的
+成功登录、慢速阈值和疑似子网群集。新来源登录是复核信号，不代表已被入侵。
+内容包括 UTC 时间、来源、范围、适用时的认证方式和计数，不保存账户名、密码或
+原始日志。默认上限 10MiB，超限删除最旧完整行，不轮转、不留档。
+修改 `ALERT_LOG_MAX_SIZE` 后执行 check/reload 可按新上限裁剪；status 和 report
+显示上限。这些文件属于本地私密部署数据，请勿提交或分享。家目录不可用时使用
+相同上限的私密系统暂存文件，恢复访问后合并。
+
+学习仍需配置 `LOGIN_USERS` 才启用。匹配账户的密码、公钥及 PAM 成功登录均可
+在完成来源分类后学习信任。信任针对已观察到的来源 IP，不会自动跟随动态地址；
+被盗账户的成功登录也可能建立信任，请保留恢复访问方式。本工具不修改 sshd
+认证设置或 Fail2ban 的防火墙规则。
+
+```bash
+sudo frp-ssh-guard doctor
+sudo frp-ssh-guard report 24h
+```
+
+doctor 只读取本机 SSH 规则覆盖、监控状态、journal 访问、白名单覆盖及告警文件
+访问情况。report 按事件时间筛选，并区分认证失败、观察阈值、新增自动封禁和
+采样丢弃包。包数不是连接数，也不能证明成功防御。现有日志定时器保存包计数增量；
+采样区间可能跨越报告边界，崩溃时可能丢失尚未采样的数据。reload 在替换表前保存
+旧表计数。新长窗口从明确启用时开始，迁入近期旧短窗口记录但不虚构长期历史。
+各观察表上限为 200,000 行，容量导致的数据丢失会在报告中显示。
+子网报告按 jail 范围和 IPv4 /24、IPv6 /64 汇总不同自动封禁来源，手动或恢复的
+封禁不计入，绝不自动封禁子网。

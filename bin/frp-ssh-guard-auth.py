@@ -129,6 +129,14 @@ def ban(ip):
 
 
 def main():
+    spec = importlib.util.spec_from_file_location('guard_events', LIB / 'frp-ssh-guard-events.py')
+    events = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(events)
+    current = events.policy()
+    if current['OBSERVABILITY_VERSION'] == '1':
+        if current['PROTECT_SERVER_SSH'] != 'on':
+            return 0
+        return events.follow('auth')
     policy = load_policy()
     if policy['PROTECT_SERVER_SSH'] != 'on':
         print('Local SSH authentication protection is disabled.')

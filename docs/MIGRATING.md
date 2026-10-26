@@ -1,4 +1,26 @@
-# Migration to 0.0.5
+# Migration to 0.0.6
+
+Install `frp-ssh-guard_0.0.6.deb` with `sudo apt install ./frp-ssh-guard_0.0.6.deb`.
+APT upgrades v0.0.5 automatically. Missing commented settings are merged;
+custom values, accepted policy, active jails and timer deadlines are retained.
+No service restarts occur during installation. Run `check && reload` explicitly
+using `sudo frp-ssh-guard` for each command to activate the new monitors.
+
+Slow detection defaults to observation only. Existing fast thresholds, SSH enablement,
+jail scope, learning preferences and ban/strike lifetimes are unchanged.
+Recent short-window JSON attempts and their journal cursor migrate on activation;
+long-window coverage starts then. Old ban logs continue to supply earlier strikes.
+New automatic bans are counted once from the private SQLite store. Existing jails
+are restored without counting them as new attacks. The same log timer now samples
+packet deltas and kernel bans; no extra timer is created.
+
+Alerts use `~/.frp-ssh-guard/alerts.log`, newest first, with a configurable 10MiB cap
+and no archives. Unavailable homes use a bounded private system spool. New runtime
+state under `/var/lib/frp-ssh-guard/observations/` is private and must not be uploaded.
+Use `doctor`, `status` and `report 24h` to review operation and coverage limits.
+
+## Earlier migration details (v0.0.5)
+
 
 
 ## Upgrade while preserving settings and live jails

@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**[Download v0.0.5 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)
+**[Download v0.0.6 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
 FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
@@ -14,9 +14,9 @@ custom values and active protection. Both new protection switches default to off
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
 > failed logins in the latest 24-hour window.
 
-**Version 0.0.5 · MIT licensed · Bash and Python**
+**Version 0.0.6 · MIT licensed · Bash and Python**
 
-[What's new in v0.0.5](docs/RELEASE-v0.0.5.md) ·
+[What's new in v0.0.6](docs/RELEASE-v0.0.6.md) ·
 [Configuration and command examples](docs/EXAMPLES.md) ·
 [Upgrade instructions](docs/MIGRATING.md)
 
@@ -139,18 +139,18 @@ packets, including retransmissions, are measured—not exact sessions or login a
 
 ## Download a release
 
-Download from **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)**. Debian `.deb` files are
+Download from **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)**. Debian `.deb` files are
 release assets; they do not appear in the GitHub **Packages** tab.
-Release v0.0.5 contains:
+Release v0.0.6 contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_0.0.5.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | Install on the target Debian/Ubuntu host. |
-| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | Verify the downloaded Debian package. |
+| [frp-ssh-guard_0.0.6.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb) | Install on the target Debian/Ubuntu host. |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/SHA256SUMS) | Verify the downloaded Debian package. |
 
 The complete source remains in the repository. GitHub automatically provides
-[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
-and [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.6.zip)
+and [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.6.tar.gz)
 for the release tag, including the runtime, build scripts, packaging, docs, and tests.
 Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb`.
 
@@ -186,7 +186,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5.deb
+sudo apt install ./frp-ssh-guard_0.0.6.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -199,7 +199,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 Installation automatically creates this folder and migrates existing settings
-and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5.deb` uses the
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.6.deb` uses the
 invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
 customized values, even when another administrator installs the package.
@@ -219,10 +219,10 @@ deadlines stay unchanged; pending custom edits remain unapplied. Status can show
 pending edits after defaults are added. Set `PROTECT_SERVER_SSH=on` and explicitly
 run `check` then `reload` when ready to activate local SSH protection. An unavailable
 or invalid file is left alone with a notice; fix it and reinstall using
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.5.deb` to retry.
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.6.deb` to retry.
 
 To choose an owner before the first migration, use
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`.
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.6.deb`.
 Conflicting existing home files or an unavailable home leave the old configuration
 in use; the installer reports this instead of overwriting data. Use
 `frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
@@ -330,6 +330,9 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `PROTECT_SERVER_SSH` | `off` | `on` adds this server's port 22 and monitors local sshd outcomes. |
 | `JAIL_PER_PORT` | `off` | `off`: automatic/strike bans cover all protected ports. `on`: each port has its own jail. |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | Local authentication failure threshold, distinct invalid-user connection threshold, and counting window. |
+| `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `observe`, `20`, `24h` | Independent long-window detector; `off`, observation only, or explicit `enforce`. |
+| `ALERT_LOG_MAX_SIZE` | `10MiB` | Newest-first local alerts, oldest complete lines discarded; 1KiB–100MiB, no archives. |
+| `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | Report distinct automatic sources per /24 or /64 and jail scope; never block a subnet automatically. |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | New SYN rate/minute and burst per source and port. |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | Shared new SYN rate/minute and burst per port, across sources and IP families. |
 | `BAN_TIMEOUT` | `6h` | Temporary source-ban duration. |
@@ -485,7 +488,7 @@ If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
 to switch to the current version while retaining settings.
 
-Download **v0.0.5** and install it with `sudo apt install ./frp-ssh-guard_0.0.5.deb`.
+Download **v0.0.6** and install it with `sudo apt install ./frp-ssh-guard_0.0.6.deb`.
 APT upgrades earlier builds while keeping your settings. `frp-ssh-guard --version`
 shows the release version; `dpkg-query -W frp-ssh-guard` also shows the internal
 package revision used by APT to recognize newer builds.
@@ -550,3 +553,49 @@ Use synthetic addresses and never submit production configurations or authentica
 
 [MIT License](LICENSE): use, modify, and redistribute with the license and copyright
 notice retained. The software is provided without warranty. See the license for full terms.
+
+## Local observations in v0.0.6
+
+After installing, run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`
+to start the updated monitors. Use `enable` for first activation. Installation
+merges missing settings while retaining custom values, accepted firewall policy,
+existing jail expiries and timer deadlines; it does not restart the services.
+
+The fast SSH detector keeps its 5 failures / 3 invalid-user connections / 10-minute
+window. `SSH_SLOW_MODE=observe` adds an independent 20-failure / 24-hour window.
+Observation produces an alert without adding a ban or strike. Set `enforce`, then
+check/reload, to use the existing ban duration and jail scope for slow probes.
+Successful logins clear short-window failures; long-window failures age out normally.
+
+`~/.frp-ssh-guard/alerts.log` contains one event per line, newest first: previously
+untrusted successful logins, slow thresholds, and suspected subnet clusters. A new
+source login is a review signal, not proof of compromise. The file records UTC time,
+source, scope, method where relevant, and counts; it never records account names,
+passwords or raw messages. The default cap is 10MiB; older complete records are
+removed without rotation or archives. Change `ALERT_LOG_MAX_SIZE`, then check/reload
+to trim to a new cap. `status` and `report` show the cap. These files are private
+local deployment data: do not commit or share them. If the home is unavailable,
+a private system spool uses the same cap and merges when access returns.
+
+Learning remains opt-in through `LOGIN_USERS`. Matching password, public-key and
+PAM successes can teach trust, after the login is classified. Trust applies to the
+observed source IP: it does not automatically follow you to a new dynamic address,
+and a successful compromised account could teach trust. Keep recovery access.
+The guard does not change sshd authentication settings or Fail2ban's firewall rules.
+
+```bash
+sudo frp-ssh-guard doctor
+sudo frp-ssh-guard report 24h
+```
+
+`doctor` reads native SSH rule coverage, monitor state, journal access, whitelist
+coverage and alert-file access. Reports filter timestamped events and separate
+failures, observed thresholds, new automatic bans and sampled dropped packets.
+Packets are not connections or evidence of successful prevention. The existing
+log timer checkpoints packet deltas; intervals can straddle a report boundary,
+and unsampled drops can be lost during a crash. Reload checkpoints the old table
+before replacing it. New long-window coverage begins at explicit activation;
+recent legacy short-window attempts are imported without inventing long history.
+Observation tables are bounded to 200,000 rows each; capacity loss is shown in reports.
+Subnet reports group distinct automatically banned sources by jail scope and
+IPv4 /24 or IPv6 /64; manual and restored bans do not count. No subnet is auto-blocked.

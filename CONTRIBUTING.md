@@ -47,6 +47,8 @@ merging old branches, which would restore the removed history.
 - `bin/frp-ssh-guard-config.sh`: shared accepted/editable policy loading and runtime lock.
 - `bin/frp-ssh-guard-validate.py`: policy validation before applying rules.
 - `bin/frp-ssh-guard-learn.sh`: optional local sshd journal learning.
+- `bin/frp-ssh-guard-events.py`: shared journal processing, observations, reports and doctor.
+- `bin/frp-ssh-guard-alerts.py`: bounded owner-safe local alert delivery.
 - `bin/frp-ssh-guard-log.sh`: periodic ban sampling and table recovery.
 - `bin/frp-ssh-guard-strike.py`: history-based escalation and forgiveness.
 - `etc/*.example`: public defaults and empty deployment templates.

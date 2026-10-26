@@ -73,7 +73,7 @@ install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-log.sh"         "$BIN/fr
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-strike.py"      "$BIN/frp-ssh-guard-strike"
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-auth.py"        "$BIN/frp-ssh-guard-auth"
 install -o root -g root -m 0644 "$SRC/VERSION" "$BIN/VERSION"
-for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-learn.py frp-ssh-guard-auth.py; do
+for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-learn.py frp-ssh-guard-auth.py frp-ssh-guard-events.py frp-ssh-guard-alerts.py; do
   install -o root -g root -m 0755 "$SRC/bin/$helper" "$BIN/$helper"
 done
 

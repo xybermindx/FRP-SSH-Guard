@@ -35,6 +35,7 @@ its attribution and package maintainer metadata if appropriate.
 
 ## Versioned releases
 
+Release titles must be only the tag, for example `v0.0.6`; do not prefix the product name.
 Public release names, download filenames and CLI output use the application
 version. Debian metadata also includes a monotonically increasing internal
 revision, so APT can upgrade earlier builds. Prefer a new application version
@@ -78,11 +79,11 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-Release tag `v0.0.5` provides `frp-ssh-guard_0.0.5.deb` and `SHA256SUMS`.
+Release tag `v0.0.6` provides `frp-ssh-guard_0.0.6.deb` and `SHA256SUMS`.
 The workflow requires the application tag, then independently checks Debian
 metadata against `VERSION` and `PACKAGE_REVISION`.
 It uses `docs/RELEASE-vVERSION.md` when present, otherwise `CHANGELOG.md`, for notes.
-The existing v0.0.4 release and its filenames remain unchanged.
+Existing v0.0.4 and v0.0.5 tags and assets remain unchanged.
 The filename omits the internal Debian revision and optional architecture suffix; Debian metadata remains
 `Architecture: all` because the package contains architecture-independent scripts.
 

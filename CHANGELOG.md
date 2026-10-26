@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.6
+
+- Independent observe-first slow SSH detector; opt-in enforcement retains jail scope and ban durations.
+- Shared private SQLite journal deduplication and classification before whitelist learning.
+- Bounded newest-first local alerts, owner-safe writes, offline-home spool, and report-only subnet clusters.
+- Timestamped reports, persistent sampled packet deltas, and read-only doctor diagnostics.
+- Direct authentication ban history avoids double-counting sampled bans and strikes.
+- Preserve settings, active jails and timer deadlines during package installation; activate monitors explicitly.
+- Release titles use only the version number. English release notes link both language guides.
+
 ## 0.0.5
 
 Released under tag `v0.0.5`; install `frp-ssh-guard_0.0.5.deb`.

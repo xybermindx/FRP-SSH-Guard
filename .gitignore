@@ -27,3 +27,9 @@ __pycache__/
 .frp-ssh-guard/
 /auth-state.json
 /etc/user-home.json
+
+/observations/
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm

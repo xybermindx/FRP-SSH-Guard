@@ -109,7 +109,7 @@ released there too.
 ## Upgrade without reloading policy
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.5.deb
+sudo apt install ./frp-ssh-guard_0.0.6.deb
 dpkg-query -W frp-ssh-guard
 sudo frp-ssh-guard status
 ```
@@ -178,3 +178,49 @@ matching `STRIKE_LADDER` threshold, capped by `STRIKE_MAX`. A tier absent from a
 custom ladder is rejected. These are manual duration choices, independent of
 automatic strike counts. First apply saves `until=`; repeated apply, upgrades and
 reboot keep that deadline. To start a new tier period, remove its old `until=`.
+
+## Local observations in v0.0.6
+
+After installing, run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`
+to start the updated monitors. Use `enable` for first activation. Installation
+merges missing settings while retaining custom values, accepted firewall policy,
+existing jail expiries and timer deadlines; it does not restart the services.
+
+The fast SSH detector keeps its 5 failures / 3 invalid-user connections / 10-minute
+window. `SSH_SLOW_MODE=observe` adds an independent 20-failure / 24-hour window.
+Observation produces an alert without adding a ban or strike. Set `enforce`, then
+check/reload, to use the existing ban duration and jail scope for slow probes.
+Successful logins clear short-window failures; long-window failures age out normally.
+
+`~/.frp-ssh-guard/alerts.log` contains one event per line, newest first: previously
+untrusted successful logins, slow thresholds, and suspected subnet clusters. A new
+source login is a review signal, not proof of compromise. The file records UTC time,
+source, scope, method where relevant, and counts; it never records account names,
+passwords or raw messages. The default cap is 10MiB; older complete records are
+removed without rotation or archives. Change `ALERT_LOG_MAX_SIZE`, then check/reload
+to trim to a new cap. `status` and `report` show the cap. These files are private
+local deployment data: do not commit or share them. If the home is unavailable,
+a private system spool uses the same cap and merges when access returns.
+
+Learning remains opt-in through `LOGIN_USERS`. Matching password, public-key and
+PAM successes can teach trust, after the login is classified. Trust applies to the
+observed source IP: it does not automatically follow you to a new dynamic address,
+and a successful compromised account could teach trust. Keep recovery access.
+The guard does not change sshd authentication settings or Fail2ban's firewall rules.
+
+```bash
+sudo frp-ssh-guard doctor
+sudo frp-ssh-guard report 24h
+```
+
+`doctor` reads native SSH rule coverage, monitor state, journal access, whitelist
+coverage and alert-file access. Reports filter timestamped events and separate
+failures, observed thresholds, new automatic bans and sampled dropped packets.
+Packets are not connections or evidence of successful prevention. The existing
+log timer checkpoints packet deltas; intervals can straddle a report boundary,
+and unsampled drops can be lost during a crash. Reload checkpoints the old table
+before replacing it. New long-window coverage begins at explicit activation;
+recent legacy short-window attempts are imported without inventing long history.
+Observation tables are bounded to 200,000 rows each; capacity loss is shown in reports.
+Subnet reports group distinct automatically banned sources by jail scope and
+IPv4 /24 or IPv6 /64; manual and restored bans do not count. No subnet is auto-blocked.
