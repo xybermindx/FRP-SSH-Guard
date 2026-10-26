@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800" viewBox="0 0 1600 800" role="img" aria-labelledby="title desc">
+<title id="title">FRP-SSH-Guard</title>
+<desc id="desc">A shield filters incoming connections before they reach protected services. Conceptual artwork.</desc>
+<defs>
+ <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#132133"/><stop offset="1" stop-color="#070c13"/></linearGradient>
+ <linearGradient id="shield" x2="1" y2="1"><stop stop-color="#86d5fb" stop-opacity=".45"/><stop offset="1" stop-color="#2288bf" stop-opacity=".08"/></linearGradient>
+ <linearGradient id="edge" x2="1" y2="1"><stop stop-color="#b8eaff"/><stop offset="1" stop-color="#478dc3"/></linearGradient>
+ <radialGradient id="halo"><stop stop-color="#429bd3" stop-opacity=".2"/><stop offset="1" stop-color="#429bd3" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="1600" height="800" rx="24" fill="url(#bg)"/>
+<ellipse cx="840" cy="450" rx="600" ry="340" fill="url(#halo)"/>
+<g font-family="Arial, sans-serif">
+ <text x="84" y="125" fill="#f1f7ff" font-size="76" font-weight="700">FRP-SSH-Guard</text>
+ <text x="88" y="182" fill="#a7bacd" font-size="29">SSH protection at the public edge.</text>
+</g>
+<g fill="none" stroke="#e1a45b" stroke-width="3" opacity=".7">
+ <path d="M0 325C260 325 410 415 680 415"/>
+ <path d="M0 445H680"/>
+ <path d="M0 620C250 620 420 490 680 490"/>
+</g>
+<g fill="#e9b15d">
+ <rect x="230" y="348" width="16" height="16" rx="3"/>
+ <rect x="430" y="437" width="16" height="16" rx="3"/>
+ <rect x="300" y="569" width="16" height="16" rx="3"/>
+</g>
+<g stroke="#69cbbf" fill="none" stroke-width="5">
+ <path d="M0 535H650"/>
+ <path d="M975 500H1080Q1120 500 1150 460L1230 380"/>
+ <path d="M1080 500Q1120 500 1150 540L1230 620"/>
+</g>
+<g fill="#162638" stroke="#37536d" stroke-width="2">
+ <rect x="1215" y="285" width="240" height="180" rx="18"/>
+ <rect x="1215" y="540" width="240" height="180" rx="18"/>
+</g>
+<g fill="#0b1521" stroke="#284156" stroke-width="2">
+ <rect x="1240" y="312" width="190" height="34" rx="6"/>
+ <rect x="1240" y="360" width="190" height="34" rx="6"/>
+ <rect x="1240" y="408" width="190" height="30" rx="6"/>
+ <rect x="1240" y="568" width="190" height="34" rx="6"/>
+ <rect x="1240" y="616" width="190" height="34" rx="6"/>
+ <rect x="1240" y="664" width="190" height="30" rx="6"/>
+</g>
+<g fill="#71d5c7"><circle cx="1408" cy="330" r="4"/><circle cx="1408" cy="378" r="4"/><circle cx="1408" cy="586" r="4"/><circle cx="1408" cy="634" r="4"/></g>
+<path d="M820 265C875 310 940 335 1000 340V490C1000 585 915 665 820 710C725 665 640 585 640 490V340C700 335 765 310 820 265Z" fill="url(#shield)" stroke="url(#edge)" stroke-width="5"/>
+<path d="M820 294C870 330 924 352 974 362V490C974 570 899 640 820 680C741 640 666 570 666 490V362C716 352 770 330 820 294Z" fill="none" stroke="#87c9ee" stroke-opacity=".28" stroke-width="2"/>
+<path d="m748 477 49 50 99-109" fill="none" stroke="#b6edff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -2,6 +2,8 @@
 
 [English](README.md) | **简体中文**
 
+![FRP-SSH-Guard — 公网边缘的 SSH 防护](docs/images/guard-cover.svg)
+
 **[下载 v0.0.6 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb)** · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
@@ -21,6 +23,12 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 
 [部署步骤](#逐步部署) · [配置说明](#配置说明) · [命令](#常用命令) ·
 [防护范围](#可以防护哪些攻击) · [验证效果](#验证防护是否生效) · [源码构建](#开源与源码构建)
+
+## 防护路径
+
+![连接转发前的防护，以及可选的本机 SSH 认证监测](docs/images/guard-paths.zh-CN.svg)
+
+转发 SSH 的认证内容保持加密，Guard 仅利用连接元数据进行防护。可选的本机 SSH 防护读取公网主机的 sshd 认证事件；不采集密码。
 
 ## 部署观测数据
 

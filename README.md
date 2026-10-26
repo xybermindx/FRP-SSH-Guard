@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+![FRP-SSH-Guard — SSH protection at the public edge](docs/images/guard-cover.svg)
+
 **[Download v0.0.6 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
@@ -23,6 +25,12 @@ custom values and active protection. Both new protection switches default to off
 [Deployment](#deploy-step-by-step) · [Configuration](#configuration) ·
 [Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
 [Verification](#verify-that-protection-takes-effect) · [Build from source](#open-source-and-building)
+
+## Protection paths
+
+![Connection filtering before FRP forwarding, plus optional local SSH authentication monitoring](docs/images/guard-paths.svg)
+
+Forwarded SSH authentication stays encrypted; the guard uses connection metadata. Optional local SSH protection reads the public host’s sshd authentication events. Passwords are never collected.
 
 ## Observed deployment results
 

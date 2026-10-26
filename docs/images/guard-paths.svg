@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800" viewBox="0 0 1400 800" role="img" aria-labelledby="title desc">
+ <title id="title">FRP-SSH-Guard</title>
+ <desc id="desc">Connection filtering before FRP forwarding, with optional local SSH authentication monitoring.</desc>
+ <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="#65c9c0"/></marker></defs>
+ <rect width="1400" height="800" rx="24" fill="#0b1018"/>
+ <g font-family="Arial, Noto Sans CJK SC, sans-serif">
+<text x="60" y="74" fill="#f1f6fb" font-size="42" text-anchor="start">Two paths. One guard.</text>
+<text x="60" y="120" fill="#99aabd" font-size="24" text-anchor="start">Connection protection at the public host.</text>
+<rect x="440" y="175" width="500" height="465" rx="18" fill="#0e1824" stroke="#426383" stroke-width="2"/>
+<text x="470" y="218" fill="#86bbef" font-size="19" text-anchor="start">PUBLIC HOST</text>
+<rect x="55" y="292" width="280" height="140" rx="18" fill="#121d2b" stroke="#2c3c50" stroke-width="2"/>
+<text x="85" y="340" fill="#dbe5f0" font-size="26" text-anchor="start">Incoming connections</text>
+<text x="85" y="381" fill="#99aabd" font-size="22" text-anchor="start">SSH clients</text>
+<rect x="480" y="255" width="420" height="170" rx="18" fill="#121d2b" stroke="#5b9bd5" stroke-width="2"/>
+<text x="510" y="300" fill="#f1f6fb" font-size="29" text-anchor="start">FRP-SSH-Guard</text>
+<text x="510" y="344" fill="#dbe5f0" font-size="23" text-anchor="start">nftables connection limits</text>
+<text x="510" y="382" fill="#99aabd" font-size="21" text-anchor="start">Allow / block lists + timed bans</text>
+<path d="M335 355H480" fill="none" stroke="#65c9c0" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="1045" y="292" width="300" height="140" rx="18" fill="#121d2b" stroke="#2c3c50" stroke-width="2"/>
+<text x="1075" y="340" fill="#dbe5f0" font-size="25" text-anchor="start">Private SSH server</text>
+<text x="1075" y="381" fill="#99aabd" font-size="21" text-anchor="start">Behind the FRP tunnel</text>
+<path d="M900 355H1045" fill="none" stroke="#65c9c0" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="970" y="310" fill="#65c9c0" font-size="21" text-anchor="middle">FRP</text>
+<rect x="480" y="490" width="420" height="110" rx="18" fill="#121d2b" stroke="#2c3c50" stroke-width="2"/>
+<text x="510" y="533" fill="#dbe5f0" font-size="25" text-anchor="start">Local SSH · optional</text>
+<text x="510" y="572" fill="#99aabd" font-size="21" text-anchor="start">Authentication events from sshd</text>
+<path d="M575 425V490" fill="none" stroke="#65c9c0" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M825 490V425" fill="none" stroke="#65c9c0" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 7"/>
+<text x="60" y="705" fill="#afbdcd" font-size="23" text-anchor="start">Forwarded SSH: connection metadata, not passwords.</text>
+<text x="60" y="749" fill="#afbdcd" font-size="23" text-anchor="start">Local SSH: failed-authentication detection when enabled.</text>
+</g></svg>
