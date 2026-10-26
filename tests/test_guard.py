@@ -175,7 +175,8 @@ cat "$GUARD_DIR/rules.nft"
     def test_kernel_accepts_initial_and_replacement_rules(self):
         expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
         (self.root / 'lists/blocklist.conf').write_text(
-            f'203.0.113.0/24 22001,22003\n2001:db8::7 all until={expiry}\n')
+            f'203.0.113.0/24 22001,22003\n2001:db8::7 all until={expiry}\n'
+            f'[22001-22003]\n198.51.100.78 source=runtime until={expiry}\n')
         (self.root / 'lists/whitelist.conf').write_text(
             f'[22,22001]\n198.51.100.77 source=learned until={expiry}\n')
         initial = self.rules('22001\n22003\n')

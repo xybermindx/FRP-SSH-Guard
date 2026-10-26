@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-**[下载 v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
+**[下载 v0.0.5 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
 FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
@@ -124,17 +124,17 @@ flowchart LR
 
 ## 下载发布版本
 
-请从 **[GitHub Releases](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)** 下载。Debian `.deb` 文件作为发布附件提供，
+请从 **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)** 下载。Debian `.deb` 文件作为发布附件提供，
 不会显示在 GitHub 的 **Packages** 栏目中。v0.0.5 发布版本包含：
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_0.0.5.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | 安装到目标 Debian/Ubuntu 主机。 |
-| [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | 校验下载的 Debian 软件包。 |
+| [frp-ssh-guard_0.0.5.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | 校验下载的 Debian 软件包。 |
 
 完整源码保留在仓库中。GitHub 会根据发布标签自动提供
-[Source code (zip)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
-和 [Source code (tar.gz)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)，
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
+和 [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)，
 包含运行代码、构建脚本、打包文件、文档及测试。无需再上传重复的源码附件。
 `SHA256SUMS` 仅校验 `.deb` 文件。
 
@@ -143,7 +143,7 @@ flowchart LR
 ARM 和 32 位系统尚未验证。
 校验和可检测文件变化或损坏，但不是发布者签名。
 已在一次性 Debian 12 虚拟机中验证 FRP/systemd 行为。
-[CI 工作流](https://github.com/nengwanx/FRP-SSH-Guard/actions/workflows/ci.yml)
+[CI 工作流](https://github.com/xybermindx/FRP-SSH-Guard/actions/workflows/ci.yml)
 检查构建、nftables 和 Debian/Ubuntu 软件包生命周期。
 实际验证范围与限制见[验证记录](docs/VALIDATION.md)（英文）。
 

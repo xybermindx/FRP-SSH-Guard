@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**[Download v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [All release files](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
+**[Download v0.0.5 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
 FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
@@ -139,18 +139,18 @@ packets, including retransmissions, are measured—not exact sessions or login a
 
 ## Download a release
 
-Download from **[GitHub Releases](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)**. Debian `.deb` files are
+Download from **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.5)**. Debian `.deb` files are
 release assets; they do not appear in the GitHub **Packages** tab.
 Release v0.0.5 contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_0.0.5.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | Install on the target Debian/Ubuntu host. |
-| [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | Verify the downloaded Debian package. |
+| [frp-ssh-guard_0.0.5.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5.deb) | Install on the target Debian/Ubuntu host. |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | Verify the downloaded Debian package. |
 
 The complete source remains in the repository. GitHub automatically provides
-[Source code (zip)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
-and [Source code (tar.gz)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
+and [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)
 for the release tag, including the runtime, build scripts, packaging, docs, and tests.
 Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb`.
 
@@ -159,7 +159,7 @@ Debian metadata uses `Architecture: all`; dependencies are installed for the hos
 architecture. CI currently validates x64 (amd64); ARM and 32-bit systems have not
 been verified. Checksums detect corruption/changes; they are not publisher signatures.
 FRP/systemd behavior has been checked in a disposable Debian 12 VM. The
-[CI workflow](https://github.com/nengwanx/FRP-SSH-Guard/actions/workflows/ci.yml)
+[CI workflow](https://github.com/xybermindx/FRP-SSH-Guard/actions/workflows/ci.yml)
 checks builds, nftables and Debian/Ubuntu package lifecycles. See
 [validation results](docs/VALIDATION.md) for the tested scope and limitations.
 

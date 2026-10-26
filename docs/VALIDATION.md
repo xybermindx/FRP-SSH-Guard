@@ -17,8 +17,8 @@ synthetic; raw host logs and configuration are excluded from the source export.
 
 | Check | Result |
 | --- | --- |
-| Shell/Python syntax and regression suite | Passed locally: 85 tests and one privileged kernel test skipped (86 total). Includes section parsing, deletion/reban generations, fixed expiry, manual tiers, trusted PAM/journal parsing, whitelist scope, Debian metadata and privacy exceptions. |
-| Real nftables kernel validation | Passed in VM: initial/replacement tables, shared/per-port jail types, scoped CIDR blocks and timed IPv6 manual elements. |
+| Shell/Python syntax and regression suite | Passed locally: 85 tests and one privileged kernel test skipped (86 total). All 86 also passed as root in the disposable VM. Includes section parsing, deletion/reban generations, fixed expiry, manual tiers, trusted PAM/journal parsing, whitelist scope, Debian metadata and privacy exceptions. |
+| Real nftables kernel validation | Passed in VM: initial/replacement tables, shared/per-port jail types, scoped CIDR blocks, timed IPv6 manual elements, multi-port learned entries and saved automatic port ranges. |
 | Unified-list upgrade from the published package | Passed: ordinary APT upgrade imports live runtime/strike/learned entries into sectioned home files. Both shared and per-port scope, remaining TTLs, comments, ownership, accepted policy, service identity and custom timer deadlines retained. |
 | Actual successful SSH learning | Passed: a real public-key login to native port 22 creates an expiring learned entry; a newer login refreshes it. Whitelist precedence over blocks verified on native SSH and real FRP; a port-22-only entry does not exempt the FRP port. Whitelisted failed attempts do not create auth bans. |
 | Unified-list edits and duration tiers | Passed: overlapping manual CIDR and automatic host bans, unban after restoration, expiration without resurrection, and tier/forever entries applied together. Repeated apply retains the tier's saved deadline. |
@@ -37,7 +37,8 @@ synthetic; raw host logs and configuration are excluded from the source export.
 | Source installation lifecycle | Passed in VM: fresh install with home files, version command, active reinstall with conflicting installer policy flags, unchanged settings/units/bans/timer deadlines, and uninstall retaining home files. |
 | Automatic source migration (2026-10-26) | Passed: active v0.0.4 source upgrade copies settings to the selected user's home, retains accepted policy/live bans/relative timer deadlines and immediately watches edits there. |
 | Remaining ban time display | Passed: both ban views display nftables JSON seconds correctly, including per-port IPv6 entries; the VM upgrade test compares the displayed value with the kernel expiry. |
-| Ubuntu full FRP/systemd runtime, ARM and 32-bit | Not tested locally. CI exercises Debian 12/Ubuntu 24.04 package lifecycles; see the release commit’s Actions runs for results. |
+| GitHub CI | Passed: private source/history/artifact scans, regression/kernel tests, reproducible builds and Debian 12/Ubuntu 24.04 package lifecycles. |
+| Ubuntu full FRP/systemd runtime, ARM and 32-bit | Not tested locally; package-lifecycle CI does not establish full runtime compatibility. |
 
 The unified-list runtime test is `tests/vm-unified-lists.py`; run it separately
 with `off` and `on` in a fresh disposable systemd VM:

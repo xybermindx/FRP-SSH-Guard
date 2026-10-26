@@ -5,10 +5,10 @@ shared or per-port jails and upgrades that preserve your configuration.
 
 Project credit: [XyberMind team](http://www.xyber-mind.com/).
 
-[English guide](https://github.com/nengwanx/FRP-SSH-Guard/blob/v0.0.5/README.md) ·
-[Chinese guide](https://github.com/nengwanx/FRP-SSH-Guard/blob/v0.0.5/README.zh-CN.md) ·
-[Examples](https://github.com/nengwanx/FRP-SSH-Guard/blob/v0.0.5/docs/EXAMPLES.md) ·
-[Migration instructions](https://github.com/nengwanx/FRP-SSH-Guard/blob/v0.0.5/docs/MIGRATING.md)
+[English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/README.md) ·
+[Chinese guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/README.zh-CN.md) ·
+[Examples](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/docs/EXAMPLES.md) ·
+[Migration instructions](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/docs/MIGRATING.md)
 
 ## What's new
 
@@ -63,7 +63,7 @@ Saved entries retain their original expiry across reload and reboot.
   timeout receive the configured duration once during migration.
 - The first upgrade from v0.0.4 can rebase a custom `OnActiveSec` deadline through
   that version's old removal hook. See the migration guide for older development packages.
-- See the [validation record](https://github.com/nengwanx/FRP-SSH-Guard/blob/v0.0.5/docs/VALIDATION.md)
+- See the [validation record](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.5/docs/VALIDATION.md)
   for tested platforms and limitations. ARM/32-bit and full Ubuntu FRP/systemd
   runtime have not been verified.
 
