@@ -4,9 +4,11 @@ This document distinguishes expected behavior from tests actually run. It does
 not claim a prevention percentage, maximum throughput, independent audit, or
 production availability guarantee.
 
-## Recorded checks for 0.0.5 local candidate
+## Recorded checks for 0.0.5
 
-Validation dates: 2026-10-25 and 2026-10-26. This candidate has not been pushed or released.
+Local validation dates: 2026-10-25 and 2026-10-26. Runtime checks cover the
+v0.0.5 implementation; package revision 3 updates documentation, examples and
+release-tag handling. The release workflow reruns automated checks before upload.
 Privileged tests run in a disposable Debian 12 amd64 VM using unprivileged QEMU
 TCG, kernel 6.1.0-54-cloud-amd64, nftables 1.0.6, systemd 252 and real FRP 0.71.1.
 No production firewall is used. Test identities, addresses and port choices are
@@ -30,7 +32,7 @@ synthetic; raw host logs and configuration are excluded from the source export.
 | Source installation lifecycle | Passed in VM: fresh install with home files, version command, active reinstall with conflicting installer policy flags, unchanged settings/units/bans/timer deadlines, and uninstall retaining home files. |
 | Automatic source migration (2026-10-26) | Passed: active v0.0.4 source upgrade copies settings to the selected user's home, retains accepted policy/live bans/relative timer deadlines and immediately watches edits there. |
 | Remaining ban time display | Passed: both ban views display nftables JSON seconds correctly, including per-port IPv6 entries; the VM upgrade test compares the displayed value with the kernel expiry. |
-| Ubuntu, ARM and 32-bit runtime | Not tested for this candidate. No new GitHub CI run has been triggered. |
+| Ubuntu full FRP/systemd runtime, ARM and 32-bit | Not tested locally. CI exercises Debian 12/Ubuntu 24.04 package lifecycles; see the release commit’s Actions runs for results. |
 
 The VM acceptance script is `tests/vm-acceptance.py`. It deliberately installs
 packages, changes firewall rules, starts real FRP processes and creates a network

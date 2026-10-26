@@ -35,14 +35,17 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           package_version=$(python3 scripts/build.py version)
-          test "$RELEASE_TAG" = "v$package_version"
+          application_version=$(cat VERSION)
+          test "$RELEASE_TAG" = "v$application_version" || test "$RELEASE_TAG" = "v$package_version"
           package="dist/frp-ssh-guard_${package_version}.deb"
           test "$(dpkg-deb -f "$package" Version)" = "$package_version"
+          notes="docs/RELEASE-v${application_version}.md"
+          test -f "$notes" || notes=CHANGELOG.md
           (cd dist && sha256sum -c SHA256SUMS)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
             gh release upload "$RELEASE_TAG" "$package" dist/SHA256SUMS --clobber
           else
             gh release create "$RELEASE_TAG" "$package" dist/SHA256SUMS --verify-tag --draft \
-              --title "FRP-SSH-Guard $RELEASE_TAG" --notes-file CHANGELOG.md
+              --title "FRP-SSH-Guard $RELEASE_TAG" --notes-file "$notes"
           fi

@@ -1,6 +1,7 @@
 # Legacy port-list format; new installations use PROTECTED_PORTS in settings.conf.
 # Ports to PROTECT. One port / range per line. '#' comments.
 # List only SSH (or other private TCP) services -- never public HTTP(S).
+# Enable local server SSH separately with PROTECT_SERVER_SSH=on in settings.
 #
 # Examples:
 #   22001

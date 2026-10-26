@@ -11,8 +11,8 @@ For an initial publication from an untracked workspace, run `make dist` to creat
 a clean local source export. Extract it into that directory, then initialize Git:
 
 ```bash
-tar -xzf frp-ssh-guard-0.0.4.tar.gz
-cd frp-ssh-guard-0.0.4
+tar -xzf frp-ssh-guard-0.0.5.tar.gz
+cd frp-ssh-guard-0.0.5
 git init -b main
 git config --local user.name 'YOUR NAME'
 git config --local user.email 'YOUR VERIFIED OR NOREPLY GITHUB EMAIL'
@@ -35,8 +35,10 @@ its attribution and package maintainer metadata if appropriate.
 
 ## Versioned releases
 
-v0.0.5 is currently a local candidate. Building it does not authorize a push,
-tag, release or upload; keep it local until publication is explicitly requested.
+The application version, public release tag and Debian revision are distinct.
+The first public release of application 0.0.5 uses tag `v0.0.5` and package
+`0.0.5-3`. A later package revision can use a distinct `v0.0.5-4` tag. Never move
+an already-published tag or replace its package contents.
 
 1. For a new application version, update `VERSION` (plain `MAJOR.MINOR.PATCH`)
    and reset `PACKAGE_REVISION` to `1`. For a changed distribution of the same
@@ -51,11 +53,14 @@ tag, release or upload; keep it local until publication is explicitly requested.
 5. Create and push a matching tag:
 
    ```bash
-   package_version=$(python3 scripts/build.py version)
-   git tag -a "v$package_version" -m "Release $package_version"
+   release_tag="v$(cat VERSION)"  # first public release of this application version
+   git tag -a "$release_tag" -m "Release $release_tag"
    git push origin main
-   git push origin "v$package_version"
+   git push origin "$release_tag"
    ```
+
+   For another package revision of an already-published application version,
+   use `release_tag="v$(python3 scripts/build.py version)"` instead.
 
 6. The release workflow runs validation and creates a **draft** GitHub release
    containing only the tested `.deb` and `SHA256SUMS`. GitHub automatically adds
@@ -72,11 +77,11 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-The local candidate builds `frp-ssh-guard_0.0.5-2.deb` and `SHA256SUMS`.
-After publication is authorized, use tag `v0.0.5-2`; a later packaging revision
-uses `v0.0.5-3`, and so on. The workflow checks the tag against the full Debian
-version and verifies the package metadata before creating a draft.
-The existing public v0.0.4 release and its filenames remain unchanged.
+Release tag `v0.0.5` provides `frp-ssh-guard_0.0.5-3.deb` and `SHA256SUMS`.
+The workflow accepts either the application tag or the full package-version tag,
+then independently checks Debian metadata against `VERSION` and `PACKAGE_REVISION`.
+It uses `docs/RELEASE-vVERSION.md` when present, otherwise `CHANGELOG.md`, for notes.
+The existing v0.0.4 release and its filenames remain unchanged.
 The filename omits the optional architecture suffix; Debian metadata remains
 `Architecture: all` because the package contains architecture-independent scripts.
 
@@ -106,7 +111,7 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 - `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.
 
-`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-2`.
+`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-3`.
 APT compares this metadata, not the filename. Revision `1` sorts after the older
 bare `0.0.5`, and increasing revisions allow ordinary `sudo apt install ./FILE.deb`
 upgrades. A new application version sorts after revisions of the previous one.

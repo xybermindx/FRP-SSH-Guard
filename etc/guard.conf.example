@@ -1,5 +1,5 @@
 # Legacy 1.0.x policy example. New installations use settings.conf.example.
-# All scripts source this file.
+# Literal KEY=value assignments; current versions parse this as data.
 
 # Base directory (contains bin/ etc/ lists/ logs/).
 GUARD_DIR=/opt/frp-ssh-guard
@@ -10,6 +10,16 @@ GUARD_TABLE=frp_ssh_persistent_guard
 # Ports to protect live in etc/ports.conf (one port or range per line).
 # EXCLUDE_PORTS: ports/ranges to skip even if inside a protected range (e.g. an HTTP port).
 EXCLUDE_PORTS=
+
+# Protect this server's local SSH port 22 (on/off; default off).
+PROTECT_SERVER_SSH=off
+# Off: shared IP bans across protected ports. On: separate jails per port.
+JAIL_PER_PORT=off
+
+# Local sshd failure thresholds; attempted passwords are not collected.
+SSH_AUTH_FAILURES=5
+SSH_INVALID_USER_FAILURES=3
+SSH_AUTH_WINDOW=10m
 
 # Validation bounds for ports.conf (default = all valid TCP ports).
 PORT_MIN=1

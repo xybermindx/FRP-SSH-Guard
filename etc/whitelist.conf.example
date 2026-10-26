@@ -1,4 +1,5 @@
-# MANUAL WHITELIST -- IPs/CIDRs here are NEVER rate-limited or banned.
+# MANUAL WHITELIST -- bypass this guard's limits/blocks on matching ports.
+# Other firewalls, including Fail2ban, still apply independently.
 #   <IP|CIDR> [PORTS]
 # Examples (RFC 5737 documentation ranges):
 #   198.51.100.10

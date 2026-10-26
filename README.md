@@ -2,20 +2,23 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**[Download v0.0.4 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb)** · [All release files](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4) · Pre-release
+**[Download v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb)** · [All release files](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
 
-Connection-rate protection for SSH services exposed through an FRP server (`frps`).
-Install the guard on your public Linux server, select the forwarded TCP ports,
-and use nftables to limit repeated connection attempts and block abusive sources.
+Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
+FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
+or per-port jails, and scoped or timed manual blocks. Install on the public
+`frps` host; configuration lives in `~/.frp-ssh-guard/` and upgrades preserve
+custom values and active protection. Both new protection switches default to off.
 
 > **Observed impact (~10-day window):** **4,255,592** abusive packets dropped
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
 > failed logins in the latest 24-hour window.
 
-**Version 0.0.5 (local candidate, not published) · MIT licensed · Bash and Python**
+**Version 0.0.5 · Debian package 0.0.5-3 · MIT licensed · Bash and Python**
 
-The public download above is still v0.0.4. Build v0.0.5 locally with `make release`;
-the instructions below describe v0.0.5. Nothing in this candidate has been uploaded.
+[What's new in v0.0.5](docs/RELEASE-v0.0.5.md) ·
+[Configuration and command examples](docs/EXAMPLES.md) ·
+[Upgrade instructions](docs/MIGRATING.md)
 
 [Deployment](#deploy-step-by-step) · [Configuration](#configuration) ·
 [Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
@@ -134,28 +137,29 @@ packets, including retransmissions, are measured—not exact sessions or login a
 
 ## Download a release
 
-Download from **[GitHub Releases](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4)**. Debian `.deb` files are
+Download from **[GitHub Releases](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)**. Debian `.deb` files are
 release assets; they do not appear in the GitHub **Packages** tab.
-The public 0.0.4 pre-release contains:
+Release v0.0.5 contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_0.0.4.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb) | Install on the target Debian/Ubuntu host. |
-| [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/SHA256SUMS) | Verify the downloaded Debian package. |
+| [frp-ssh-guard_0.0.5-3.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb) | Install on the target Debian/Ubuntu host. |
+| [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | Verify the downloaded Debian package. |
 
 The complete source remains in the repository. GitHub automatically provides
-[Source code (zip)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.4.zip)
-and [Source code (tar.gz)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.4.tar.gz)
+[Source code (zip)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
+and [Source code (tar.gz)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)
 for the release tag, including the runtime, build scripts, packaging, docs, and tests.
 Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb`.
 
 The package contains scripts rather than a CPU-specific compiled binary. Its
 Debian metadata uses `Architecture: all`; dependencies are installed for the host
 architecture. CI currently validates x64 (amd64); ARM and 32-bit systems have not
-been verified. Checksums detect
-corruption/changes; they are not publisher signatures. This pre-release has passed
-CI, including nftables and package lifecycle checks; full FRP/systemd VM validation
-remains pending. See the release notes for details.
+been verified. Checksums detect corruption/changes; they are not publisher signatures.
+FRP/systemd behavior has been checked in a disposable Debian 12 VM. The
+[CI workflow](https://github.com/nengwanx/FRP-SSH-Guard/actions/workflows/ci.yml)
+checks builds, nftables and Debian/Ubuntu package lifecycles. See
+[validation results](docs/VALIDATION.md) for the tested scope and limitations.
 
 ## Deploy step by step
 
@@ -180,7 +184,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5-2.deb
+sudo apt install ./frp-ssh-guard_0.0.5-3.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -193,7 +197,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 Installation automatically creates this folder and migrates existing settings
-and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5-2.deb` uses the
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5-3.deb` uses the
 invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
 customized values, even when another administrator installs the package.
@@ -213,10 +217,10 @@ deadlines stay unchanged; pending custom edits remain unapplied. Status can show
 pending edits after defaults are added. Set `PROTECT_SERVER_SSH=on` and explicitly
 run `check` then `reload` when ready to activate local SSH protection. An unavailable
 or invalid file is left alone with a notice; fix it and reinstall using
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-2.deb` to retry.
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-3.deb` to retry.
 
 To choose an owner before the first migration, use
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-2.deb`.
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-3.deb`.
 Conflicting existing home files or an unavailable home leave the old configuration
 in use; the installer reports this instead of overwriting data. Use
 `frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
@@ -280,6 +284,30 @@ recovery, and reboot use the last accepted policy. `reload` updates that policy
 and refreshes the learning service. Validation or nftables application failure
 keeps previous protection. Service/helper failures are reported separately; rules
 may already be active when such an error is reported.
+
+### Enable protection for this server's SSH port 22
+
+Use `frp-ssh-guard --help` to find the actual settings path. Set the switch beside
+the port selection to `PROTECT_SERVER_SSH=on`. Keep `JAIL_PER_PORT=off` for shared
+bans, or set it to `on` for separate jails on each protected port. Saving alone
+has no effect. For an already active guard:
+
+```bash
+sudo frp-ssh-guard check && sudo frp-ssh-guard reload
+sudo frp-ssh-guard status
+```
+
+Confirm `Server SSH protection: on`. For first activation, use `enable` instead
+of `reload`. The switch automatically includes port 22. An explicit reload
+rebuilds the firewall and clears temporary automatic bans; package upgrades do
+not. Manual blocklists remain, with timed entries keeping their original expiry.
+
+Fail2ban can remain installed: the tools have separate rules and independent bans.
+If both block an address, release it in both tools. The guard does not modify
+Fail2ban jail settings; optional `LOGIN_USERS` learning can add trusted addresses
+to an existing Fail2ban sshd jail's ignore list. Learning defaults to disabled.
+
+See [examples](docs/EXAMPLES.md) for FRP-only, local-SSH-only and combined setups.
 
 ## Configuration
 
@@ -438,9 +466,9 @@ If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
 to switch to the current version while retaining settings.
 
-The current package is `0.0.5-2`: application version `0.0.5`, Debian revision `2`.
-It upgrades v0.0.4, earlier local v0.0.5 builds and `0.0.5-1` with the normal command
-above; no `--reinstall` is needed. Later revised packages use `0.0.5-3`, `0.0.5-4`,
+The current package is `0.0.5-3`: application version `0.0.5`, Debian revision `3`.
+It upgrades v0.0.4, earlier local v0.0.5 builds, `0.0.5-1` and `0.0.5-2` with the
+normal command above; no `--reinstall` is needed. Later revised packages use `0.0.5-4`, `0.0.5-5`,
 or a newer application version. Installing the same package version again is
 normally a no-op. Use `dpkg-query -W frp-ssh-guard` to see the full package version;
 `frp-ssh-guard --version` shows the application version.

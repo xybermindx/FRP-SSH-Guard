@@ -1,16 +1,17 @@
-# Migration to 0.0.5 (local candidate)
+# Migration to 0.0.5
 
 
 ## Upgrade while preserving settings and live jails
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.5-2.deb
+sudo apt install ./frp-ssh-guard_0.0.5-3.deb
 frp-ssh-guard --version
 sudo frp-ssh-guard status
 ```
 
-Package `0.0.5-2` is newer than `0.0.4`, the earlier local `0.0.5` builds,
-and package `0.0.5-1`, so the normal APT command upgrades them without `--reinstall`. The
+Package `0.0.5-3` is newer than `0.0.4`, the earlier local `0.0.5` builds,
+and packages `0.0.5-1`/`0.0.5-2`, so the normal APT command upgrades them without
+`--reinstall`. The
 application remains v0.0.5. Check the Debian revision with
 `dpkg-query -W frp-ssh-guard`. Future changed distributions must increment the
 revision or application version; an identical version normally needs no action.
@@ -51,7 +52,7 @@ unmigrated legacy config), mode 0600. Home updates run as the registered owner,
 even if another administrator installs the package. Reinstalling without missing
 keys leaves the file and backups unchanged. Invalid/unavailable files or unsafe
 links are left alone with a notice; after correcting access or format, retry
-using `sudo apt install --reinstall ./frp-ssh-guard_0.0.5-2.deb`.
+using `sudo apt install --reinstall ./frp-ssh-guard_0.0.5-3.deb`.
 
 Accepted policy and its digest are not rewritten. Existing pending edits remain
 unapplied, so status may show pending edits after defaults are added. No services,
@@ -66,7 +67,7 @@ Once selected, the location remains unchanged on subsequent upgrades, regardless
 of who installs them. To select a different owner before the first migration:
 
 ```bash
-sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-2.deb
+sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-3.deb
 ```
 
 Legacy port-list input is converted when needed. Files have mode 0600 in a 0700
@@ -110,12 +111,12 @@ is not extended by reload or reboot. `unblock IP` removes all its manual scopes.
 
 ## Corrected public version numbering
 
-The public release remains **v0.0.4**; the local candidate uses **v0.0.5**. Earlier pre-release packages used
-numerically higher Debian versions.
+The public release is **v0.0.5**, with Debian package **0.0.5-3**. Earlier
+pre-release packages used numerically higher Debian versions.
 To replace one of those installations while preserving settings and state:
 
 ```bash
-sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-2.deb
+sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-3.deb
 sudo frp-ssh-guard status
 ```
 
@@ -125,26 +126,25 @@ Earlier pre-release builds are superseded by the current version.
 
 ## Existing Debian installations (1.0.x)
 
-Upgrades preserve `guard.conf`, `ports.conf`, lists, logs, and enablement. The new
-package creates `settings.conf` only when neither configuration file exists.
-Until migrated, the legacy files remain the editable inputs. The first successful
-activation/reload—or legacy service start after upgrade—captures their policy in
-`/var/lib/frp-ssh-guard/applied.conf`. Thereafter background activity and reboot
-restore the accepted policy, not later edits.
-
-1. Back up `/etc/frp-ssh-guard` and `/var/lib/frp-ssh-guard` privately.
-2. Install the new `.deb` without restarting the guard:
+1. Privately back up `/etc/frp-ssh-guard`, `/var/lib/frp-ssh-guard`, and any existing
+   home configuration before changing versions.
+2. Install the corrected version without purging or restarting the guard:
 
    ```bash
-   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-2.deb
+   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-3.deb
+   frp-ssh-guard --help
    sudo frp-ssh-guard status
    ```
 
-3. Prepare the new file outside `/etc/frp-ssh-guard/settings.conf` first. Copy
-   `/usr/share/doc/frp-ssh-guard/examples/settings.conf.example` to a private
-   working file and merge policy values from the old `guard.conf`.
-4. Convert uncommented `ports.conf` entries to `PROTECTED_PORTS`, preserving any
-   `port:rate:burst` overrides. For example:
+3. Check the `Settings:` path printed by help. Successful automatic migration
+   has already copied values from `guard.conf`, converted `ports.conf` to
+   `PROTECTED_PORTS`, and added missing options in the chosen home. The old
+   system files remain snapshots; editing them will not change the home policy.
+4. If migration reports a conflict or unsupported shell syntax, keep both copies
+   privately and reconcile the values as literal assignments. Retry
+   `sudo frp-ssh-guard config-home USERNAME` after correcting the problem.
+   Continue using the file indicated by help until that migration succeeds.
+5. If manual port conversion is needed, preserve ranges and rate/burst overrides:
 
    ```text
    # Old ports.conf
@@ -152,29 +152,27 @@ restore the accepted policy, not later edits.
    23000-23010:60:40
    ```
 
-   becomes:
+   becomes this assignment in the selected editable settings file:
 
-   ```bash
+   ```ini
    PROTECTED_PORTS="22001,23000-23010:60:40"
    ```
 
-5. Retain exclusions, rates, durations, and learning preferences. Do not copy
-   `GUARD_DIR`; package paths are supplied by the launcher. Keep the active
-   `GUARD_TABLE` value unchanged.
-6. Install your reviewed file:
+6. Retain exclusions, rates, durations and learning preferences. Keep the active
+   `GUARD_TABLE` unchanged. Do not carry over source-install path settings.
+   Apply reviewed policy changes explicitly:
 
    ```bash
-   sudo install -o root -g root -m 0640 ./settings.conf /etc/frp-ssh-guard/settings.conf
-   sudo frp-ssh-guard check
-   sudo frp-ssh-guard reload  # use enable if currently inactive
+   sudo frp-ssh-guard check && sudo frp-ssh-guard reload
    sudo frp-ssh-guard status
    ```
 
-`settings.conf` takes precedence as a whole; it is not merged with `guard.conf`.
-If `PROTECTED_PORTS` is absent, the legacy port file remains a compatibility input;
-an explicitly empty value does not fall back. Keep backups until access and
-reboot restoration have been verified. Old files can remain for reference but
-are not policy inputs once the new file defines `PROTECTED_PORTS`.
+   Use `enable` for an inactive guard. An upgrade alone does not require this
+   reload; it is only for adopting configuration edits.
+
+`settings.conf` takes precedence as a whole over `guard.conf`. An absent
+`PROTECTED_PORTS` still permits the legacy port file; an explicitly empty value
+does not. Keep backups until access and reboot restoration are verified.
 
 `install [FILE]`, `trial [FILE]`, and `check [FILE]` still accept a legacy port-list
 override. An activation with an override snapshots those ports without rewriting
@@ -190,12 +188,15 @@ Do not install source and Debian versions side by side.
 2. Run `sudo ./uninstall.sh --prefix /opt/frp-ssh-guard` with the actual old
    prefix. Do not use `--purge`. This stops protection during migration.
 3. Install the `.deb` on the public FRP host.
-4. Merge settings into `/etc/frp-ssh-guard/settings.conf` as described above;
-   convert the old port list if necessary. Do not copy source-specific paths.
-5. Copy lists to `/var/lib/frp-ssh-guard/lists/` and logs to
-   `/var/log/frp-ssh-guard/`. Keep root ownership and appropriate permissions.
-   `hardban.conf` is the canonical persisted strike list. Old `hardguard.conf`
-   deployments should merge those addresses into `hardban.conf` before activation.
+4. Run `frp-ssh-guard --help` and restore reviewed settings into the **selected**
+   settings file, not an old snapshot. Convert the old port list if necessary;
+   omit source-specific paths. Reconcile any home-file conflict before retrying
+   `config-home USERNAME` so existing custom data is not overwritten.
+5. Restore manual allow/block files into the `Manual lists:` location shown by
+   help, preserving that owner's access and private permissions. Restore learned
+   and persisted strike state to `/var/lib/frp-ssh-guard/lists/`, and logs to
+   `/var/log/frp-ssh-guard/`, with root ownership. `hardban.conf` is the canonical
+   persisted strike list; merge older `hardguard.conf` entries privately if needed.
 6. With `frps` and forwarded listeners running, run `check`, `enable`, and `status`.
 7. Verify access and reboot restoration before retiring the backup.
 

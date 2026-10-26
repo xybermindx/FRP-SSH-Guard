@@ -2,19 +2,22 @@
 
 [English](README.md) | **简体中文**
 
-**[下载 v0.0.4 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4) · 预发布版本
+**[下载 v0.0.5 .deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb)** · [全部发布文件](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)
 
-为 FRP 服务端（`frps`）暴露的 SSH 服务提供连接速率防护。
-将本工具安装在公网 Linux 服务器上，选择需要保护的转发 TCP 端口，
-通过 nftables 限制重复连接尝试，并封禁异常来源。
+保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
+FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
+封禁，以及按端口限定或限时的手动黑名单。安装在公网 `frps` 主机上；
+配置位于 `~/.frp-ssh-guard/`，升级保留自定义值和正在运行的防护。
+两个新增防护开关默认均为 off。
 
 > **约 10 天观测：** 已丢弃 **4,255,592** 个恶意数据包（**99.97%**），
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，最近 24 小时后端登录失败 **0** 次。
 
-**版本 0.0.5（本地候选版，尚未发布）· MIT 开源许可 · Bash 与 Python**
+**版本 0.0.5 · Debian 软件包 0.0.5-3 · MIT 开源许可 · Bash 与 Python**
 
-上方公开下载仍为 v0.0.4。通过 `make release` 在本地构建 v0.0.5；
-下文介绍 v0.0.5 的操作。本候选版尚未上传。
+[v0.0.5 更新说明](docs/RELEASE-v0.0.5.md) ·
+[配置及命令示例](docs/EXAMPLES.zh-CN.md) ·
+[升级说明](docs/MIGRATING.md)（英文）
 
 [部署步骤](#逐步部署) · [配置说明](#配置说明) · [命令](#常用命令) ·
 [防护范围](#可以防护哪些攻击) · [验证效果](#验证防护是否生效) · [源码构建](#开源与源码构建)
@@ -119,25 +122,28 @@ flowchart LR
 
 ## 下载发布版本
 
-请从 **[GitHub Releases](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.4)** 下载。Debian `.deb` 文件作为发布附件提供，
-不会显示在 GitHub 的 **Packages** 栏目中。公开的 0.0.4 预发布版本包含：
+请从 **[GitHub Releases](https://github.com/nengwanx/FRP-SSH-Guard/releases/tag/v0.0.5)** 下载。Debian `.deb` 文件作为发布附件提供，
+不会显示在 GitHub 的 **Packages** 栏目中。v0.0.5 发布版本包含：
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_0.0.4.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/frp-ssh-guard_0.0.4.deb) | 安装到目标 Debian/Ubuntu 主机。 |
-| [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.4/SHA256SUMS) | 校验下载的 Debian 软件包。 |
+| [frp-ssh-guard_0.0.5-3.deb](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/frp-ssh-guard_0.0.5-3.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [SHA256SUMS](https://github.com/nengwanx/FRP-SSH-Guard/releases/download/v0.0.5/SHA256SUMS) | 校验下载的 Debian 软件包。 |
 
 完整源码保留在仓库中。GitHub 会根据发布标签自动提供
-[Source code (zip)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.4.zip)
-和 [Source code (tar.gz)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.4.tar.gz)，
+[Source code (zip)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.zip)
+和 [Source code (tar.gz)](https://github.com/nengwanx/FRP-SSH-Guard/archive/refs/tags/v0.0.5.tar.gz)，
 包含运行代码、构建脚本、打包文件、文档及测试。无需再上传重复的源码附件。
 `SHA256SUMS` 仅校验 `.deb` 文件。
 
 软件包包含脚本，而非针对特定 CPU 编译的二进制程序。Debian 元数据使用
 `Architecture: all`，依赖包按主机架构安装。当前 CI 验证的是 x64（amd64）；
 ARM 和 32 位系统尚未验证。
-校验和可检测文件变化或损坏，但不是发布者签名。此预发布版本已通过 CI，
-包括 nftables 和软件包生命周期检查；完整的 FRP/systemd 虚拟机验证仍待完成，详见发布说明。
+校验和可检测文件变化或损坏，但不是发布者签名。
+已在一次性 Debian 12 虚拟机中验证 FRP/systemd 行为。
+[CI 工作流](https://github.com/nengwanx/FRP-SSH-Guard/actions/workflows/ci.yml)
+检查构建、nftables 和 Debian/Ubuntu 软件包生命周期。
+实际验证范围与限制见[验证记录](docs/VALIDATION.md)（英文）。
 
 ## 逐步部署
 
@@ -161,7 +167,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5-2.deb
+sudo apt install ./frp-ssh-guard_0.0.5-3.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -173,7 +179,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 安装会自动创建该目录，并迁移现有设置和手动名单。
-普通的 `sudo apt install ./frp-ssh-guard_0.0.5-2.deb` 使用调用 sudo 的用户的家目录；
+普通的 `sudo apt install ./frp-ssh-guard_0.0.5-3.deb` 使用调用 sudo 的用户的家目录；
 直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
 后续升级保留已选用户及其自定义值，即使换一位管理员安装也不会更换位置。
 
@@ -189,10 +195,10 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 也不会应用尚未确认的自定义修改。补齐默认项后，状态可能显示存在待应用修改。
 准备启用本机 SSH 防护时，将 `PROTECT_SERVER_SSH=on`，然后明确执行 `check`、`reload`。
 若文件不可访问或格式无效，会保留原文件并提示；修复后可用
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-2.deb` 重试。
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.5-3.deb` 重试。
 
 首次迁移前可用
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-2.deb`
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-3.deb`
 指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
 不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
 `sudo frp-ssh-guard config-home USERNAME` 重试。
@@ -252,6 +258,28 @@ sudo frp-ssh-guard status
 仅保存文件不会生效。后台任务、手动名单更新、防护表恢复以及重启都会使用上次成功应用的策略。
 `reload` 接受新设置并刷新学习服务。验证或 nftables 应用失败时，保留原有防护。
 服务或辅助任务故障会单独报告；发生此类错误时，规则可能已经生效。
+
+### 启用服务器自身的 SSH 22 端口防护
+
+用 `frp-ssh-guard --help` 查看实际配置路径。在端口选择附近设置
+`PROTECT_SERVER_SSH=on`。保留 `JAIL_PER_PORT=off` 可共享封禁，
+设为 `on` 则各受保护端口独立封禁。仅保存文件不会生效。防护已运行时执行：
+
+```bash
+sudo frp-ssh-guard check && sudo frp-ssh-guard reload
+sudo frp-ssh-guard status
+```
+
+确认状态显示 `Server SSH protection: on`。首次启用时用 `enable` 代替 `reload`。
+该开关会自动加入 22 端口。显式 reload 会重建防火墙并清空当前临时自动封禁；
+软件包升级不会如此。手动黑名单保留，限时条目保持原来的到期时间。
+
+可继续保留 Fail2ban：两者使用各自的规则，封禁相互独立。
+如果同一个地址被两者封禁，需要分别解除。本工具不会修改 Fail2ban jail 配置；
+可选的 `LOGIN_USERS` 学习功能会把可信地址加入现有 Fail2ban sshd jail 的忽略名单，
+该学习功能默认关闭。
+
+仅 FRP、仅本机 SSH、组合防护的配置见[示例](docs/EXAMPLES.zh-CN.md)。
 
 ## 配置说明
 
@@ -403,9 +431,9 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
 切换到当前版本，并保留现有设置。
 
-当前软件包版本为 `0.0.5-2`：程序版本 `0.0.5`，Debian 修订号 `2`。
-从 v0.0.4、较早的本地 v0.0.5 或 `0.0.5-1` 软件包升级时，直接使用上面的普通命令即可，
-无需 `--reinstall`。后续修订使用 `0.0.5-3`、`0.0.5-4` 或更高的程序版本。
+当前软件包版本为 `0.0.5-3`：程序版本 `0.0.5`，Debian 修订号 `3`。
+从 v0.0.4、较早的本地 v0.0.5、`0.0.5-1` 或 `0.0.5-2` 软件包升级时，
+直接使用上面的普通命令即可，无需 `--reinstall`。后续修订使用 `0.0.5-4`、`0.0.5-5` 或更高的程序版本。
 再次安装相同版本的软件包通常不会执行操作。用 `dpkg-query -W frp-ssh-guard`
 查看完整软件包版本；`frp-ssh-guard --version` 显示程序版本。
 

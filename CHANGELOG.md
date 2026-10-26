@@ -1,39 +1,32 @@
 # Changelog
 
-## 0.0.5 (local candidate; not published)
+## 0.0.5
 
-- Debian revision `0.0.5-2`: merge missing commented settings during package/source
-  installation, keeping existing values, comments, permissions and registered
-  owner. Save an exact private backup before changes; complete configs are untouched.
-- Place missing local SSH and per-port jail switches just below the port selection
-  and exclusions. Retain explicit switch values and legacy port-file behavior.
-- Keep accepted policy, pending edits, live bans and timer deadlines unchanged
-  while updating editable settings; defer unavailable/invalid files with a notice.
-- Clarify the settings path in CLI help and group template controls near ports.
+Released under tag `v0.0.5`; Debian package version `0.0.5-3`.
 
-- Package as Debian version `0.0.5-1` so ordinary `sudo apt install ./FILE.deb`
-  upgrades earlier local `0.0.5` builds without `--reinstall`. Track packaging
-  revisions separately, add `make bump-revision`, and validate revisioned release
-  tags and package metadata while keeping application version `0.0.5`.
-
-- Add opt-in protection for this server's SSH port 22, including local sshd
-  authentication failures and invalid-user attempts; never collect passwords.
-- Add `PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off`. Default jails cover all
-  selected ports; opt-in per-port jails also separate ban history and escalation.
-- Automatically create/migrate private editable settings and manual lists into
-  the installing sudo user's `~/.frp-ssh-guard/` (root for direct root installs).
-  Keep an existing owner on later upgrades; support `FRP_GUARD_CONFIG_USER` for
-  first selection and `config-home [USER]` for retry. Retain old files on conflicts.
-- Retarget an active manual-list watcher without resetting systemd timer
-  deadlines; keep literal data parsing and root-owned runtime snapshots for boot.
-- Correct displayed remaining ban times to use nftables JSON seconds.
-- Add manual all-port or selected-port blocks, permanent by default, with optional
-  `--for` duration saved as an absolute expiry that survives reload and reboot.
-- Update manual lists without clearing automatic jails or their remaining timeouts.
-- Preserve custom settings, live jails and timer deadlines on Debian/source
-  upgrades; do not restart services, rebuild the firewall or reload systemd units.
-- Add `version`, `--version`, and `-V`; reject overwriting an unrelated command.
-- Extend privacy checks, regression coverage and disposable-VM acceptance testing.
+- Add optional server SSH port-22 protection using connection limits and local
+  sshd failure/invalid-user outcomes. Passwords are never collected.
+- Add `PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off` beside port selection.
+  Shared bans remain the default; per-port mode isolates automatic/authentication
+  bans and strike history. Manual block scope is independent of this setting.
+- Automatically create/migrate editable settings and manual lists into the
+  installing sudo user's `~/.frp-ssh-guard/` (root for direct root installs).
+  Retain the chosen owner and root-owned accepted policy/caches for boot.
+- Add missing commented defaults during installation without overwriting custom
+  values. Save an exact private backup first; complete configs remain unchanged.
+- Preserve live jails, remaining ban lifetimes and timer deadlines on upgrades.
+  Retarget list watching without reloading systemd. The installed v0.0.4 removal
+  hook can still rebase a custom `OnActiveSec` deadline on its first upgrade.
+- Support permanent or timed manual blocks for all selected ports or specific
+  ports. Timed entries keep their absolute expiry across reload and reboot.
+- Update manual lists without clearing automatic jails; correct ban-time display
+  to use nftables JSON seconds.
+- Add `version`, `--version`, and `-V`. Track Debian revisions separately so APT
+  recognizes newer packages; use `make bump-revision` for a changed distribution.
+- Update English/Chinese introductions, installation and migration instructions,
+  native SSH activation steps, configuration examples and public release links.
+- Validate source/history/artifacts for private deployment data and record actual
+  Debian VM, FRP, local SSH, upgrade, reboot and package-lifecycle checks.
 
 ## 0.0.4
 
