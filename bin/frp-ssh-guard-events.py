@@ -201,7 +201,10 @@ class Store:
     def record_ban(self, ip, scope, expiry, origin, config, now):
         prior = self.db.execute('SELECT expiry,origin FROM bans WHERE ip=? AND scope=?', (ip, scope)).fetchone()
         self.db.execute('INSERT OR REPLACE INTO bans VALUES (?,?,?,?)', (ip, scope, expiry, origin))
-        if origin not in ('auth', 'kernel') or prior and prior['expiry'] > now:
+        # Auth enforcement has already verified that no live/restored jail
+        # covers this source. A prior deadline can remain after an editable-list
+        # deletion, so it must not suppress this newly applied authentication ban.
+        if origin not in ('auth', 'kernel') or origin == 'kernel' and prior and prior['expiry'] > now:
             return False
         identity = digest(f'ban|{ip}|{scope}|{now}')
         self.emit(identity, now, 'ban', ip, scope, 'origin=' + origin)

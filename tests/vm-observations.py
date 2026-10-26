@@ -14,6 +14,33 @@ spec.loader.exec_module(vm)
 run, guard, wait_for = vm.run, vm.guard, vm.wait_for
 
 
+def check_reban():
+    assert os.environ.get('FRP_GUARD_DISPOSABLE') == '1' and os.geteuid() == 0
+    ip = '198.51.100.10'
+    path = Path('/home/guardmigration/.frp-ssh-guard/blocklist.conf')
+    def count():
+        with sqlite3.connect('file:/var/lib/frp-ssh-guard/observations/events.sqlite3?mode=ro', uri=True) as db:
+            return db.execute("SELECT count(*) FROM events WHERE kind='ban' AND ip=?", (ip,)).fetchone()[0]
+    def jailed():
+        return [key for name in ('ban4', 'saved_ban4', 'saved_ban_pp4', 'hardban4') for key in vm.jail(name)]
+    previous = count()
+    assert any(key.startswith(ip) for key in jailed())
+    path.write_text(''.join(line for line in path.read_text().splitlines(keepends=True)
+                            if not line.split() or line.split()[0] != ip))
+    guard('apply')
+    assert all(not key.startswith(ip) for key in jailed())
+    for _ in range(3):
+        run('ip', 'netns', 'exec', 'guard-client', 'ssh', '-b', ip, '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null',
+            '-o', 'ConnectTimeout=3', 'missing-example-account@198.51.100.1', 'true', check=False)
+    wait_for(lambda: count() == previous + 1, seconds=90)
+    run('/usr/lib/frp-ssh-guard/run', 'log')
+    assert count() == previous + 1
+    run('/usr/lib/frp-ssh-guard/run', 'strike')
+    assert any(key.startswith(ip) for key in vm.jail('hardban4'))
+    print('PASS: editable-list deletion permits a new auth offense and strike, counted once', flush=True)
+
+
 def main():
     assert os.environ.get('FRP_GUARD_DISPOSABLE') == '1' and os.geteuid() == 0
     home = Path('/home/guardmigration/.frp-ssh-guard')
@@ -87,7 +114,11 @@ def main():
     assert not list(home.glob('alerts.log.*'))
     assert guard('report', '1s').find('slow-threshold: 0') >= 0
     print('PASS: private owner log, newest-first complete records, reload cap and report window', flush=True)
+    check_reban()
 
 
 if __name__ == '__main__':
-    main()
+    if sys.argv[1:] == ['reban']:
+        check_reban()
+    else:
+        main()

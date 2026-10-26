@@ -190,6 +190,21 @@ class EventTests(unittest.TestCase):
             run.assert_not_called()
         self.assertEqual(self.count('ban'), 0)
 
+    def test_reban_after_manual_removal_records_new_auth_offense(self):
+        import subprocess
+        ip = '198.51.100.7'
+        self.store.record_ban(ip, '*', NOW + 600, 'auth', self.config, NOW)
+        # The editable-list watcher removed the previous jail, without a CLI
+        # forgive. Its old accounting deadline still exists in the database.
+        with mock.patch.object(events.lists, 'snapshot', return_value=[]), \
+             mock.patch.object(events.lists, 'read', return_value=''), \
+             mock.patch.object(events.lists, 'sync'), \
+             mock.patch.object(events.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)):
+            self.assertTrue(events.enforce(self.store, self.config, ip, NOW + 10))
+        self.assertEqual(self.count('ban'), 2)
+        self.store.record_ban(ip, '*', NOW + 21610, 'kernel', self.config, NOW + 11)
+        self.assertEqual(self.count('ban'), 2)
+
     def test_invalid_new_settings_fail_validation(self):
         validator = events.module('validate')
         validator.validate(self.config)

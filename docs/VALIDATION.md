@@ -3,12 +3,13 @@
 Validated on 2026-10-26, using invented identities, ports and documentation IPs.
 No production firewall was modified.
 
-- `make release`: 103 cases, 102 passing and one optional privileged kernel skip
+- `make release`: 104 cases, 103 passing and one optional privileged kernel skip
   in the unprivileged workspace. Private source/artifact checks passed.
 - Debian 12 disposable QEMU VM: Linux 6.1.0-54-cloud-amd64, nftables 1.0.6,
-  systemd 252, OpenSSH and actual FRP 0.71.1. The initial complete 99-case suite,
-  including the kernel namespace case, passed; subsequent observation regressions
-  also pass locally. CI reruns the final suite with privileged namespace coverage.
+  systemd 252, OpenSSH and actual FRP 0.71.1. The complete 103-case suite,
+  including the kernel namespace case, passed. A final regression covers a new
+  authentication ban after editable-list removal; CI reruns all 104 cases with
+  privileged namespace coverage.
 - Actual APT upgrades from the released v0.0.5 package to v0.0.6 in both shared and
   per-port jail modes preserved the accepted policy bytes, jail remaining times,
   service invocation, timer activation/deadline properties, list scope, comments,
@@ -18,6 +19,9 @@ No production firewall was modified.
 - Real sshd invalid-user events triggered the long-window observation alert without
   a ban. Explicit enforce/reload applied one ban; repeated sampling and monitor
   restart did not duplicate its event or extend its remaining lifetime.
+- Removing an automatic entry from the editable list, then causing a fresh
+  native SSH ban, recorded one new offense and escalated through the strike ladder.
+  A following kernel sample did not duplicate that offense.
 - Real dropped packets appeared as sampled deltas. Per-port native fast detection
   and a two-source test subnet alert passed without installing a subnet ban.
 - Owner-private newest-first alerts, explicit reload trimming to 1KiB, no rotated
@@ -25,7 +29,7 @@ No production firewall was modified.
 - Unit coverage includes both readers racing under the real runtime lock, accepted
   password/public-key/PAM classification before learning, overlap/replay dedup,
   short-state migration, allowed sources, IPv4/IPv6 scoped subnet grouping,
-  manual/restored exclusions, existing-jail expiry protection, counter resets and
+  manual/restored exclusions, existing-jail expiry protection, fresh offense accounting after list removal, counter resets and
   inserted counters, offline-home spool recovery, symlink/hardlink refusal, and
   read-only observation queries.
 
