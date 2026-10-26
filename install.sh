@@ -10,7 +10,7 @@ EXCLUDE=""
 EXCLUDE_SET=0
 EDIT_USER_SET=0
 EDIT_USER="root"
-CONFIG_USER="${SUDO_USER:-root}"
+CONFIG_USER="${FRP_GUARD_CONFIG_USER:-${SUDO_USER:-root}}"
 UPGRADE=0
 
 usage() {
@@ -21,7 +21,7 @@ Usage: sudo ./install.sh [--prefix DIR] [--ports LIST] [--exclude LIST] [--edit-
   --exclude     ports to EXCLUDE  (optional) e.g. 22002
   --prefix      install directory (default: /opt/frp-ssh-guard)
   --edit-user   user allowed to edit the lists/ dir (default: root)
-  --config-user home-folder owner on a fresh install (default: invoking sudo user)
+  --config-user home-folder owner when none is selected (default: invoking sudo user)
 
 If --ports is omitted and you're on a terminal, you'll be prompted for it.
 TXT
@@ -84,6 +84,7 @@ if [[ ! -e /etc/systemd/system/frp-ssh-guard-auth.service ]]; then
       "$SRC/packaging/systemd/frp-ssh-guard-auth.service" > /etc/systemd/system/frp-ssh-guard-auth.service
 fi
 if (( UPGRADE )); then
+  FRP_GUARD_CONFIG_USER="$CONFIG_USER" python3 "$BIN/frp-ssh-guard-input.py" auto-home "$ETC" "$PREFIX" /etc/systemd/system "$BIN/frp-ssh-guard"
   echo 'Programs upgraded. Existing settings, lists, live jails, units and timer schedules were preserved.'
   echo 'Installer policy flags do not change an existing installation; edit settings and use check/reload.'
   exit 0
@@ -123,7 +124,7 @@ done
 chmod 0644 "$LISTS"/* 2>/dev/null || true
 
 # apply rules + create the (boot-persistent) guard service
-GUARD_DIR="$PREFIX" "$BIN/frp-ssh-guard" config-home "$CONFIG_USER"
+FRP_GUARD_CONFIG_USER="$CONFIG_USER" python3 "$BIN/frp-ssh-guard-input.py" auto-home "$ETC" "$PREFIX" /etc/systemd/system "$BIN/frp-ssh-guard"
 GUARD_DIR="$PREFIX" "$BIN/frp-ssh-guard" enable
 
 # ---- helper units (learn / history / strike / list watcher) ----

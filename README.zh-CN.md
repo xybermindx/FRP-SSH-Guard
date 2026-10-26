@@ -169,17 +169,22 @@ sudo apt install ./frp-ssh-guard_0.0.5.deb
 ### 3. 设置公网转发端口
 
 ```bash
-sudo frp-ssh-guard config-home
 ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
-`config-home` 将现有设置和手动名单复制到调用 sudo 的用户的
-`~/.frp-ssh-guard/`，使用私有文件权限，保留已接受的运行策略及封禁。
-也可以用 `sudo frp-ssh-guard config-home USER` 指定管理员。
-仅使用 root 的环境可采用 `/root/.frp-ssh-guard/`。
-运行该命令前，原有系统路径继续有效，不重置封禁或修改定时器配置。
-此显式迁移会重新加载 systemd 单元以监听新文件；systemd 可能重新计算自定义
-`OnActiveSec` 的触发时间。软件包升级不会重新加载单元。
+安装会自动创建该目录，并迁移现有设置和手动名单。
+普通的 `sudo apt install ./frp-ssh-guard_0.0.5.deb` 使用调用 sudo 的用户的家目录；
+直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
+后续升级保留已选用户及其自定义文件，即使换一位管理员安装也不会更换位置。
+若替换较早的本地 v0.0.5 构建，请在 apt 命令中添加 `--reinstall`。
+
+首次迁移前可用
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`
+指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
+不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
+`sudo frp-ssh-guard config-home USERNAME` 重试。
+迁移保留已接受策略、当前封禁和定时任务触发时间；活动的名单监听器会切换到新目录，
+无需重新加载 systemd。
 
 例如保护 `22001`、`22003` 和 `23000–23010`，但排除 `23005`：
 
@@ -266,8 +271,8 @@ sudo frp-ssh-guard status
 
 | 位置 | 用途 |
 | --- | --- |
-| `~/.frp-ssh-guard/settings.conf` | 执行 `config-home` 后的可编辑策略。 |
-| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | 执行 `config-home` 后的手动名单。 |
+| `~/.frp-ssh-guard/settings.conf` | 安装时自动创建/迁移的可编辑策略。 |
+| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | 安装时自动创建/迁移的手动名单。 |
 | `/etc/frp-ssh-guard/` | 初始/旧版设置，以及选定的家目录位置记录。 |
 | `/var/lib/frp-ssh-guard/applied.conf` | 生成的已接受策略，请勿手动修改。 |
 | `/var/lib/frp-ssh-guard/lists/` | 手动名单缓存、学习来源、累犯状态。 |
@@ -279,6 +284,9 @@ sudo frp-ssh-guard status
 只更新名单集合，不清空自动封禁或重置其剩余时间。
 由 root 保管的已接受设置及名单缓存使家目录暂时不可用时仍能启动防护。
 设置修改仍需执行 `check` 和 `reload`。
+防护仍作为系统服务运行，不要求用户登录。目录权限为 0700，文件权限为 0600。
+请选择可信管理员：该账户可直接编辑立即生效的手动白名单/黑名单。
+字面量解析可防止配置执行任意 shell 命令，但可写策略文件仍意味着可以决定信任或封禁谁。
 
 本机 SSH 监控读取 journald 中由 root sshd 产生的记录，使用无效用户及认证
 成功/失败结果，不采集密码，也不保存用户名。成功登录会清除近期失败计数。
@@ -421,7 +429,7 @@ sudo env GUARD_DIR=/opt/frp-ssh-guard /opt/frp-ssh-guard/bin/frp-ssh-guard statu
 
 源码安装会激活防护，默认路径是 `/opt/frp-ssh-guard`。
 不要同时安装源码版与 Debian 软件包版。重复安装保留设置、单元、定时安排及现有封禁；
-安装参数只作用于新安装。新的源码安装也会创建管理员家目录配置。
+策略安装参数只作用于新安装。源码安装及升级在尚未选择家目录所有者时也会自动创建/迁移配置。
 
 ## 贡献、安全与许可证
 

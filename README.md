@@ -189,17 +189,23 @@ change firewall rules.** Dependencies are resolved through apt.
 ### 3. Configure your public forwarded ports
 
 ```bash
-sudo frp-ssh-guard config-home
 ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
-`config-home` copies existing settings and manual lists to the invoking sudo user's
-`~/.frp-ssh-guard/` with private permissions, retaining the accepted runtime policy.
-Use `sudo frp-ssh-guard config-home USER` to select another administrator. Root-only
-installs can use `/root/.frp-ssh-guard/`. Until this command is run, existing system
-paths remain valid. It does not reset jails or change timer configuration.
-This explicit migration reloads systemd units to watch the new files; systemd may
-rebase a custom `OnActiveSec` deadline. Package upgrades do not reload units.
+Installation automatically creates this folder and migrates existing settings
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5.deb` uses the
+invoking user's home. Direct root/unattended installation uses
+`/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
+customized files, even when another administrator installs the package.
+If replacing an earlier local v0.0.5 build, add `--reinstall` to the apt command.
+
+To choose an owner before the first migration, use
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`.
+Conflicting existing home files or an unavailable home leave the old configuration
+in use; the installer reports this instead of overwriting data. Use
+`frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
+config-home USERNAME` to retry. Migration preserves accepted policy, jails and
+timer deadlines; an active list watcher switches over without a systemd reload.
 
 For public ports `22001`, `22003`, and `23000–23010` except `23005`:
 
@@ -292,8 +298,8 @@ logins to SSH servers behind the FRP tunnel.
 
 | Location | Purpose |
 | --- | --- |
-| `~/.frp-ssh-guard/settings.conf` | Editable policy after `config-home`. |
-| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | Editable manual lists after `config-home`. |
+| `~/.frp-ssh-guard/settings.conf` | Editable policy, created/migrated automatically by installation. |
+| `~/.frp-ssh-guard/whitelist.conf`, `blocklist.conf` | Editable manual lists, created/migrated automatically. |
 | `/etc/frp-ssh-guard/` | Initial/legacy settings and the selected home location registry. |
 | `/var/lib/frp-ssh-guard/applied.conf` | Generated accepted policy; do not edit. |
 | `/var/lib/frp-ssh-guard/lists/` | Cached manual lists, learned sources and strike state. |
@@ -305,6 +311,11 @@ commands apply list changes using accepted policy without adopting pending edits
 They update list sets without clearing automatic jails or renewing their timers.
 Root-owned accepted settings and cached lists allow startup when the user's home
 is unavailable. Settings changes still require `check` and `reload`.
+The guard continues to run as a system service; user login is not required.
+The home directory is private (0700), and its files are private (0600). Select a
+trusted administrator: that account can edit manual allow/block policy immediately.
+Literal parsing prevents configuration from executing arbitrary shell commands,
+but writable policy files still grant control over who the guard trusts or blocks.
 
 Local SSH monitoring reads root-owned sshd journal records. It uses sshd's
 invalid-user and failed/accepted authentication results; it never captures
@@ -456,7 +467,8 @@ sudo env GUARD_DIR=/opt/frp-ssh-guard /opt/frp-ssh-guard/bin/frp-ssh-guard statu
 Source installation activates protection and defaults to `/opt/frp-ssh-guard`.
 Do not install source and Debian versions side by side. Repeated installs preserve
 settings, units, timers and live jails; installer policy flags affect fresh installs
-only. Fresh source installs also create the administrator's home configuration.
+only. Source installs and upgrades also create/migrate home configuration when
+no home owner has previously been selected.
 
 ## Contributing, security, and license
 

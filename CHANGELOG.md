@@ -6,8 +6,13 @@
   authentication failures and invalid-user attempts; never collect passwords.
 - Add `PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off`. Default jails cover all
   selected ports; opt-in per-port jails also separate ban history and escalation.
-- Add `config-home [USER]` for private editable settings and manual lists in
-  `~/.frp-ssh-guard/`, with literal data parsing and root-owned runtime snapshots.
+- Automatically create/migrate private editable settings and manual lists into
+  the installing sudo user's `~/.frp-ssh-guard/` (root for direct root installs).
+  Keep an existing owner on later upgrades; support `FRP_GUARD_CONFIG_USER` for
+  first selection and `config-home [USER]` for retry. Retain old files on conflicts.
+- Retarget an active manual-list watcher without resetting systemd timer
+  deadlines; keep literal data parsing and root-owned runtime snapshots for boot.
+- Correct displayed remaining ban times to use nftables JSON seconds.
 - Add manual all-port or selected-port blocks, permanent by default, with optional
   `--for` duration saved as an absolute expiry that survives reload and reboot.
 - Update manual lists without clearing automatic jails or their remaining timeouts.

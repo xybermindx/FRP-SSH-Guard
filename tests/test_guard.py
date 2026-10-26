@@ -4,9 +4,11 @@ import contextlib
 import datetime
 import gzip
 import io
+import json
 import os
 from pathlib import Path
 import runpy
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -92,6 +94,20 @@ cat "$GUARD_DIR/rules.nft"
         result = self.run_guard('NFTP=echo; table_active() { return 0; }; cmd_ban 198.51.100.1')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('timeout 3h', result.stdout)
+
+    @unittest.skipUnless(shutil.which('jq'), 'requires jq for JSON ban display')
+    def test_ban_views_report_nft_json_expiry_in_seconds(self):
+        (self.root / 'ban.json').write_text(json.dumps({'nftables': [{'set': {'elem': [
+            {'elem': {'val': '198.51.100.7', 'expires': 1140}},
+            {'elem': {'val': {'concat': ['2001:db8::7', 22001]}, 'expires': 900}}
+        ]}}]}))
+        for command in ('cmd_banned', 'cmd_blocklist'):
+            result = self.run_guard('fake_nft() { cat "$GUARD_DIR/ban.json"; }\n'
+                                    'NFTP=fake_nft\ntable_active() { return 0; }\n' + command)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rows = [line.split() for line in result.stdout.splitlines()]
+            self.assertTrue(any('198.51.100.7' in row and row[-1] == '1140' for row in rows))
+            self.assertTrue(any('2001:db8::7' in row and '22001' in row and row[-1] == '900' for row in rows))
 
     def test_source_service_recompiles_at_boot(self):
         result = self.run_guard('STAGE="$GUARD_DIR"; NFTP=/usr/sbin/nft; write_unit; cat "$STAGE/unit"')

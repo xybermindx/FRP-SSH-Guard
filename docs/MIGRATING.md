@@ -30,27 +30,38 @@ To enable a new feature, edit settings, then `check` and `reload`. An explicit
 policy reload rebuilds the table: temporary automatic bans and rate meters reset;
 persisted strike bans restore. Package upgrades themselves do not rebuild it.
 
-## Move editable files into an administrator's home
+## Automatic home configuration
+
+Installing the `.deb` now creates `~/.frp-ssh-guard/` automatically and copies
+existing settings, `whitelist.conf` and `blocklist.conf` there. A sudo installation
+uses the invoking user; a direct root/unattended installation uses root's home.
+Once selected, the location remains unchanged on subsequent upgrades, regardless
+of who installs them. To select a different owner before the first migration:
 
 ```bash
-sudo frp-ssh-guard config-home
-# Or: sudo frp-ssh-guard config-home USER
+sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb
 ```
 
-This copies existing settings, `whitelist.conf` and `blocklist.conf` into
-`~/.frp-ssh-guard/` belonging to the invoking sudo user (root when called as root).
-It converts legacy port-list input when needed. New files have mode 0600, in a
-0700 directory. Differing existing files are not overwritten. Repeating the same
-selection is safe; changing an already-selected home location is refused.
+Legacy port-list input is converted when needed. Files have mode 0600 in a 0700
+directory. Different existing home files are never overwritten. If the home is
+unavailable, files conflict, or migration cannot complete, the installer reports
+that it retained the existing configuration; the package remains usable. After
+resolving the issue, retry with `sudo frp-ssh-guard config-home USERNAME`.
+Use `frp-ssh-guard --help` to see the actual settings location.
+
 Settings are literal assignments, not executable shell programs. Rewrite custom
-shell expressions as explicit values before migrating.
+shell expressions as explicit values before migrating. The selected administrator
+owns the editable files and can change manual allow/block policy immediately;
+only delegate this access to a trusted account. Configuration changes still need
+explicit privileged `check`/`reload` before becoming accepted policy.
 
 The original system files remain as snapshots/fallback. Accepted policy and
 validated manual-list caches stay root-owned in system storage, so an unavailable
-home directory does not prevent boot protection. Settings edits require explicit
-`check`/`reload`; manual-list edits are watched. Migration refreshes the systemd
-path watcher without reapplying firewall rules; custom `OnActiveSec` deadlines
-may be recalculated during that explicit unit reload. Purge retains home files.
+home directory or logged-out user does not prevent boot protection. An active
+manual-list watcher is retargeted with transient systemd units; persistent path
+configuration handles later boots. No systemd manager reload or firewall
+reapplication is needed, so migration itself retains jails and timer deadlines.
+Purge retains home files. Source installation and upgrades follow the same rules.
 
 ## New optional behavior
 

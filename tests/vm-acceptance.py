@@ -84,6 +84,9 @@ def main():
         directory = Path(f'/etc/systemd/system/frp-ssh-guard-{unit}.timer.d')
         directory.mkdir(exist_ok=True)
         (directory / 'custom.conf').write_text(f'[Timer]\nOnBootSec=\nOnBootSec=1d\nOnUnitActiveSec=\nOnUnitActiveSec={duration}\n')
+        if output('dpkg-deb', '-f', str(old), 'Version') == '0.0.5':
+            with (directory / 'custom.conf').open('a') as file:
+                file.write('OnActiveSec=31min\n')
     run('systemctl', 'daemon-reload')
     run('systemctl', 'restart', 'frp-ssh-guard-log.timer', 'frp-ssh-guard-strike.timer')
     guard('ban', '198.51.100.88', '19m')
@@ -98,34 +101,48 @@ def main():
                      ['ActiveEnterTimestampMonotonic', 'NextElapseUSecMonotonic']) for unit in ('log', 'strike')}
     ttl_before = jail()['198.51.100.88']
     start = time.monotonic()
-    run('dpkg', '-i', str(new))
+    run('useradd', '-m', 'guardadmin')
+    sudoers = Path('/etc/sudoers.d/guard-acceptance')
+    sudoers.write_text('guardadmin ALL=(ALL) NOPASSWD: ALL\n')
+    sudoers.chmod(0o440)
+    run('runuser', '-u', 'guardadmin', '--', 'sudo', '-n', 'apt-get', '-y', 'install', '--reinstall', str(new))
     assert guard('--version') == 'FRP-SSH-Guard 0.0.5'
     assert before == {str(path): (path.read_bytes(), path.stat().st_mode) for path in files}
     assert service_before == properties('frp-ssh-guard.service', list(service_before))
     for unit, expected in timers_before.items():
         assert expected == properties(f'frp-ssh-guard-{unit}.timer', list(expected))
     ttl_after = jail()['198.51.100.88']
-    assert ttl_before - (time.monotonic() - start + 3) * 1000 <= ttl_after < ttl_before
+    assert ttl_before - (time.monotonic() - start + 3) <= ttl_after <= ttl_before
+    displayed = guard('banned')
+    displayed_ttl = int(next(line.split()[-1] for line in displayed.splitlines() if '198.51.100.88' in line))
+    assert 0 < ttl_after - 3 <= displayed_ttl <= ttl_after
     assert 'tcp dport 22 ' not in output('nft', 'list', 'table', 'inet', 'frp_ssh_persistent_guard')
     print('PASS: real upgrade preserves custom files, active service, timers and ban expiry', flush=True)
 
-    run('useradd', '-m', 'guardadmin')
-    guard('config-home', 'guardadmin')
     home = Path('/home/guardadmin/.frp-ssh-guard')
     assert (home / 'settings.conf').read_bytes() == settings.read_bytes()
     assert (home / 'blocklist.conf').read_bytes() == (lists / 'blocklist.conf').read_bytes()
     assert (home / 'settings.conf').stat().st_mode & 0o777 == 0o600
     assert (home / 'settings.conf').stat().st_uid == int(output('id', '-u', 'guardadmin'))
     assert service_before == properties('frp-ssh-guard.service', list(service_before))
-    assert jail()['198.51.100.88'] < ttl_after
+    assert 0 < jail()['198.51.100.88'] <= ttl_after
+    assert output('systemctl', 'is-active', 'frp-ssh-guard-home-lists.path') == 'active'
+    assert run('systemctl', 'is-active', '--quiet', 'frp-ssh-guard-lists.path', check=False).returncode != 0
+    # A normal user edit must reach the firewall without CLI reload or a timer tick.
+    run('runuser', '-u', 'guardadmin', '--', 'sh', '-c',
+        'printf "203.0.113.99 all\\n" >> "$HOME/.frp-ssh-guard/blocklist.conf"')
+    wait_for(lambda: '203.0.113.99' in output('nft', 'list', 'set', 'inet', 'frp_ssh_persistent_guard', 'manual4'))
+    for unit, expected in timers_before.items():
+        assert expected == properties(f'frp-ssh-guard-{unit}.timer', list(expected))
+    assert 0 < jail()['198.51.100.88'] <= ttl_after
+    guard('config-home', 'guardadmin')  # idempotent; no manager reload
     for unit in ('log', 'strike'):
         path = Path(f'/etc/systemd/system/frp-ssh-guard-{unit}.timer.d/custom.conf')
         path.write_text(path.read_text() + 'OnActiveSec=31min\n')
     run('systemctl', 'daemon-reload')
     run('systemctl', 'restart', 'frp-ssh-guard-log.timer', 'frp-ssh-guard-strike.timer')
     before = {str(path): (path.read_bytes(), path.stat().st_mode) for path in files}
-    # Migration reloads the path watcher; unlike package upgrades, this explicit
-    # operation may rebase a custom systemd OnActiveSec deadline.
+    # Reinstall as root must retain the original installing user's home.
     timers_before = {unit: properties(f'frp-ssh-guard-{unit}.timer', list(expected))
                      for unit, expected in timers_before.items()}
     run('dpkg', '-i', str(new))
@@ -133,7 +150,7 @@ def main():
     assert (home / 'settings.conf').read_bytes() == settings.read_bytes()
     for unit, expected in timers_before.items():
         assert expected == properties(f'frp-ssh-guard-{unit}.timer', list(expected))
-    print('PASS: home migration preserves policy/bans/owner; reinstall retains timer schedules', flush=True)
+    print('PASS: automatic sudo-user home migration, immediate file watching, and root reinstall retain policy/bans/owner/timers', flush=True)
 
     run('ip', 'netns', 'add', 'guard-client')
     run('ip', 'link', 'add', 'guard-host', 'type', 'veth', 'peer', 'name', 'guard-peer')

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Parse editable data without executing it; manage an administrator's home files."""
 import datetime as dt
+import fcntl
 import ipaddress
 import json
 import os
@@ -147,7 +148,37 @@ def edit_list(path, kind, operation, ip, scope='*', expiry=0):
     atomic_write(path, '\n'.join(lines) + '\n')
 
 
-def migrate(base, state, units, user):
+def installer_user():
+    """Use an explicit owner or sudo's invoking user; never guess from HOME/USER."""
+    user = os.environ.get('FRP_GUARD_CONFIG_USER') or os.environ.get('SUDO_USER') or 'root'
+    account = pwd.getpwnam(user)
+    if not os.environ.get('FRP_GUARD_CONFIG_USER') and os.environ.get('SUDO_UID'):
+        if str(account.pw_uid) != os.environ['SUDO_UID']:
+            raise ValueError('Installer user metadata is inconsistent; existing configuration retained.')
+    return account.pw_name
+
+
+def follow_home(directory, state, command):
+    """Retarget an active list watcher without daemon-reload or firewall changes."""
+    active = subprocess.run(['systemctl', 'is-active', '--quiet', 'frp-ssh-guard-lists.path'],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if active.returncode:
+        return False
+    # A transient path/service pair watches the new files until the next boot.
+    # The persistent drop-in below handles later starts. Starting a path unit
+    # does not run its service just because the watched files already exist.
+    subprocess.run(['systemd-run', '--quiet', '--unit=frp-ssh-guard-home-lists',
+        '--path-property=PathModified=' + str(directory / 'whitelist.conf'),
+        '--path-property=PathModified=' + str(directory / 'blocklist.conf'),
+        '--path-property=PartOf=frp-ssh-guard.service',
+        '--property=PartOf=frp-ssh-guard.service',
+        '--property=Requisite=frp-ssh-guard.service',
+        '--property=After=frp-ssh-guard.service', '--property=Type=oneshot',
+        '--setenv=GUARD_DIR=' + str(state), str(command), 'apply'], check=True)
+    return True
+
+
+def migrate(base, state, units, user, command=None):
     base, state, units = Path(base), Path(state), Path(units)
     existing = location(base)
     account = pwd.getpwnam(user)
@@ -177,9 +208,48 @@ def migrate(base, state, units, user):
     dropin.mkdir(parents=True, exist_ok=True)
     content = ('[Path]\nPathModified=\nPathModified=' + str(directory / 'whitelist.conf') +
                '\nPathModified=' + str(directory / 'blocklist.conf') + '\n')
-    atomic_write(dropin / '50-user-home.conf', content, 0o644)
-    atomic_write(base / 'user-home.json', json.dumps({'user': user, 'directory': str(directory)}) + '\n', 0o644)
+    followed = False
+    previous = (dropin / '50-user-home.conf').read_text() if (dropin / '50-user-home.conf').exists() else None
+    try:
+        followed = follow_home(directory, state, command) if command else False
+        atomic_write(dropin / '50-user-home.conf', content, 0o644)
+        atomic_write(base / 'user-home.json', json.dumps({'user': user, 'directory': str(directory)}) + '\n', 0o644)
+    except Exception:
+        if previous is None:
+            (dropin / '50-user-home.conf').unlink(missing_ok=True)
+        else:
+            atomic_write(dropin / '50-user-home.conf', previous, 0o644)
+        if followed:
+            subprocess.run(['systemctl', 'stop', 'frp-ssh-guard-home-lists.path',
+                            'frp-ssh-guard-home-lists.service'], check=False)
+        raise
+    if followed:
+        # Only stop the old path watcher; leave the guard and timers running.
+        stopped = subprocess.run(['systemctl', 'stop', 'frp-ssh-guard-lists.path'], check=False)
+        if stopped.returncode:
+            print('Home watcher is active; the old list watcher could not be stopped.', file=sys.stderr)
     return directory
+
+
+def auto_home(base, state, units, command):
+    # Match lifecycle/CLI lock order. Serializes migration with manual edits,
+    # helper writes and explicit policy changes, without applying any policy.
+    lock_path = os.environ.get('GUARD_LOCK_FILE', '/run/frp-ssh-guard.lock')
+    with open(lock_path + '.lifecycle', 'a') as lifecycle, open(lock_path, 'a') as runtime:
+        deadline = time.monotonic() + 30
+        for lock in (lifecycle, runtime):
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise OSError('Another guard operation is running; home migration was deferred.')
+                    time.sleep(0.1)
+        existing = location(base)
+        if existing:
+            return Path(existing['directory'])  # later upgrades retain the selected owner
+        return migrate(base, state, units, installer_user(), command)
 
 
 def main():
@@ -227,20 +297,33 @@ def main():
         edit_list(*json.load(sys.stdin))
     elif action == 'create-home':
         directory = Path(args[0])
+        if directory.is_symlink():
+            raise ValueError('The home configuration directory must not be a symbolic link.')
         directory.mkdir(mode=0o700, exist_ok=True)
         files = json.load(sys.stdin)
         for name, content in files.items():
             path = directory / name
             if path.exists() or path.is_symlink():
-                if path.is_symlink() or path.read_text() != content:
+                if path.is_symlink() or not path.is_file() or path.read_text() != content:
                     raise ValueError('Existing home files differ; no configuration switch was made.')
+        directory.chmod(0o700)
         for name, content in files.items():
             path = directory / name
             if not path.exists():
                 with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'w') as output:
                     output.write(content)
+            path.chmod(0o600)
     elif action == 'migrate':
         print(migrate(*args))
+    elif action == 'auto-home':
+        try:
+            print('Editable settings and manual lists: ' + str(auto_home(*args)))
+        except (ValueError, OSError, KeyError, subprocess.CalledProcessError):
+            # Do not leave a working package unconfigured because a home is
+            # unavailable or contains conflicting files. No existing file is replaced.
+            print('Automatic home setup could not complete; existing configuration was retained. '
+                  'Check the settings path with frp-ssh-guard --help and retry config-home when ready.',
+                  file=sys.stderr)
     else:
         raise ValueError('Unknown input operation.')
 

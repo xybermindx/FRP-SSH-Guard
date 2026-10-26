@@ -6,7 +6,7 @@ production availability guarantee.
 
 ## Recorded checks for 0.0.5 local candidate
 
-Validation date: 2026-10-25. This candidate has not been pushed or released.
+Validation dates: 2026-10-25 and 2026-10-26. This candidate has not been pushed or released.
 Privileged tests run in a disposable Debian 12 amd64 VM using unprivileged QEMU
 TCG, kernel 6.1.0-54-cloud-amd64, nftables 1.0.6, systemd 252 and real FRP 0.71.1.
 No production firewall is used. Test identities, addresses and port choices are
@@ -14,16 +14,20 @@ synthetic; raw host logs and configuration are excluded from the source export.
 
 | Check | Result |
 | --- | --- |
-| Shell/Python syntax and regression suite | Passed locally: 56 tests, one privileged test skipped (57 total). All 57 passed in the Debian VM. |
+| Shell/Python syntax and regression suite | Passed locally: 62 tests, one privileged test skipped (63 total). All 63 passed in the Debian VM. |
 | Real nftables kernel validation | Passed in VM: initial/replacement tables, shared/per-port jail types, scoped CIDR blocks and timed IPv6 manual elements. |
 | Active v0.0.4 → v0.0.5 Debian upgrade | Passed: custom settings, accepted policy, manual list, permissions, service invocation, timer settings, active ban and remaining expiry retained. |
 | Home migration and same-version Debian reinstall | Passed: settings/lists moved with correct owner/private permissions; active bans retained; reinstall preserves custom timer deadlines including `OnActiveSec`. |
+| Automatic installation migration (2026-10-26) | Passed: actual sudo apt reinstall over the earlier local v0.0.5 build selects the invoking user, copies existing configuration automatically and keeps service identity, live ban expiry and custom relative timer deadlines. A subsequent root reinstall retains that owner. |
+| Automatic migration list watcher | Passed: editing the home blocklist as its owner updates the live firewall without a policy reload or timer tick. After reboot, the persistent watcher handles edits when the temporarily unavailable home returns. |
 | Real FRP connection bursts | Passed: new SYN traffic through actual forwarded SSH listeners triggered shared bans and per-port isolation as configured. |
 | Native SSH invalid-user attempts | Passed: three separate invalid-user connections triggered the authentication monitor; shared and port-22-only scope both verified. |
 | Manual blocks and expiry | Passed: selected-port block, permanent all-protected-port block, automatic expiry, and list updates preserving active automatic bans. |
 | Actual reboot with unavailable home | Passed: accepted native SSH/per-port policy and cached manual lists restored; timed manual block retained its original expiry. Pending home settings were not adopted. |
-| Debian package lifecycle | Passed in VM: fresh install, reinstall, remove, purge and legacy conffile upgrade via `tests/package-smoke.sh`. |
+| Debian package lifecycle | Passed in VM: fresh root install automatically creates private home files; reinstall preserves them; remove/purge retain home files; legacy conffile migration honors an explicitly selected owner via `tests/package-smoke.sh`. |
 | Source installation lifecycle | Passed in VM: fresh install with home files, version command, active reinstall with conflicting installer policy flags, unchanged settings/units/bans/timer deadlines, and uninstall retaining home files. |
+| Automatic source migration (2026-10-26) | Passed: active v0.0.4 source upgrade copies settings to the selected user's home, retains accepted policy/live bans/relative timer deadlines and immediately watches edits there. |
+| Remaining ban time display | Passed: both ban views display nftables JSON seconds correctly, including per-port IPv6 entries; the VM upgrade test compares the displayed value with the kernel expiry. |
 | Ubuntu, ARM and 32-bit runtime | Not tested for this candidate. No new GitHub CI run has been triggered. |
 
 The VM acceptance script is `tests/vm-acceptance.py`. It deliberately installs

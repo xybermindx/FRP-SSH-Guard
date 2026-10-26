@@ -312,9 +312,9 @@ save_manual_snapshot() {
     local temporary
     temporary=$(mktemp "${TMPDIR:-/run}/frp-ssh-guard.manual.XXXXXX")
     printf '%s' "$ALLOW_SNAPSHOT" > "$temporary"
-    atomic_install "$temporary" "$LIST_DIR/whitelist.conf" 0640
+    cmp -s "$temporary" "$LIST_DIR/whitelist.conf" || atomic_install "$temporary" "$LIST_DIR/whitelist.conf" 0640
     printf '%s' "$BLOCK_SNAPSHOT" > "$temporary"
-    atomic_install "$temporary" "$LIST_DIR/blocklist.conf" 0640
+    cmp -s "$temporary" "$LIST_DIR/blocklist.conf" || atomic_install "$temporary" "$LIST_DIR/blocklist.conf" 0640
     rm -f "$temporary"
 }
 
@@ -602,7 +602,7 @@ cmd_banned() {
     for set in ban4 ban6; do
         if command -v jq >/dev/null 2>&1; then
             "$NFTP" -j list set inet "$GUARD_TABLE" "$set" 2>/dev/null \
-                | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | [$s, (.elem.val | if type == "object" then (.concat | map(tostring) | join(" : ")) else . end), (((.elem.expires // 0)/1000|floor)|tostring)] | @tsv' \
+                | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | [$s, (.elem.val | if type == "object" then (.concat | map(tostring) | join(" : ")) else . end), ((.elem.expires // 0)|tostring)] | @tsv' \
                 | while IFS=$'\t' read -r s ip exp; do printf '%-6s %-40s %s\n' "$s" "$ip" "$exp"; done
         else
             "$NFTP" list set inet "$GUARD_TABLE" "$set" 2>/dev/null | tr '\n' ' ' \
@@ -696,7 +696,7 @@ cmd_blocklist() {
     for set in ban4 ban6 hardban4 hardban6; do
         command -v jq >/dev/null 2>&1 || continue
         "$NFTP" -j list set inet "$GUARD_TABLE" "$set" 2>/dev/null \
-            | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | [$s, (.elem.val | if type == "object" then (.concat | map(tostring) | join(" : ")) else . end), (((.elem.expires // 0)/1000|floor)|tostring)] | @tsv' \
+            | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | [$s, (.elem.val | if type == "object" then (.concat | map(tostring) | join(" : ")) else . end), ((.elem.expires // 0)|tostring)] | @tsv' \
             | while IFS=$'\t' read -r s ip exp; do printf '%-8s %-40s %s\n' "$s" "$ip" "$exp"; done
     done
     echo
@@ -827,10 +827,8 @@ esac
 case "$action" in
     config-home)
         owner=${2:-${SUDO_USER:-root}}
-        directory=$(python3 "$INPUT_HELPER" migrate "$CONFIG_BASE" "$GUARD_DIR" "${GUARD_SYSTEMD_DIR:-/etc/systemd/system}" "$owner") || exit 1
+        directory=$(python3 "$INPUT_HELPER" migrate "$CONFIG_BASE" "$GUARD_DIR" "${GUARD_SYSTEMD_DIR:-/etc/systemd/system}" "$owner" "$INSTALLED_SCRIPT") || exit 1
         unlock_guard
-        systemctl daemon-reload
-        if systemctl is-active --quiet frp-ssh-guard-lists.path; then systemctl restart frp-ssh-guard-lists.path; fi
         echo "Editable settings and manual lists: $directory"
         echo 'Accepted policy, bans and timer configuration were retained. The list watcher was refreshed.'
         echo 'Edit settings, then check/reload to change policy.'
