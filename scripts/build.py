@@ -17,10 +17,20 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "frp-ssh-guard"
 SOURCE_FILES = [
-    ".gitignore", "VERSION", "LICENSE", "README.md", "README.zh-CN.md", "CHANGELOG.md",
+    ".gitignore", "VERSION", "PACKAGE_REVISION", "LICENSE", "README.md", "README.zh-CN.md", "CHANGELOG.md",
     "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "Makefile", "install.sh", "uninstall.sh",
 ]
 SOURCE_DIRS = ["bin", "etc", "packaging", "scripts", "tests", "docs", ".github"]
+
+
+def versions():
+    upstream = (ROOT / "VERSION").read_text().strip()
+    revision = (ROOT / "PACKAGE_REVISION").read_text().strip()
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", upstream):
+        raise ValueError("VERSION must be MAJOR.MINOR.PATCH")
+    if not re.fullmatch(r"[1-9][0-9]*", revision):
+        raise ValueError("PACKAGE_REVISION must be a positive integer without leading zeros")
+    return upstream, f"{upstream}-{revision}"
 
 
 def source_paths():
@@ -121,17 +131,26 @@ def build_deb(version, epoch, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["all", "deb", "source", "release"])
+    parser.add_argument("kind", choices=["all", "deb", "source", "release", "version", "bump-revision"])
     args = parser.parse_args()
+    try:
+        version, package_version = versions()
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    if args.kind == "version":
+        print(package_version)
+        return
+    if args.kind == "bump-revision":
+        revision = int(package_version.rsplit("-", 1)[1]) + 1
+        (ROOT / "PACKAGE_REVISION").write_text(f"{revision}\n")
+        print(f"{version}-{revision}")
+        return
     subprocess.run([sys.executable, str(ROOT / 'scripts/privacy.py'), '--source'], check=True)
-    version = (ROOT / "VERSION").read_text().strip()
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
-        parser.error("VERSION must be MAJOR.MINOR.PATCH")
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", "1792022400"))
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     artifacts = []
-    if args.kind in ("all", "deb", "release"): artifacts.append(build_deb(version, epoch, output))
+    if args.kind in ("all", "deb", "release"): artifacts.append(build_deb(package_version, epoch, output))
     if args.kind in ("all", "source"): artifacts.extend(build_source(version, epoch, output))
     if args.kind in ("all", "release"):
         sums = output / "SHA256SUMS"

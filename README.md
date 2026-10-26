@@ -180,7 +180,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5.deb
+sudo apt install ./frp-ssh-guard_0.0.5-1.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Installation does not activate protection or
@@ -193,14 +193,13 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 Installation automatically creates this folder and migrates existing settings
-and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5.deb` uses the
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.5-1.deb` uses the
 invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
 customized files, even when another administrator installs the package.
-If replacing an earlier local v0.0.5 build, add `--reinstall` to the apt command.
 
 To choose an owner before the first migration, use
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`.
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-1.deb`.
 Conflicting existing home files or an unavailable home leave the old configuration
 in use; the installer reports this instead of overwriting data. Use
 `frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
@@ -419,6 +418,13 @@ sudo apt purge frp-ssh-guard   # erase system state/logs; home files remain
 If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
 to switch to the current version while retaining settings.
+
+The current package is `0.0.5-1`: application version `0.0.5`, Debian revision `1`.
+It upgrades both v0.0.4 and earlier local v0.0.5 packages with the normal command
+above; no `--reinstall` is needed. Later revised packages use `0.0.5-2`, `0.0.5-3`,
+or a newer application version. Installing the same package version again is
+normally a no-op. Use `dpkg-query -W frp-ssh-guard` to see the full package version;
+`frp-ssh-guard --version` shows the application version.
 
 Installing a newer `.deb` upgrades the programs automatically while preserving
 settings, home files, live jails, remaining ban timeouts, service enablement and

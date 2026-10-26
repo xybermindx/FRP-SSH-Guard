@@ -161,7 +161,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.5.deb
+sudo apt install ./frp-ssh-guard_0.0.5-1.deb
 ```
 
 确认 `.deb` 显示 `OK`。**安装本身不会开启防护或修改防火墙规则。** apt 会处理依赖安装。
@@ -173,13 +173,12 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 安装会自动创建该目录，并迁移现有设置和手动名单。
-普通的 `sudo apt install ./frp-ssh-guard_0.0.5.deb` 使用调用 sudo 的用户的家目录；
+普通的 `sudo apt install ./frp-ssh-guard_0.0.5-1.deb` 使用调用 sudo 的用户的家目录；
 直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
 后续升级保留已选用户及其自定义文件，即使换一位管理员安装也不会更换位置。
-若替换较早的本地 v0.0.5 构建，请在 apt 命令中添加 `--reinstall`。
 
 首次迁移前可用
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb`
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-1.deb`
 指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
 不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
 `sudo frp-ssh-guard config-home USERNAME` 重试。
@@ -387,6 +386,12 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 如果已安装公开版本编号修正前的软件包，请按照
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
 切换到当前版本，并保留现有设置。
+
+当前软件包版本为 `0.0.5-1`：程序版本 `0.0.5`，Debian 修订号 `1`。
+从 v0.0.4 或较早的本地 v0.0.5 软件包升级时，直接使用上面的普通命令即可，
+无需 `--reinstall`。后续修订使用 `0.0.5-2`、`0.0.5-3` 或更高的程序版本。
+再次安装相同版本的软件包通常不会执行操作。用 `dpkg-query -W frp-ssh-guard`
+查看完整软件包版本；`frp-ssh-guard --version` 显示程序版本。
 
 安装新版 `.deb` 会自动升级程序，保留自定义配置、家目录文件、当前封禁及剩余时长、
 服务启用状态和定时任务安排。自定义 systemd 定时设置请放在 `/etc/systemd/system/`

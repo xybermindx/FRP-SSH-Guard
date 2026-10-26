@@ -2,6 +2,11 @@
 
 ## 0.0.5 (local candidate; not published)
 
+- Package as Debian version `0.0.5-1` so ordinary `sudo apt install ./FILE.deb`
+  upgrades earlier local `0.0.5` builds without `--reinstall`. Track packaging
+  revisions separately, add `make bump-revision`, and validate revisioned release
+  tags and package metadata while keeping application version `0.0.5`.
+
 - Add opt-in protection for this server's SSH port 22, including local sshd
   authentication failures and invalid-user attempts; never collect passwords.
 - Add `PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off`. Default jails cover all

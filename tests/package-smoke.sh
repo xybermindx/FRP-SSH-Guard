@@ -5,10 +5,12 @@ trap 'echo "Package smoke test failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 [[ ${FRP_GUARD_DISPOSABLE:-} == 1 && $EUID == 0 ]] || { echo 'Requires a disposable container and FRP_GUARD_DISPOSABLE=1.' >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-package="/src/dist/frp-ssh-guard_$(cat /src/VERSION).deb"
+package_version="$(cat /src/VERSION)-$(cat /src/PACKAGE_REVISION)"
+package="/src/dist/frp-ssh-guard_${package_version}.deb"
 apt-get install -y "$package"
 frp-ssh-guard --help
 [[ $(frp-ssh-guard --version) == "FRP-SSH-Guard $(cat /src/VERSION)" ]]
+[[ $(dpkg-query -W -f='${Version}' frp-ssh-guard) == "$package_version" ]]
 [[ ! -e /var/lib/frp-ssh-guard/active.nft ]]
 [[ ! -e /etc/systemd/system/multi-user.target.wants/frp-ssh-guard.service ]]
 home_dir=$(python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py location /etc/frp-ssh-guard)

@@ -4,10 +4,16 @@
 ## Upgrade while preserving settings and live jails
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.5.deb
+sudo apt install ./frp-ssh-guard_0.0.5-1.deb
 frp-ssh-guard --version
 sudo frp-ssh-guard status
 ```
+
+Package `0.0.5-1` is newer than both `0.0.4` and the earlier local `0.0.5`
+builds, so the normal APT command upgrades them without `--reinstall`. The
+application remains v0.0.5. Check the Debian revision with
+`dpkg-query -W frp-ssh-guard`. Future changed distributions must increment the
+revision or application version; an identical version normally needs no action.
 
 Do not purge, restart or reload just to upgrade. The installer replaces programs
 and creates only missing files; it preserves custom settings, manual lists,
@@ -39,7 +45,7 @@ Once selected, the location remains unchanged on subsequent upgrades, regardless
 of who installs them. To select a different owner before the first migration:
 
 ```bash
-sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5.deb
+sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.5-1.deb
 ```
 
 Legacy port-list input is converted when needed. Files have mode 0600 in a 0700
@@ -88,7 +94,7 @@ numerically higher Debian versions.
 To replace one of those installations while preserving settings and state:
 
 ```bash
-sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5.deb
+sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-1.deb
 sudo frp-ssh-guard status
 ```
 
@@ -109,7 +115,7 @@ restore the accepted policy, not later edits.
 2. Install the new `.deb` without restarting the guard:
 
    ```bash
-   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5.deb
+   sudo apt install --allow-downgrades ./frp-ssh-guard_0.0.5-1.deb
    sudo frp-ssh-guard status
    ```
 

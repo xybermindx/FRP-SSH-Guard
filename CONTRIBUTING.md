@@ -48,7 +48,12 @@ merging old branches, which would restore the removed history.
 - `scripts/build.py`: deterministic package/source archive builder.
 - `tests/`: rule-generation regressions, optional kernel checks, package lifecycle checks.
 
-Run `make test` and `make release`. Tests use Python's standard library. Normal
+For a changed package of the same application version, run `make bump-revision`
+before distributing it; a new application version resets `PACKAGE_REVISION` to
+`1`. See [release instructions](docs/RELEASING.md).
+
+Run `make test` and `make release`. Tests use Python's standard library and
+`dpkg`/`dpkg-deb` to check actual upgrade ordering and package metadata. Normal
 tests exercise real Bash functions without invoking privileged CLI dispatch;
 they do not install packages or touch the host firewall. They check port errors,
 exclusions, list generation, configured defaults, package paths, and release inputs.

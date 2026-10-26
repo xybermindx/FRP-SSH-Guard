@@ -1,4 +1,4 @@
-.PHONY: all lint test privacy deb dist release clean
+.PHONY: all lint test privacy deb dist release bump-revision clean
 all: release
 
 lint:
@@ -21,6 +21,9 @@ dist:
 
 release: test
 	python3 scripts/build.py release
+
+bump-revision:
+	python3 scripts/build.py bump-revision
 
 clean:
 	rm -rf build dist

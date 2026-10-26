@@ -38,7 +38,11 @@ its attribution and package maintainer metadata if appropriate.
 v0.0.5 is currently a local candidate. Building it does not authorize a push,
 tag, release or upload; keep it local until publication is explicitly requested.
 
-1. Update `VERSION` (plain `MAJOR.MINOR.PATCH`) and `CHANGELOG.md`.
+1. For a new application version, update `VERSION` (plain `MAJOR.MINOR.PATCH`)
+   and reset `PACKAGE_REVISION` to `1`. For a changed distribution of the same
+   application version, run `make bump-revision` before building. Update
+   `CHANGELOG.md` and commit both version files with the changes. Never distribute
+   changed package contents with an already-distributed package version.
 2. Run `make release` as an ordinary user. The build needs Python 3, Bash,
    GNU Make, and `dpkg-deb`; it does not install the tool or change the firewall.
 3. Review `dist/`, run the disposable VM checklist in `VALIDATION.md`, and
@@ -47,9 +51,10 @@ tag, release or upload; keep it local until publication is explicitly requested.
 5. Create and push a matching tag:
 
    ```bash
-   git tag -a "v$(cat VERSION)" -m "Release $(cat VERSION)"
+   package_version=$(python3 scripts/build.py version)
+   git tag -a "v$package_version" -m "Release $package_version"
    git push origin main
-   git push origin "v$(cat VERSION)"
+   git push origin "v$package_version"
    ```
 
 6. The release workflow runs validation and creates a **draft** GitHub release
@@ -67,7 +72,11 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-For v0.0.4, upload `frp-ssh-guard_0.0.4.deb` and `SHA256SUMS` only.
+The local candidate builds `frp-ssh-guard_0.0.5-1.deb` and `SHA256SUMS`.
+After publication is authorized, use tag `v0.0.5-1`; a later packaging revision
+uses `v0.0.5-2`, and so on. The workflow checks the tag against the full Debian
+version and verifies the package metadata before creating a draft.
+The existing public v0.0.4 release and its filenames remain unchanged.
 The filename omits the optional architecture suffix; Debian metadata remains
 `Architecture: all` because the package contains architecture-independent scripts.
 
@@ -93,7 +102,17 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 - `make deb`: architecture-independent Debian binary package only.
 - `make dist`: complete development source in tar.gz and zip formats.
 - `make release`: tests, the Debian package, and a SHA256SUMS covering that package.
+- `make bump-revision`: increment the tracked Debian revision for a changed distribution.
+- `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.
+
+`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.5-1`.
+APT compares this metadata, not the filename. Revision `1` sorts after the older
+bare `0.0.5`, and increasing revisions allow ordinary `sudo apt install ./FILE.deb`
+upgrades. A new application version sorts after revisions of the previous one.
+Builds never silently increment a revision: identical source and toolchain inputs
+remain reproducible. Source archive names and the CLI use the application version;
+the source archives include `PACKAGE_REVISION` so they rebuild the same package.
 
 Source export includes a fixed set of top-level files and development directories.
 Only `.example` files are exported from `etc/`; live configuration, state, logs,
