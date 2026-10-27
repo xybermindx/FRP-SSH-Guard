@@ -175,9 +175,12 @@ sudo frp-ssh-guard blocklist
 原封禁到期时间和定时器截止时间，不会重启服务。
 
 短窗口仍为 10 分钟内 5 次失败或 3 个无效用户连接。
-`SSH_SLOW_MODE=observe` 增加独立的 24 小时 20 次失败窗口，只记录告警，
-不会添加封禁或累犯次数。改为 `enforce` 并执行 check/reload 后，慢速探测才使用
-现有封禁时长和 jail 范围。成功登录清空短窗口失败，长窗口失败按时间自然过期。
+从软件包修订 `0.0.6-3` 开始，新安装默认 `SSH_SLOW_MODE=enforce`：
+启用 `PROTECT_SERVER_SSH=on` 后，24 小时内 20 次失败会按现有时长和 jail 范围封禁。
+升级保留已有的 `off`、`observe` 或 `enforce`；缺少该项的旧配置继续使用 `observe`。
+已有安装若要改为封禁，请设置 `enforce` 并执行一次 check/reload。
+`observe` 只记录，不添加封禁或累犯次数；`off` 关闭慢速检测。
+成功登录清空短窗口失败，长窗口失败按时间自然过期。
 
 `~/.frp-ssh-guard/alerts.log` 每行一个事件，最新在前，记录此前不受信任来源的
 成功登录、慢速阈值和疑似子网群集。新来源登录是复核信号，不代表已被入侵。

@@ -1,6 +1,6 @@
 # v0.0.6
 
-Add automatic upgrade activation, observation-first slow SSH detection, private local alerts and timestamped reports.
+Add automatic upgrade activation, slow SSH detection with enforcement for fresh installations, private local alerts and timestamped reports.
 Existing fast protection, jail scope and ban lifetimes stay in place.
 
 [English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.6/README.md) ·
@@ -8,12 +8,14 @@ Existing fast protection, jail scope and ban lifetimes stay in place.
 
 ## Changes
 
-- Package revision `0.0.6-2` automatically refreshes an active guard during
+- Package revision `0.0.6-3` automatically refreshes an active guard during
   `apt install`, including the running SSH monitors. No manual reload is needed.
   Accepted policy choices, pending edits, saved ban scope/expiry, boot enablement
   and timer schedules are retained. Firewall rate meters reset.
-- Independent 20-failure / 24-hour slow detector, default `SSH_SLOW_MODE=observe`.
-  Observation adds no bans or strikes; `enforce` is an explicit opt-in.
+- Fresh settings default to `SSH_SLOW_MODE=enforce`: 20 failures / 24 hours
+  trigger a ban when local SSH protection is enabled. Existing `off`, `observe`
+  or `enforce` choices are retained; older missing settings preserve `observe`.
+  Thresholds, jail scope, ban durations and learning preferences are unchanged.
 - Shared journal deduplication and classification of successful logins before learning.
   Learning remains opt-in and supports password, public key and PAM successes.
 - Newest-first `~/.frp-ssh-guard/alerts.log`, default 10MiB cap. Oldest complete
@@ -23,6 +25,12 @@ Existing fast protection, jail scope and ban lifetimes stay in place.
   reports failures, thresholds, new bans and sampled packet drops separately.
 - Authentication bans are recorded directly and reconciled with sampled kernel bans
   so one ban contributes one strike. Earlier strike history remains available.
+
+## Validation
+
+Local regression tests cover fresh enforcement, observation mode, preserved explicit
+choices, legacy missing settings and accepted snapshots. Disposable VM checks and
+CI results are recorded in [VALIDATION.md](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.6/docs/VALIDATION.md).
 
 ## Install or upgrade
 
@@ -34,13 +42,16 @@ sudo apt install ./frp-ssh-guard_0.0.6.deb
 ```
 
 For an already active installation, the updated guard takes effect automatically.
-The download filename is unchanged; Debian version `0.0.6-2` upgrades `0.0.6-1`.
+The download filename is unchanged; Debian version `0.0.6-3` upgrades `0.0.6-1` and `0.0.6-2`.
 This maintainer-requested correction replaces the earlier v0.0.6 package and
 checksum; download both files again. Older v0.0.4 and v0.0.5 releases are unchanged.
 
 Fresh or disabled installations still require port selection and `enable`.
-Native SSH protection, whitelist learning and slow-probe enforcement remain opt-in;
-pending settings edits are not applied by the upgrade. An active trial remains
+Native SSH protection and whitelist learning remain opt-in. An existing
+observation-only installation stays observation-only after upgrading. To change
+that policy, set `SSH_SLOW_MODE=enforce` and run check/reload once; package
+installation itself requires no manual reload. Pending settings edits are not
+applied by the upgrade. An active trial remains
 temporary. Administrator service policy can defer refresh with a notice.
 Refresh failures are reported to APT; failed firewall validation/application
 retains previous protection. `status`, `doctor` and `report 24h` are optional checks.

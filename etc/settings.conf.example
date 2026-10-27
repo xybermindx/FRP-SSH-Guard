@@ -34,9 +34,11 @@ SSH_AUTH_FAILURES=5
 SSH_INVALID_USER_FAILURES=3
 SSH_AUTH_WINDOW=10m
 
-# Independent long-window detector. observe reports without adding bans/strikes.
-# off disables it; enforce opts into the existing ban duration and jail scope.
-SSH_SLOW_MODE=observe
+# Independent long-window detector, active only when PROTECT_SERVER_SSH=on.
+# Fresh installs enforce the existing ban duration and jail scope at the threshold.
+# observe reports without bans/strikes; off disables the long-window detector.
+# Upgrades preserve existing choices; legacy missing settings retain observe.
+SSH_SLOW_MODE=enforce
 SSH_SLOW_FAILURES=20
 SSH_SLOW_WINDOW=24h
 

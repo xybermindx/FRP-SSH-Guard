@@ -339,7 +339,7 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `PROTECT_SERVER_SSH` | `off` | `on` adds this server's port 22 and monitors local sshd outcomes. |
 | `JAIL_PER_PORT` | `off` | `off`: automatic/strike bans cover all protected ports. `on`: each port has its own jail. |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | Local authentication failure threshold, distinct invalid-user connection threshold, and counting window. |
-| `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `observe`, `20`, `24h` | Independent long-window detector; `off`, observation only, or explicit `enforce`. |
+| `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `enforce`, `20`, `24h` | Fresh-install default when local SSH protection is enabled; `observe` reports only, `off` disables. Existing choices are retained. |
 | `ALERT_LOG_MAX_SIZE` | `10MiB` | Newest-first local alerts, oldest complete lines discarded; 1KiB–100MiB, no archives. |
 | `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | Report distinct automatic sources per /24 or /64 and jail scope; never block a subnet automatically. |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | New SYN rate/minute and burst per source and port. |
@@ -513,8 +513,9 @@ recompiles the accepted firewall policy and restarts its long-running Python
 monitors. The new code takes effect during `apt install`; no manual reload or
 reboot is needed. Live bans are saved and restored with their original scope and
 expiry. Rate meters reset; main-service enablement and timer deadlines are retained.
-Pending settings edits are not applied. Optional local SSH protection, learning
-and slow-probe enforcement still require your explicit configuration choices.
+Pending settings edits are not applied. Local SSH protection and learning remain
+opt-in. Fresh installs default to slow-probe enforcement when local SSH is enabled;
+upgrades retain the existing slow mode, including observation-only configurations.
 
 Fresh or disabled installations remain inactive. An active trial remains temporary.
 Administrator `policy-rc.d` restrictions defer refresh with a notice. Refresh errors
@@ -580,9 +581,12 @@ saved ban expiries and timer deadlines. No extra activation command is needed
 after an active package upgrade.
 
 The fast SSH detector keeps its 5 failures / 3 invalid-user connections / 10-minute
-window. `SSH_SLOW_MODE=observe` adds an independent 20-failure / 24-hour window.
-Observation produces an alert without adding a ban or strike. Set `enforce`, then
-check/reload, to use the existing ban duration and jail scope for slow probes.
+window. Starting with package revision `0.0.6-3`, fresh settings use
+`SSH_SLOW_MODE=enforce`: 20 failures in 24 hours trigger the existing ban duration
+and jail scope when `PROTECT_SERVER_SSH=on`. Existing `off`, `observe` and `enforce`
+choices remain unchanged; older files missing the setting retain `observe`.
+To switch an existing installation, set `enforce` and run check/reload once.
+`observe` records thresholds without bans or strikes; `off` disables slow detection.
 Successful logins clear short-window failures; long-window failures age out normally.
 
 `~/.frp-ssh-guard/alerts.log` contains one event per line, newest first: previously

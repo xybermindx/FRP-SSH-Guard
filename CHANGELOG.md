@@ -2,7 +2,10 @@
 
 ## 0.0.6
 
-- Independent observe-first slow SSH detector; opt-in enforcement retains jail scope and ban durations.
+- Package revision 3 defaults fresh settings to slow SSH enforcement (20 failures / 24h)
+  when optional local SSH protection is enabled. Existing choices are preserved;
+  older settings without a slow mode keep observation behavior. Jail scope, ban
+  durations and opt-in whitelist learning remain unchanged.
 - Shared private SQLite journal deduplication and classification before whitelist learning.
 - Bounded newest-first local alerts, owner-safe writes, offline-home spool, and report-only subnet clusters.
 - Timestamped reports, persistent sampled packet deltas, and read-only doctor diagnostics.

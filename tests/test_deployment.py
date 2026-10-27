@@ -117,7 +117,8 @@ else:
         self.require_ok(self.run_guard('enable'))
         accepted = (self.root / 'applied.conf').read_text()
         # Simulate a previously accepted pre-observation policy and broken edits.
-        (self.root / 'applied.conf').write_text(accepted.replace('OBSERVABILITY_VERSION=1', 'OBSERVABILITY_VERSION=0'))
+        (self.root / 'applied.conf').write_text(accepted.replace(
+            'OBSERVABILITY_VERSION=1', 'OBSERVABILITY_VERSION=0').replace('SSH_SLOW_MODE=observe\n', ''))
         self.settings('PROTECTED_PORTS="22003"\nPER_IP_RATE=invalid\n')
         (self.root / 'no-listener').touch()
         (self.root / 'systemctl.calls').write_text('')

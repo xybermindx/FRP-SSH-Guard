@@ -44,6 +44,7 @@ class EventTests(unittest.TestCase):
         return self.store.db.execute('SELECT count(*) FROM events WHERE kind=?', (kind,)).fetchone()[0]
 
     def test_slow_observation_does_not_ban_and_replay_is_idempotent(self):
+        self.config['SSH_SLOW_MODE'] = 'observe'
         for i in range(20):
             record = self.failure(i, NOW + i * 1000)
             self.assertIsNone(self.process(record))
@@ -56,6 +57,14 @@ class EventTests(unittest.TestCase):
         finally:
             resumed.close()
         self.assertEqual(self.count('ban'), 0)
+
+    def test_fresh_default_bans_slow_failures_only_at_long_threshold(self):
+        self.assertEqual(self.config['SSH_SLOW_MODE'], 'enforce')
+        self.assertEqual(self.config['SSH_SLOW_FAILURES'], '20')
+        for i in range(19):
+            self.assertIsNone(self.process(self.failure(i, NOW + i * 1000)))
+        self.assertEqual(self.process(self.failure(19, NOW + 19000)), 'ban')
+        self.assertEqual(self.count('slow-threshold'), 1)
 
     def test_enforce_mixed_thresholds_one_ban_and_allow_precedence(self):
         self.config.update(SSH_SLOW_MODE='enforce', SSH_SLOW_FAILURES='5')

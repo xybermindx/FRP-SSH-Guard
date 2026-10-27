@@ -77,6 +77,20 @@ class ConfigUpgradeTests(unittest.TestCase):
         self.assertEqual((self.root / 'ports.conf').read_text(), '22001\n')
         self.assertEqual(data.settings(self.path.read_text())['PROTECT_SERVER_SSH'], 'off')
 
+    def test_slow_mode_fresh_enforcement_and_existing_choices_are_preserved(self):
+        self.assertEqual(data.settings(TEMPLATE)['SSH_SLOW_MODE'], 'enforce')
+        for mode in ('off', 'observe', 'enforce', None):
+            with self.subTest(mode=mode):
+                original = 'PROTECTED_PORTS="22001"\n'
+                if mode is not None:
+                    original += 'SSH_SLOW_MODE=' + mode + ' # operator choice\n'
+                updated, keys = data.merge_defaults(original, TEMPLATE)
+                self.assertEqual(data.settings(updated)['SSH_SLOW_MODE'], mode or 'observe')
+                for line in original.splitlines():
+                    self.assertIn(line, updated.splitlines())
+                self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
+        self.assertEqual(data.merge_defaults(TEMPLATE, TEMPLATE), (TEMPLATE, []))
+
     def test_invalid_input_and_unsafe_file_types_are_unchanged(self):
         for kind in ('invalid', 'symlink', 'hardlink', 'fifo', 'directory'):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:

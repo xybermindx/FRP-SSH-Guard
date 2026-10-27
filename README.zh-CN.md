@@ -307,7 +307,7 @@ sudo frp-ssh-guard status
 | `PROTECT_SERVER_SSH` | `off` | `on` 添加本机 22 端口防护，并监控本机 sshd 认证结果。 |
 | `JAIL_PER_PORT` | `off` | `off`：自动/累犯封禁共享所有受保护端口；`on`：按端口独立封禁。 |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | 本机认证失败阈值、不同连接的无效用户阈值、统计窗口。 |
-| `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `observe`, `20`, `24h` | 独立长窗口检测；`off` 关闭，`observe` 仅记录，`enforce` 明确启用封禁。 |
+| `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `enforce`, `20`, `24h` | 新安装在启用本机 SSH 防护后默认封禁；`observe` 仅记录，`off` 关闭。升级保留原有选择。 |
 | `ALERT_LOG_MAX_SIZE` | `10MiB` | 本地告警按最新在前排列，超限删除最旧完整行；允许 1KiB–100MiB，不保留轮转档案。 |
 | `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | 按 /24 或 /64 及 jail 范围统计不同自动封禁来源，仅报告，不自动封禁子网。 |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | 每来源、每端口的新 SYN 每分钟速率及突发额度。 |
@@ -468,8 +468,9 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 从软件包修订 `0.0.6-2` 开始，安装会自动重新编译已接受的防火墙策略，并重启运行中的
 Python 监控进程。新版代码在 `apt install` 过程中生效，无需手动 reload 或重启系统。
 当前封禁会先保存，再按原作用范围和到期时间恢复。速率计数重置；主服务开机启用状态
-和定时任务截止时间保留。尚未确认的设置修改不会被应用。本机 SSH 防护、可信登录学习
-和慢速探测强制封禁仍需管理员主动配置。
+和定时任务截止时间保留。尚未确认的设置修改不会被应用。本机 SSH 防护和可信登录学习
+仍需管理员主动开启。新安装启用本机 SSH 防护后默认封禁慢速探测；升级保留已有慢速
+检测模式，包括仅观察的配置。
 
 首次安装或已停用的守卫不会自动启用，正在试用的守卫仍保持临时状态。
 管理员的 `policy-rc.d` 限制可推迟刷新并给出提示。刷新失败会由 APT 报告；
@@ -526,9 +527,12 @@ sudo env GUARD_DIR=/opt/frp-ssh-guard /opt/frp-ssh-guard/bin/frp-ssh-guard statu
 待确认修改、已保存封禁的到期时间和定时器截止时间。
 
 短窗口仍为 10 分钟内 5 次失败或 3 个无效用户连接。
-`SSH_SLOW_MODE=observe` 增加独立的 24 小时 20 次失败窗口，只记录告警，
-不会添加封禁或累犯次数。改为 `enforce` 并执行 check/reload 后，慢速探测才使用
-现有封禁时长和 jail 范围。成功登录清空短窗口失败，长窗口失败按时间自然过期。
+从软件包修订 `0.0.6-3` 开始，新安装默认 `SSH_SLOW_MODE=enforce`：
+启用 `PROTECT_SERVER_SSH=on` 后，24 小时内 20 次失败会按现有时长和 jail 范围封禁。
+升级保留已有的 `off`、`observe` 或 `enforce`；缺少该项的旧配置继续使用 `observe`。
+已有安装若要改为封禁，请设置 `enforce` 并执行一次 check/reload。
+`observe` 只记录，不添加封禁或累犯次数；`off` 关闭慢速检测。
+成功登录清空短窗口失败，长窗口失败按时间自然过期。
 
 `~/.frp-ssh-guard/alerts.log` 每行一个事件，最新在前，记录此前不受信任来源的
 成功登录、慢速阈值和疑似子网群集。新来源登录是复核信号，不代表已被入侵。

@@ -410,6 +410,13 @@ def merge_defaults(original, template):
         # Never shadow it with the template's empty selection.
         if key not in present and key != 'PROTECTED_PORTS':
             block = ''.join(comments) + line.rstrip('\r\n') + '\n'
+            if key == 'SSH_SLOW_MODE':
+                # Fresh installs already contain the template's explicit mode.
+                # An older file missing it must not acquire new enforcement.
+                parsed[key] = 'observe'
+                block = ('# Preserve observation behavior for this older configuration.\n'
+                         '# Set enforce and check/reload to enable slow-probe bans.\n'
+                         'SSH_SLOW_MODE=observe\n')
             (switches if key in ('EXCLUDE_PORTS', 'PROTECT_SERVER_SSH', 'JAIL_PER_PORT') else additions).append(block)
             present[key] = parsed[key]
             keys.append(key)

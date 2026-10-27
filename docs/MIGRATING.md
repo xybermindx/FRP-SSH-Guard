@@ -1,7 +1,7 @@
 # Migration to 0.0.6
 
 Install `frp-ssh-guard_0.0.6.deb` with `sudo apt install ./frp-ssh-guard_0.0.6.deb`.
-Package revision `0.0.6-2` upgrades v0.0.5 and the earlier `0.0.6-1` build.
+Package revision `0.0.6-3` upgrades v0.0.5 and earlier v0.0.6 builds.
 For an active guard, installation automatically recompiles its accepted policy
 and restarts the long-running SSH monitors. No manual reload is needed.
 Missing commented settings are merged without changing custom values. Pending
@@ -22,7 +22,10 @@ An active trial is refreshed without making it persistent. An administrator's
 systemd manager do not attempt service activation. Source installs retain their
 existing explicit activation workflow.
 
-Slow detection defaults to observation only. Existing fast thresholds, SSH enablement,
+Fresh settings default to `SSH_SLOW_MODE=enforce` when local SSH protection is
+enabled. Existing modes remain unchanged; legacy files missing the key retain
+`observe`, including their accepted runtime snapshots. To change that policy,
+set `enforce` and check/reload once. Existing fast thresholds, SSH enablement,
 jail scope, learning preferences and ban/strike lifetimes are unchanged.
 Recent short-window JSON attempts and their journal cursor migrate on activation;
 long-window coverage starts then. Old ban logs continue to supply earlier strikes.

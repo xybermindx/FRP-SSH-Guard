@@ -1,5 +1,39 @@
 # v0.0.6 validation
 
+## Fresh-install slow enforcement: package 0.0.6-3
+
+Validated on 2026-10-27 in an isolated Debian 12 QEMU overlay, Linux
+6.1.0-54-cloud-amd64, systemd 252, nftables 1.0.6, OpenSSH and FRP 0.71.1.
+No production firewall was changed.
+
+- Local `make test`: 111 cases, 110 passing and the optional privileged kernel
+  case skipped. Regression coverage checks default enforcement, spaced failures,
+  observation-only behavior, preservation of explicit off/observe/enforce values,
+  legacy missing settings, accepted-snapshot compatibility and merge idempotence.
+- A fresh actual APT installation wrote `SSH_SLOW_MODE=enforce` while leaving
+  native SSH protection and learning disabled. After explicitly enabling native
+  SSH and raising only the fast thresholds, 20 real sshd invalid-user connections
+  caused one slow-threshold event and one nftables ban; the first 19 caused no ban.
+  Reinstallation retained enforcement and did not duplicate the offense.
+- Actual ordinary APT upgrades from the published `0.0.6-2` package passed in both
+  shared and per-port jail modes with real FRP listeners. No manual reload was
+  issued: both monitor PIDs changed automatically while accepted policy, invalid
+  pending edits, scoped lists, ban membership/expiry, service invocation, boot
+  enablement and timer activation/deadline properties were preserved.
+- Legacy settings and accepted policy retained observation mode. Reinstall and
+  disabled/trial lifecycle checks use the existing automatic-upgrade VM procedure.
+- CI repeats the full suite with privileged namespace coverage, reproducible
+  builds and Debian 12 / Ubuntu 24.04 package lifecycle tests. Full Ubuntu
+  FRP/systemd runtime and ARM/32-bit runtime remain unverified.
+
+Reproduce the fresh-default check in a disposable VM with no installed guard and
+no existing `guardslowfresh` account or `guard-slow-client` namespace:
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-slow-defaults.py NEW.deb
+# After cleaning disposable fixtures, run vm-auto-upgrade.py for both jail modes.
+```
+
 ## Automatic upgrade correction: package 0.0.6-2
 
 Validated on 2026-10-26 using a separate disposable Debian 12 QEMU overlay,

@@ -43,6 +43,8 @@ load_guard_config() {
     STRIKE_WINDOW=90d STRIKE_MAX=28d STRIKE_LADDER='2:1d 3:3d 4:7d 5:28d'
     PROTECT_SERVER_SSH=off JAIL_PER_PORT=off
     SSH_AUTH_FAILURES=5 SSH_INVALID_USER_FAILURES=3 SSH_AUTH_WINDOW=10m
+    # Compatibility fallback for old/minimal files and accepted snapshots.
+    # Fresh installs explicitly set enforce in the shipped settings template.
     SSH_SLOW_MODE=observe SSH_SLOW_FAILURES=20 SSH_SLOW_WINDOW=24h
     ALERT_LOG_MAX_SIZE=10MiB SUBNET_REPORT_MIN_SOURCES=5 SUBNET_REPORT_WINDOW=24h
     OBSERVABILITY_VERSION=0

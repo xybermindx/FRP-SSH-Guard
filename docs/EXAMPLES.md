@@ -187,9 +187,12 @@ merges missing settings while retaining custom values, accepted firewall policy,
 existing jail expiries and timer deadlines; it does not restart the services.
 
 The fast SSH detector keeps its 5 failures / 3 invalid-user connections / 10-minute
-window. `SSH_SLOW_MODE=observe` adds an independent 20-failure / 24-hour window.
-Observation produces an alert without adding a ban or strike. Set `enforce`, then
-check/reload, to use the existing ban duration and jail scope for slow probes.
+window. Starting with package revision `0.0.6-3`, fresh settings use
+`SSH_SLOW_MODE=enforce`: 20 failures in 24 hours trigger the existing ban duration
+and jail scope when `PROTECT_SERVER_SSH=on`. Existing `off`, `observe` and `enforce`
+choices remain unchanged; older files missing the setting retain `observe`.
+To switch an existing installation, set `enforce` and run check/reload once.
+`observe` records thresholds without bans or strikes; `off` disables slow detection.
 Successful logins clear short-window failures; long-window failures age out normally.
 
 `~/.frp-ssh-guard/alerts.log` contains one event per line, newest first: previously
