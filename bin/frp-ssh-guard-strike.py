@@ -91,8 +91,11 @@ for log_path in sorted(glob.glob(LOG + '*')):
             ts, ip = p[0], p[2]
             try:
                 ip = str(ipaddress.ip_address(ip))
-                if PER_PORT:
-                    if len(p) < 4 or not 1 <= int(p[3]) <= 65535:
+                # The recorded scope belongs to the offense. Current settings
+                # apply to new bans, never reinterpret historical shared/scoped
+                # offenses when the strike timer next runs after a mode switch.
+                if len(p) >= 4:
+                    if not 1 <= int(p[3]) <= 65535:
                         continue
                     key = ip + ' ' + str(int(p[3]))
                 else:
@@ -114,9 +117,9 @@ observation_path = Path(GUARD_DIR) / 'observations/events.sqlite3'
 if observation_path.is_file():
     with sqlite3.connect(observation_path.as_uri() + '?mode=ro', uri=True) as observations:
         for ep, ip, scope in observations.execute("SELECT stamp,ip,scope FROM events WHERE kind='ban' AND stamp>=?", (now - window,)):
-            if ep < excused.get(ip, 0) or PER_PORT and scope == '*':
+            if ep < excused.get(ip, 0):
                 continue
-            key = ip + ' ' + scope if PER_PORT else ip
+            key = ip if scope == '*' else ip + ' ' + scope
             counts[key] = counts.get(key, 0) + 1
             last[key] = max(last.get(key, 0), ep)
 
@@ -179,11 +182,8 @@ legacy_hardban = os.path.join(LIST_DIR, 'hardguard.conf')
 if not os.path.exists(HARDBAN) and os.path.exists(legacy_hardban):
     Path(HARDBAN).write_text(Path(legacy_hardban).read_text())
 if os.path.exists(HARDBAN):
-    for line in Path(HARDBAN).read_text().splitlines():
-        line = line.split('#')[0].strip()
-        if line:
-            fields = line.split()
-            cur.add(' '.join(fields[:2]) if PER_PORT and len(fields) > 1 else fields[0])
+    for row in _inputs.records(Path(HARDBAN).read_text()):
+        cur.add(row.ip if row.scope == '*' else row.ip + ' ' + row.scope)
 
 # Absolute deadlines are derived from the latest offense, never the timer run.
 import json
@@ -196,10 +196,16 @@ for ip, expiry in list(target.items()):
         target.pop(ip)
 if active:
     for ip, expiry in target.items():
+        # Opposite-mode bans remain in the scope-independent saved sets/list.
+        # Do not insert a scoped key into an address-only set, or vice versa.
+        if (' ' in ip) != PER_PORT:
+            continue
         fam = "hardban6" if ':' in ip else "hardban4"
         value = ip.replace(' ', ' . ') if PER_PORT else ip
         nft("add", "element", "inet", TABLE, fam, "{ %s timeout %ss }" % (value, max(1, expiry - int(now))))
     for ip in cur - set(target):
+        if (' ' in ip) != PER_PORT:
+            continue
         fam = "hardban6" if ':' in ip else "hardban4"
         value = ip.replace(' ', ' . ') if PER_PORT else ip
         nft("delete", "element", "inet", TABLE, fam, "{ %s }" % value)

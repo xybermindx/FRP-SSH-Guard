@@ -8,7 +8,12 @@ Existing fast protection, jail scope and ban lifetimes stay in place.
 
 ## Changes
 
-- Package revision `0.0.6-3` automatically refreshes an active guard during
+- Switching jail modes affects new bans only. Existing shared and per-port bans
+  retain their original scopes and expiry in both directions. Strike history
+  keeps the recorded scope so later timer runs cannot broaden old per-port bans
+  or discard shared history. Explicit manual scopes and whitelist exceptions
+  are unchanged. Settings changes still require check/reload.
+- Package revision `0.0.6-4` automatically refreshes an active guard during
   `apt install`, including the running SSH monitors. No manual reload is needed.
   Accepted policy choices, pending edits, saved ban scope/expiry, boot enablement
   and timer schedules are retained. Firewall rate meters reset.
@@ -42,7 +47,7 @@ sudo apt install ./frp-ssh-guard_0.0.6.deb
 ```
 
 For an already active installation, the updated guard takes effect automatically.
-The download filename is unchanged; Debian version `0.0.6-3` upgrades `0.0.6-1` and `0.0.6-2`.
+The download filename is unchanged; Debian version `0.0.6-4` upgrades earlier v0.0.6 packages.
 This maintainer-requested correction replaces the earlier v0.0.6 package and
 checksum; download both files again. Older v0.0.4 and v0.0.5 releases are unchanged.
 

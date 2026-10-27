@@ -107,6 +107,54 @@ else:
         self.assertIn('restart frp-ssh-guard-learn.service', calls)
         self.assertIn('PROTECTED_PORTS=22001:30:20', (self.root / 'applied.conf').read_text())
 
+    def test_jail_mode_round_trip_and_rejected_switch_preserve_bans(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('mode_inputs', ROOT / 'bin/frp-ssh-guard-input.py')
+        data = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(data)
+        deadline = int(time.time()) + 3600
+        rows = [data.Row('198.51.100.8', '22001', deadline, 'runtime'),
+                data.Row('198.51.100.8', '22003', deadline + 200, 'runtime'),
+                data.Row('198.51.100.8', '22001', deadline + 400, 'strike'),
+                data.Row('2001:db8::8', '22001', deadline, 'runtime'),
+                data.Row('203.0.113.8', '*', deadline, 'runtime'),
+                data.Row('203.0.113.9', '22001')]
+        path = self.root / 'lists/blocklist.conf'
+        path.write_text(data.render_list('', rows, 'block'))
+        def mode(value):
+            self.settings(f'PROTECTED_PORTS="22001,22003"\nJAIL_PER_PORT={value}\n')
+        mode('on')
+        self.require_ok(self.run_guard('enable'))
+        original = path.read_text()
+        policy = (self.root / 'applied.conf').read_bytes()
+        live = (self.root / 'live.nft').read_bytes()
+        mode('off')
+        self.require_ok(self.run_guard('check'))
+        self.assertEqual(path.read_text(), original)
+        for failure in ('fail-check', 'fail-apply'):
+            (self.root / failure).touch()
+            self.assertNotEqual(self.run_guard('reload').returncode, 0)
+            (self.root / failure).unlink()
+            self.assertEqual(path.read_text(), original)
+            self.assertEqual((self.root / 'applied.conf').read_bytes(), policy)
+            self.assertEqual((self.root / 'live.nft').read_bytes(), live)
+        self.require_ok(self.run_guard('reload'))
+        expected = set(rows)
+        self.assertEqual(set(data.records(path.read_text())), expected)
+        for value, action in (('off', 'apply'), ('on', 'reload'), ('on', '_upgrade'), ('on', 'apply')):
+            mode(value)
+            self.require_ok(self.run_guard(action))
+            self.assertEqual(set(data.records(path.read_text())), expected)
+            active = (self.root / 'live.nft').read_text()
+            self.assertIn('saved_ban_pp6 { 2001:db8::8 . 22001 timeout ', active)
+            self.assertIn('block_pp4 { 203.0.113.9 . 22001 }', active)
+            self.assertIn('saved_ban4 { 203.0.113.8 timeout ', active)
+            self.assertIn('198.51.100.8 . 22001 timeout ', active)
+            self.assertNotIn('saved_ban4 { 198.51.100.8 ', active)
+            # Only newly created dynamic bans use the selected mode.
+            expression = 'ip saddr . tcp dport' if value == 'on' else 'ip saddr'
+            self.assertIn('add @ban4 { ' + expression + ' timeout ', active)
+
     def test_check_has_no_activation_side_effects(self):
         self.require_ok(self.run_guard('check'))
         self.assertFalse((self.root / 'live.nft').exists())

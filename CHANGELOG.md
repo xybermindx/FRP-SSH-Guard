@@ -2,6 +2,11 @@
 
 ## 0.0.6
 
+- Package revision 4 makes jail mode switches affect new bans only. Existing
+  shared/per-port bans retain their original scopes and absolute expiry.
+  Keep strike history keyed by the recorded scope, so later timer runs cannot
+  broaden old per-port offenses or discard shared history after a mode switch.
+  Manual block scopes and whitelist exceptions remain unchanged.
 - Package revision 3 defaults fresh settings to slow SSH enforcement (20 failures / 24h)
   when optional local SSH protection is enabled. Existing choices are preserved;
   older settings without a slow mode keep observation behavior. Jail scope, ban

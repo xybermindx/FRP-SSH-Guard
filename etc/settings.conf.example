@@ -24,6 +24,9 @@ PROTECT_SERVER_SSH=off
 # JAIL_PER_PORT: jail scope switch (on/off); port rate limits remain enabled.
 # Default off: a banned IP is blocked across ALL protected ports.
 # On: automatic and authentication bans apply only to the offending port.
+# Switching mode affects NEW bans only. Existing shared bans stay shared;
+# existing per-port bans keep their original ports and absolute expiry.
+# Strike history retains each offense's original scope across mode switches.
 # Explicit manual block scopes are independent of this switch.
 JAIL_PER_PORT=off
 

@@ -337,7 +337,7 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `PROTECTED_PORTS` | Empty; required | Comma/space-separated ports or ranges. `22001:60:40` overrides that port's shared rate/burst. |
 | `EXCLUDE_PORTS` | Empty | Ports/ranges omitted from the protected selection. |
 | `PROTECT_SERVER_SSH` | `off` | `on` adds this server's port 22 and monitors local sshd outcomes. |
-| `JAIL_PER_PORT` | `off` | `off`: automatic/strike bans cover all protected ports. `on`: each port has its own jail. |
+| `JAIL_PER_PORT` | `off` | `off`: new automatic bans cover all protected ports. `on`: new bans apply to the offending port. Existing scopes stay unchanged. |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | Local authentication failure threshold, distinct invalid-user connection threshold, and counting window. |
 | `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `enforce`, `20`, `24h` | Fresh-install default when local SSH protection is enabled; `observe` reports only, `off` disables. Existing choices are retained. |
 | `ALERT_LOG_MAX_SIZE` | `10MiB` | Newest-first local alerts, oldest complete lines discarded; 1KiB–100MiB, no archives. |
@@ -353,6 +353,14 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `PORT_MIN`, `PORT_MAX` | `1`, `65535` | Inclusive validation bounds. |
 | `EDIT_USER` | `root` | Trusted local account owning command-managed lists. |
 | `GUARD_TABLE` | `frp_ssh_persistent_guard` | Dedicated nftables table; disable before changing its name. |
+
+Changing `JAIL_PER_PORT` affects **new bans only**. Existing `[all]` bans remain
+shared, and existing per-port bans retain their original ports in either mode.
+No existing ban is released, broadened, narrowed or restarted by a mode switch.
+Strike history keeps the scope recorded with each offense, so a later timer run
+does not reinterpret old per-port offenses as shared ones. Manual scopes and
+whitelist exceptions remain unchanged. After editing settings, run
+`sudo frp-ssh-guard check && sudo frp-ssh-guard reload` to activate the change.
 
 Durations use a positive integer followed by `s`, `m`, `h`, `d`, or `w`.
 Rates, bursts, and the learned-source cap are integers from 1 to 1000000.

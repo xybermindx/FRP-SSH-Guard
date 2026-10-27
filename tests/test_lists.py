@@ -108,6 +108,49 @@ class ListTests(unittest.TestCase):
                 lists.sync(cfg)
             self.assertNotIn('198.51.100.2', (root / 'home/whitelist.conf').read_text())
 
+    def test_mode_switches_keep_deadlines_and_explicit_manual_scopes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('etc', 'lists', 'home'):
+                (root / name).mkdir()
+            cfg = dict(CONFIG_BASE=str(root / 'etc'), MANUAL_DIR=str(root / 'home'),
+                       GUARD_TABLE='test_guard', LEARN_TIMEOUT='90d', STRIKE_MAX='28d',
+                       MAX_LEARNED='500', JAIL_PER_PORT='on')
+            original = [data.Row('198.51.100.8', '22', 1400, 'runtime'),
+                        data.Row('198.51.100.8', '22001', 1600, 'runtime'),
+                        data.Row('198.51.100.8', '22', 1800, 'strike'),
+                        data.Row('2001:db8::8', '22001,22003', 1500, 'runtime'),
+                        data.Row('203.0.113.8', '*', 1700, 'runtime'),
+                        data.Row('203.0.113.9', '22003')]
+            path = root / 'home/blocklist.conf'
+            path.write_text(data.render_list('# keep this comment\n', original, 'block'))
+            with mock.patch.dict(os.environ, {'GUARD_LIST_DIR': str(root / 'lists')}), \
+                 mock.patch.object(lists.time, 'time', return_value=1000), \
+                 mock.patch.object(lists, 'snapshot', return_value=[]):
+                lists.sync(cfg)
+                self.assertEqual(set(data.records(path.read_text())), set(original))
+                cfg['JAIL_PER_PORT'] = 'off'
+                lists.sync(cfg)
+                expected = set(original)
+                self.assertEqual(set(data.records(path.read_text())), expected)
+                self.assertIn('# keep this comment', path.read_text())
+                cfg['JAIL_PER_PORT'] = 'on'
+                lists.sync(cfg)
+                self.assertEqual(set(data.records(path.read_text())), expected)
+                # Offline-home reload and restoration retain every original scope.
+                (root / 'home').rename(root / 'offline')
+                lists.sync(cfg)
+                self.assertEqual(set(data.records((root / 'lists/blocklist.conf').read_text())),
+                                 {r for r in expected if r.source != 'manual'})
+                (root / 'offline').rename(root / 'home')
+                # Explicit removal must still suppress the existing jail generation.
+                path.write_text(data.render_list(path.read_text(),
+                                [r for r in expected if r.ip != '198.51.100.8'], 'block'))
+                with mock.patch.object(lists, 'snapshot', return_value=[('ban4', original[0])]), \
+                     mock.patch.object(lists.subprocess, 'run'):
+                    lists.sync(cfg)
+                self.assertFalse(any(r.ip == '198.51.100.8' for r in data.records(path.read_text())))
+
     def test_concurrent_editor_and_symlink_cannot_be_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'whitelist.conf'

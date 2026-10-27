@@ -305,7 +305,7 @@ sudo frp-ssh-guard status
 | `PROTECTED_PORTS` | 空，必须设置 | 逗号或空格分隔的端口/范围；`22001:60:40` 覆盖该端口的共享速率和突发额度。 |
 | `EXCLUDE_PORTS` | 空 | 从保护范围中排除的端口/范围。 |
 | `PROTECT_SERVER_SSH` | `off` | `on` 添加本机 22 端口防护，并监控本机 sshd 认证结果。 |
-| `JAIL_PER_PORT` | `off` | `off`：自动/累犯封禁共享所有受保护端口；`on`：按端口独立封禁。 |
+| `JAIL_PER_PORT` | `off` | `off`：新自动封禁共享所有受保护端口；`on`：新封禁仅针对触发端口。现有封禁范围不变。 |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | 本机认证失败阈值、不同连接的无效用户阈值、统计窗口。 |
 | `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `enforce`, `20`, `24h` | 新安装在启用本机 SSH 防护后默认封禁；`observe` 仅记录，`off` 关闭。升级保留原有选择。 |
 | `ALERT_LOG_MAX_SIZE` | `10MiB` | 本地告警按最新在前排列，超限删除最旧完整行；允许 1KiB–100MiB，不保留轮转档案。 |
@@ -321,6 +321,12 @@ sudo frp-ssh-guard status
 | `PORT_MIN`, `PORT_MAX` | `1`, `65535` | 端口校验的上下界，包含边界。 |
 | `EDIT_USER` | `root` | 拥有命令管理名单的可信本机账户。 |
 | `GUARD_TABLE` | `frp_ssh_persistent_guard` | 专用 nftables 表名；修改前先停用防护。 |
+
+修改 `JAIL_PER_PORT` **仅影响新产生的封禁**。无论切换到哪种模式，已有的 `[all]`
+封禁仍共享所有受保护端口，已有的按端口封禁仍保留原来的端口范围。
+切换不会释放、扩大、缩小或重新计时任何现有封禁。累犯历史保留每次事件记录的范围，
+后续定时任务不会把旧的按端口事件重新解释为共享事件。手动范围和白名单例外保持不变。
+编辑设置后，运行 `sudo frp-ssh-guard check && sudo frp-ssh-guard reload` 生效。
 
 时长格式为正整数加 `s`、`m`、`h`、`d` 或 `w`（秒、分、小时、天、周）。
 速率、突发额度及学习数量上限是 1–1000000 的整数。

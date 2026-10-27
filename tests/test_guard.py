@@ -165,6 +165,45 @@ cat "$GUARD_DIR/rules.nft"
                     for call in run.call_args_list if '{ 198.51.100.2 . 22001 timeout ' in str(call.args)]
         self.assertTrue(timeouts and all(86390 <= value <= 86400 for value in timeouts))
 
+    def test_strike_history_scope_and_deadline_survive_mode_round_trip(self):
+        import sqlite3
+        now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        stamp = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        # Both legacy log and current event-store histories must retain scope.
+        histories = [('198.51.100.11', '*'), ('198.51.100.12', '22001'),
+                     ('198.51.100.13', '22001'), ('198.51.100.13', '22003')]
+        (self.root / 'logs/banned.log').write_text(''.join(
+            f'{stamp} ban4 {ip}' + ('' if scope == '*' else ' ' + scope) + '\n'
+            for ip, scope in histories))
+        (self.root / 'observations').mkdir()
+        with sqlite3.connect(self.root / 'observations/events.sqlite3') as db:
+            db.execute('CREATE TABLE events (stamp INTEGER, ip TEXT, scope TEXT, kind TEXT)')
+            db.executemany('INSERT INTO events VALUES (?,?,?,?)',
+                           [(now, ip, scope, 'ban') for ip, scope in histories[:2]] +
+                           [(now, '2001:db8::11', scope, 'ban') for scope in ('*', '*', '22003', '22003')])
+        expected = None
+        real_run = subprocess.run
+        def run_command(args, **kwargs):
+            return real_run(args, **kwargs) if args[0] == 'bash' else subprocess.CompletedProcess(args, 0)
+        for mode in ('on', 'off', 'on'):
+            (self.root / 'etc/guard.conf').write_text(f'JAIL_PER_PORT={mode}\nSTRIKE_LADDER="2:1d"\n')
+            with mock.patch.dict(os.environ, self.env, clear=True), \
+                 mock.patch('subprocess.run', side_effect=run_command) as run, \
+                 mock.patch('shutil.chown'), contextlib.redirect_stdout(io.StringIO()):
+                runpy.run_path(str(ROOT / 'bin/frp-ssh-guard-strike.py'))
+            text = (self.root / 'lists/hardban.conf').read_text()
+            if expected is None:
+                expected = text
+            self.assertEqual(text, expected)
+            self.assertIn('198.51.100.11 all source=strike until=', text)
+            self.assertIn('198.51.100.12 22001 source=strike until=', text)
+            self.assertIn('2001:db8::11 all source=strike until=', text)
+            self.assertIn('2001:db8::11 22003 source=strike until=', text)
+            self.assertNotIn('198.51.100.13', text)  # unrelated scoped offenses never combine
+            writes = [call.args[0][-1] for call in run.call_args_list if 'element' in call.args[0]]
+            self.assertTrue(writes)
+            self.assertTrue(all((' . ' in value) == (mode == 'on') for value in writes))
+
     def test_help_without_privileges(self):
         result = subprocess.run(['bash', str(ROOT / 'bin/frp-ssh-guard-persistent.sh'), '--help'],
                                 env=self.env, text=True, capture_output=True)

@@ -1,5 +1,35 @@
 # v0.0.6 validation
 
+## Jail mode continuity: package 0.0.6-4
+
+Validated on 2026-10-27 in an isolated Debian 12 QEMU VM, Linux
+6.1.0-54-cloud-amd64, systemd 252, nftables 1.0.6 and real FRP 0.71.1.
+No production firewall was changed.
+
+- Local `make test`: 114 cases, 113 passing and the privileged namespace case
+  skipped. Added both-direction scope/deadline tests, rejected reload rollback,
+  offline home caching and legacy-log/SQLite strike-history regressions.
+- `tests/vm-jail-modes.py` performed an ordinary APT upgrade from published
+  `0.0.6-3`, retaining an unsampled live per-port jail, mixed saved shared/per-port
+  bans, manual scopes, absolute deadlines and timer activation/deadline properties.
+- Three actual switches (per-port to shared, back to per-port, back to shared)
+  kept old bans at their original scopes. Real FRP SSH traffic from old scoped
+  sources remained blocked only on their original port; old shared sources stayed
+  blocked on both protected ports. New traffic created bans in the selected mode.
+- Running the actual strike service after each switch retained historical scopes
+  and expiry. IPv6 saved set keys and unchanged saved timestamps were verified.
+  Same-package reinstallation and service restart retained the mixed jails.
+- Source, history and built package passed the private privacy rules. CI also
+  verifies privileged namespace rules, reproducibility and Debian/Ubuntu package
+  lifecycle behavior. Full Ubuntu runtime and ARM/32-bit remain unverified.
+
+Reproduce in a disposable systemd VM with no installed guard, no `guardmodes`
+account and no `guard-client` namespace:
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-jail-modes.py OLD.deb NEW.deb FRP_DIR
+```
+
 ## Fresh-install slow enforcement: package 0.0.6-3
 
 Validated on 2026-10-27 in an isolated Debian 12 QEMU overlay, Linux
