@@ -43,12 +43,12 @@ class EventTests(unittest.TestCase):
     def count(self, kind):
         return self.store.db.execute('SELECT count(*) FROM events WHERE kind=?', (kind,)).fetchone()[0]
 
-    def test_slow_observation_does_not_ban_and_replay_is_idempotent(self):
-        self.config['SSH_SLOW_MODE'] = 'observe'
+    def test_slow_switch_off_records_failures_without_threshold_or_ban(self):
+        self.config['SSH_SLOW_PROTECTION'] = 'off'
         for i in range(20):
             record = self.failure(i, NOW + i * 1000)
             self.assertIsNone(self.process(record))
-        self.assertEqual(self.count('slow-threshold'), 1)
+        self.assertEqual(self.count('slow-threshold'), 0)
         self.assertEqual(self.count('auth-failure'), 20)
         self.store.db.commit()
         resumed = events.Store(self.root / 'state')
@@ -59,15 +59,30 @@ class EventTests(unittest.TestCase):
         self.assertEqual(self.count('ban'), 0)
 
     def test_fresh_default_bans_slow_failures_only_at_long_threshold(self):
-        self.assertEqual(self.config['SSH_SLOW_MODE'], 'enforce')
+        self.assertEqual(self.config['SSH_SLOW_PROTECTION'], 'on')
         self.assertEqual(self.config['SSH_SLOW_FAILURES'], '20')
         for i in range(19):
             self.assertIsNone(self.process(self.failure(i, NOW + i * 1000)))
         self.assertEqual(self.process(self.failure(19, NOW + 19000)), 'ban')
+        self.assertEqual(self.store.reason, 'slow-failed-logins')
         self.assertEqual(self.count('slow-threshold'), 1)
 
+    def test_known_administrator_is_never_counted_by_slow_protection(self):
+        def admin_failure(index, stamp):
+            record = self.failure(index, stamp)
+            # Whitelisted for a forwarded port only: not trusted on 22, but an administrator.
+            return self.store.process(record, self.config, auth.parse_event(record), stamp, False, True)
+        for i in range(25):
+            self.assertIsNone(admin_failure(i, NOW + i * 1000))
+        self.assertEqual(self.count('slow-threshold'), 0)
+        # The fast failed-login detector still applies on a port it is not trusted for.
+        later = NOW + 26 * 1000
+        results = [admin_failure(i, later) for i in range(100, 105)]
+        self.assertEqual(results[-1], 'ban')
+        self.assertEqual(self.store.reason, 'failed-logins')
+
     def test_enforce_mixed_thresholds_one_ban_and_allow_precedence(self):
-        self.config.update(SSH_SLOW_MODE='enforce', SSH_SLOW_FAILURES='5')
+        self.config.update(SSH_SLOW_PROTECTION='on', SSH_SLOW_FAILURES='5')
         for i in range(4):
             self.assertIsNone(self.process(self.failure(i)))
         self.assertEqual(self.process(self.failure(4)), 'ban')
@@ -188,7 +203,7 @@ class EventTests(unittest.TestCase):
             self.assertEqual(sorted(results), [False, True])
             sync.assert_called_once()
         self.assertEqual(self.count('new-source-login'), 1)
-        self.assertEqual(len((self.root / 'home/alerts.log').read_text().splitlines()), 1)
+        self.assertEqual(len((self.root / 'home/frp-ssh-guard.log').read_text().splitlines()), 1)
 
     def test_existing_jail_is_not_renewed(self):
         live = [('ban4', events.data.Row('198.51.100.7', '*', NOW + 30, 'runtime'))]
@@ -214,12 +229,49 @@ class EventTests(unittest.TestCase):
         self.store.record_ban(ip, '*', NOW + 21610, 'kernel', self.config, NOW + 11)
         self.assertEqual(self.count('ban'), 2)
 
+    def test_kernel_bans_are_logged_once_with_reason_and_strikes_once(self):
+        def element(value, seconds):
+            return {'elem': {'val': value, 'expires': seconds}}
+
+        def document(bans, marks=(), strikes=()):
+            return {'nftables': [{'table': {'handle': 1}},
+                                 {'set': {'name': 'ban4', 'elem': [element(v, 3600) for v in bans]}},
+                                 {'set': {'name': 'slowhit4', 'elem': [element(v, 500) for v in marks]}},
+                                 {'set': {'name': 'hardban4', 'elem': [element(v, s) for v, s in strikes]}}]}
+        events.sample(self.store, self.config, NOW, document([]), baseline=True)
+        events.sample(self.store, self.config, NOW + 60,
+                      document(['198.51.100.7', '198.51.100.8'], marks=['198.51.100.8'],
+                               strikes=[('198.51.100.9', 86400)]))
+        events.sample(self.store, self.config, NOW + 120,
+                      document(['198.51.100.7', '198.51.100.8'], marks=['198.51.100.8'],
+                               strikes=[('198.51.100.9', 86340)]))
+        details = dict(self.store.db.execute("SELECT ip, detail FROM events WHERE kind='ban'").fetchall())
+        self.assertEqual(len(details), 2)
+        self.assertIn('reason=connection-rate limit=2/minute,burst=40', details['198.51.100.7'])
+        self.assertIn('reason=slow-connections-all-ports limit=300/24h', details['198.51.100.8'])
+        self.assertEqual(self.count('strike-ban'), 1)
+        self.assertEqual(self.count('slow-threshold'), 1)
+
+    def test_log_lines_show_ports_reason_and_skip_failures(self):
+        self.store.emit('a' * 64, NOW, 'auth-failure', '198.51.100.7', '22')
+        self.store.emit('b' * 64, NOW + 1, 'ban', '198.51.100.7', '22001',
+                        'reason=slow-connections limit=100/24h until=2023-11-15T04:13:21Z')
+        self.store.emit('c' * 64, NOW + 2, 'settings-applied', '', '*', 'slow-protection=on')
+        with mock.patch.object(events.alerts, 'deliver', return_value=True) as deliver:
+            self.store.export(self.config)
+        lines = deliver.call_args[0][2].splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].endswith('settings-applied slow-protection=on id=' + 'c' * 16))
+        self.assertIn(' ban source=198.51.100.7 ports=22001 reason=slow-connections limit=100/24h ', lines[1])
+
     def test_invalid_new_settings_fail_validation(self):
         validator = events.module('validate')
         validator.validate(self.config)
-        for key, value in (('SSH_SLOW_MODE', 'automatic'), ('SSH_SLOW_FAILURES', '0'),
+        for key, value in (('SSH_SLOW_PROTECTION', 'enforce'), ('SSH_SLOW_PROTECTION', ''),
+                           ('SSH_SLOW_MODE', 'automatic'), ('SSH_SLOW_FAILURES', '0'),
+                           ('SSH_SLOW_PORT_CONNECTIONS', '0'), ('SSH_SLOW_TOTAL_CONNECTIONS', '1000001'),
                            ('SSH_SLOW_WINDOW', 'forever'), ('SUBNET_REPORT_MIN_SOURCES', '-1'),
-                           ('ALERT_LOG_MAX_SIZE', '0MiB'), ('ALERT_LOG_MAX_SIZE', '101MiB')):
+                           ('LOG_MAX_SIZE', '0MiB'), ('LOG_MAX_SIZE', '101MiB')):
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 validator.validate({**self.config, key: value})
 
@@ -268,15 +320,25 @@ class AlertTests(unittest.TestCase):
             (root / 'etc').mkdir()
             home = root / '.frp-ssh-guard'
             (root / 'etc/user-home.json').write_text(json.dumps(dict(directory=str(home), user=pwd.getpwuid(os.getuid()).pw_name)))
-            config = dict(ALERT_LOG_MAX_SIZE='1KiB', CONFIG_BASE=str(root / 'etc'), MANUAL_DIR=str(home))
+            config = dict(LOG_MAX_SIZE='1KiB', CONFIG_BASE=str(root / 'etc'), MANUAL_DIR=str(home))
             record = '2026-01-01T00:00:00.000000Z new-source-login source=198.51.100.7 id=test\n'
             self.assertFalse(events.alerts.deliver(config, root / 'state', record))
             self.assertTrue((root / 'state/alerts-spool.log').exists())
             home.mkdir(mode=0o700)
             self.assertTrue(events.alerts.deliver(config, root / 'state', record))
-            self.assertEqual((home / 'alerts.log').read_text(), record)
+            self.assertEqual((home / 'frp-ssh-guard.log').read_text(), record)
             self.assertFalse((root / 'state/alerts-spool.log').exists())
-            self.assertEqual((home / 'alerts.log').stat().st_mode & 0o777, 0o600)
+            self.assertEqual((home / 'frp-ssh-guard.log').stat().st_mode & 0o777, 0o600)
+
+    def test_legacy_alerts_file_is_merged_once_newest_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            old = '2026-01-01T00:00:00.000000Z new-source-login source=198.51.100.7 id=old\n'
+            new = '2026-01-02T00:00:00.000000Z ban source=198.51.100.8 ports=all reason=connection-rate id=new\n'
+            (home / 'alerts.log').write_text(old)
+            events.alerts.merge(home / 'frp-ssh-guard.log', new, 1024, home / 'alerts.log')
+            self.assertEqual((home / 'frp-ssh-guard.log').read_text(), new + old)
+            self.assertFalse((home / 'alerts.log').exists())
 
 
 if __name__ == '__main__':

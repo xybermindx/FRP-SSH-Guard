@@ -70,6 +70,8 @@ declare -a AUTO_PP4=()
 declare -a AUTO_PP6=()
 declare -a HARDBAN4=()
 declare -a HARDBAN6=()
+declare -a TRUSTED4=()
+declare -a TRUSTED6=()
 
 usage() {
     cat <<'TEXT'
@@ -98,13 +100,13 @@ Lists & administration:
   banned                 List currently banned IPs with remaining TTL.
   unban IP               Release auto bans/strikes for an IP (forgives history).
   release IP             Fully release: manual + auto + forgive (unblock+unban).
-  ban IP [DURATION]      Temporarily ban an IP (default from accepted settings).
-  block IP [PORTS]       Manual block, permanent unless --for DURATION is given.
+  ban IP [DURATION]      Temporary ban (default BAN_TIMEOUT); use block for permanent.
+  block IP [PORTS]       Manual block, forever unless --for DURATION is given.
     --all | --ports PORTS   Select all protected ports (default), or specific ports.
     --forever | --for 6h    Choose permanent (default) or a fixed expiry.
-  unblock IP             Remove an IP/CIDR from the permanent blocklist.
+  unblock IP             Remove every blocklist line for an IP/CIDR (manual and automatic).
   allow IP [PORTS]       Add an IP/CIDR to the manual whitelist.
-  unallow IP             Remove an IP/CIDR from the manual whitelist.
+  unallow IP             Remove every whitelist line for an IP/CIDR (manual and learned).
   learned                List auto-learned whitelist entries.
   remember IP / forget IP   Manually edit the auto-learned whitelist.
   report [WINDOW]        Summary: bans, learned, port-22 failures (default 24h).
@@ -115,7 +117,8 @@ PORTS argument (optional) for allow/block makes the entry fine-grained:
   block 203.0.113.0/24 22011,22019
   block 203.0.113.8 22010-22012  -> only those ports/ranges
 
-Settings edits take effect only after enable/reload. Manual list edits are watched.
+Settings edits take effect only after check, then reload (or enable the first time).
+whitelist.conf/blocklist.conf edits apply automatically when saved.
 Quick start:
   Edit the Settings file shown below, then:
   sudo frp-ssh-guard check
@@ -168,7 +171,8 @@ validate_policy() {
     for key in PORT_MIN PORT_MAX EXCLUDE_PORTS EDIT_USER GUARD_TABLE PER_IP_RATE PER_IP_BURST \
         GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT MAX_LEARNED LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER \
         PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW \
-        SSH_SLOW_MODE SSH_SLOW_FAILURES SSH_SLOW_WINDOW ALERT_LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW; do
+        SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW \
+        SSH_SLOW_MODE LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW; do
         args+=("$key=${!key}")
     done
     python3 "$LIB_DIR/frp-ssh-guard-validate.py" "${args[@]}" || exit 1
@@ -255,13 +259,25 @@ read_ports() {
 }
 
 read_allow() {
-    local input=${1:-$ALLOW_FILE} parsed family ip scope expiry canonical token suffix remaining now
+    local input=${1:-$ALLOW_FILE} parsed family ip scope expiry canonical token suffix remaining now trusted
     ALLOW4=(); ALLOW6=(); ALLOW_PP4=(); ALLOW_PP6=(); ALLOW_SNAPSHOT=''
-    LEARNED4=(); LEARNED6=(); LEARNED_PP4=(); LEARNED_PP6=()
+    LEARNED4=(); LEARNED6=(); LEARNED_PP4=(); LEARNED_PP6=(); TRUSTED4=(); TRUSTED6=()
     now=$(date +%s)
     if [[ ! -f "$input" && "$MANUAL_DIR" != "$LIST_DIR" ]]; then input="$LIST_DIR/whitelist.conf"; fi
     [[ -f "$input" ]] || return 0
     parsed=$(python3 "$INPUT_HELPER" read-list "$input" allow) || die 'Invalid manual allow list; no rules changed.'
+    # Whitelisted on any port (an administrator): never counted by slow protection.
+    trusted=$(python3 "$INPUT_HELPER" trusted "$input") || die 'Invalid manual allow list; no rules changed.'
+    while IFS='|' read -r family ip expiry; do
+        [[ -n "$family" ]] || continue
+        suffix=''
+        if (( expiry > 0 )); then
+            remaining=$((expiry - now))
+            (( remaining > 0 )) || continue
+            suffix=" timeout ${remaining}s"
+        fi
+        if [[ "$family" == 6 ]]; then TRUSTED6+=("$ip$suffix"); else TRUSTED4+=("$ip$suffix"); fi
+    done <<< "$trusted"
     while IFS='|' read -r family ip scope expiry canonical; do
         [[ -n "$family" ]] || continue
         ALLOW_SNAPSHOT+="$canonical"$'\n'
@@ -377,6 +393,23 @@ read_hardban() {
 
 join_by() { local IFS=,; echo "$*"; }
 
+seconds_of() {
+    local value=$1 count=${1%?}
+    case "${value: -1}" in
+        s) echo $((10#$count)) ;; m) echo $((10#$count * 60)) ;; h) echo $((10#$count * 3600)) ;;
+        d) echo $((10#$count * 86400)) ;; w) echo $((10#$count * 604800)) ;;
+    esac
+}
+
+# Express "more than COUNT new connections within SSH_SLOW_WINDOW" as an nftables
+# token bucket: COUNT at once, refilled at COUNT per window (approximate).
+slow_limit() {
+    local count=$1 window unit=day span=86400
+    window=$(seconds_of "$SSH_SLOW_WINDOW")
+    if (( window > 86400 )); then unit=week; span=604800; fi
+    echo "$(( (count * span + window - 1) / window ))/$unit burst $count packets"
+}
+
 verify_listeners() {
     local spec port rate burst listeners listener active=0 unused=0
     for spec in "${SPECS[@]}"; do
@@ -397,9 +430,14 @@ verify_listeners() {
 }
 
 compile_rules() {
-    local output=$1 spec port rate burst portset jail_type='' key4='ip saddr' key6='ip6 saddr'
+    local output=$1 spec port rate burst portset jail_type='' key4='ip saddr' key6='ip6 saddr' slow
+    # Slow protection on custom ports counts new connections (logins are hidden by
+    # the tunnel): per source across all custom ports in shared mode, or per source
+    # and port in per-port mode. Its key and ban scope follow JAIL_PER_PORT.
+    slow=$(slow_limit "$SSH_SLOW_TOTAL_CONNECTIONS")
     if [[ "$JAIL_PER_PORT" == on ]]; then
         jail_type=' . inet_service'; key4='ip saddr . tcp dport'; key6='ip6 saddr . tcp dport'
+        slow=$(slow_limit "$SSH_SLOW_PORT_CONNECTIONS")
     fi
     local -a plist=()
     for spec in "${SPECS[@]}"; do
@@ -432,6 +470,12 @@ compile_rules() {
         echo "    set allow_pp6 { type ipv6_addr . inet_service; flags interval; }"
         echo "    set block_pp4 { type ipv4_addr . inet_service; flags interval,timeout; }"
         echo "    set block_pp6 { type ipv6_addr . inet_service; flags interval,timeout; }"
+        echo "    set trusted4 { type ipv4_addr; flags interval,timeout; }"
+        echo "    set trusted6 { type ipv6_addr; flags interval,timeout; }"
+        echo "    set slow4 { type ipv4_addr$jail_type; flags dynamic,timeout; timeout $SSH_SLOW_WINDOW; size 65536; }"
+        echo "    set slow6 { type ipv6_addr$jail_type; flags dynamic,timeout; timeout $SSH_SLOW_WINDOW; size 65536; }"
+        echo "    set slowhit4 { type ipv4_addr$jail_type; flags dynamic,timeout; timeout 10m; size 65536; }"
+        echo "    set slowhit6 { type ipv6_addr$jail_type; flags dynamic,timeout; timeout 10m; size 65536; }"
         echo "    chain input {"
         echo "        type filter hook input priority -7; policy accept;"
         echo "        iifname \"lo\" return"
@@ -463,6 +507,11 @@ compile_rules() {
             echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn update @rate4 { ip saddr . tcp dport limit rate over ${PER_IP_RATE}/minute burst ${PER_IP_BURST} packets } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port per-IP v4\""
             echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn update @rate6 { ip6 saddr . tcp dport limit rate over ${PER_IP_RATE}/minute burst ${PER_IP_BURST} packets } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port per-IP v6\""
             echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn limit rate over $rate/minute burst $burst packets counter drop comment \"$port global\""
+            # Port 22 with local SSH protection uses failed logins from sshd instead.
+            if [[ "$SSH_SLOW_PROTECTION" == on && ! ( "$port" == 22 && "$PROTECT_SERVER_SSH" == on ) ]]; then
+                echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 update @slow4 { $key4 limit rate over $slow } add @slowhit4 { $key4 } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v4\""
+                echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip6 saddr != @trusted6 update @slow6 { $key6 limit rate over $slow } add @slowhit6 { $key6 } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v6\""
+            fi
             echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn counter return comment \"$port ok\""
         done
         echo "    }"
@@ -497,6 +546,8 @@ compile_rules() {
         if (( ${#LEARNED_PP6[@]} )); then
             echo "add element inet $GUARD_TABLE learned_pp6 { $(join_by "${LEARNED_PP6[@]}") }"
         fi
+        if (( ${#TRUSTED4[@]} )); then echo "add element inet $GUARD_TABLE trusted4 { $(join_by "${TRUSTED4[@]}") }"; fi
+        if (( ${#TRUSTED6[@]} )); then echo "add element inet $GUARD_TABLE trusted6 { $(join_by "${TRUSTED6[@]}") }"; fi
         if (( ${#AUTO4[@]} )); then echo "add element inet $GUARD_TABLE saved_ban4 { $(join_by "${AUTO4[@]}") }"; fi
         if (( ${#AUTO6[@]} )); then echo "add element inet $GUARD_TABLE saved_ban6 { $(join_by "${AUTO6[@]}") }"; fi
         if (( ${#AUTO_PP4[@]} )); then echo "add element inet $GUARD_TABLE saved_ban_pp4 { $(join_by "${AUTO_PP4[@]}") }"; fi
@@ -653,10 +704,10 @@ reload_live() {
         full="$tmp.full"
         mv "$tmp" "$full"
         python3 "$LIB_DIR/frp-ssh-guard-lists.py" upgrade-sets > "$tmp" || { rm -f "$tmp" "$full"; return 1; }
-        for set in saved_ban4 saved_ban6 saved_ban_pp4 saved_ban_pp6 learned_pp4 learned_pp6 allow4 allow6 allow_pp4 allow_pp6 manual4 manual6 block_pp4 block_pp6 learned4 learned6; do
+        for set in saved_ban4 saved_ban6 saved_ban_pp4 saved_ban_pp6 learned_pp4 learned_pp6 allow4 allow6 allow_pp4 allow_pp6 manual4 manual6 block_pp4 block_pp6 learned4 learned6 trusted4 trusted6; do
             printf 'flush set inet %s %s\n' "$GUARD_TABLE" "$set" >> "$tmp"
         done
-        awk '$1=="add" && $2=="element" && $5 ~ /^(allow[46]|allow_pp[46]|manual[46]|block_pp[46]|learned[46]|learned_pp[46]|saved_ban[46]|saved_ban_pp[46])$/ {print}' "$full" >> "$tmp"
+        awk '$1=="add" && $2=="element" && $5 ~ /^(allow[46]|allow_pp[46]|manual[46]|block_pp[46]|learned[46]|learned_pp[46]|saved_ban[46]|saved_ban_pp[46]|trusted[46])$/ {print}' "$full" >> "$tmp"
         rm -f "$full"
     fi
     "$NFTP" --check --file "$tmp" || { rm -f "$tmp"; die "Generated rules failed validation."; }
@@ -704,7 +755,8 @@ cmd_unban() {
     local ip set spec token
     ip=$(python3 "$INPUT_HELPER" host "$1") || exit 1
     table_active || die "Guard is not active."
-    for set in ban4 ban6 hardban4 hardban6; do
+    # Slow meters too: an exhausted connection budget would re-ban at once.
+    for set in ban4 ban6 hardban4 hardban6 slow4 slow6 slowhit4 slowhit6; do
         if [[ "$JAIL_PER_PORT" == on ]]; then
             for spec in ${PROTECTED_PORTS//,/ }; do
                 token=${spec%%:*}
@@ -724,7 +776,7 @@ cmd_unban() {
 cmd_release() {
     local ip=$1
     python3 "$INPUT_HELPER" edit-list "$CONFIG_BASE" "$BLOCKLIST_FILE" block remove "$ip" '*' forever || exit 1
-    file_del "$HARDBAN_FILE" "$ip" 2>/dev/null || true
+    file_del_ip "$HARDBAN_FILE" "$ip" 2>/dev/null || true
     forgive "$ip"
     if table_active; then cmd_unban "$ip"; fi
     reload_live
@@ -853,6 +905,13 @@ case "$action" in
         load_guard_config candidate
         if [[ "$GUARD_CONF" == */guard.conf ]]; then
             echo 'Using legacy guard.conf/ports.conf; see docs/MIGRATING.md for settings.conf migration.' >&2
+        fi
+        if [[ -n "$SSH_SLOW_MODE" ]]; then
+            echo "Note: SSH_SLOW_MODE is obsolete; slow protection uses SSH_SLOW_PROTECTION=$SSH_SLOW_PROTECTION." >&2
+            echo "Delete the SSH_SLOW_MODE line from $GUARD_CONF (SSH_SLOW_PROTECTION=on/off sits below JAIL_PER_PORT)." >&2
+        fi
+        if [[ -n "$ALERT_LOG_MAX_SIZE" ]]; then
+            echo "Note: ALERT_LOG_MAX_SIZE was renamed LOG_MAX_SIZE (now $LOG_MAX_SIZE); rename it in $GUARD_CONF." >&2
         fi
         if [[ -n "$old_table" && "$old_table" != "$GUARD_TABLE" ]] && \
             { systemctl is-active --quiet "$SERVICE" || "$NFTP" list table inet "$old_table" >/dev/null 2>&1; }; then

@@ -113,9 +113,10 @@ for log_path in sorted(glob.glob(LOG + '*')):
 # New monitors record each automatic ban once in the private event store.
 # The old log remains readable for pre-upgrade strikes and their deadlines.
 import sqlite3
+from contextlib import closing
 observation_path = Path(GUARD_DIR) / 'observations/events.sqlite3'
 if observation_path.is_file():
-    with sqlite3.connect(observation_path.as_uri() + '?mode=ro', uri=True) as observations:
+    with closing(sqlite3.connect(observation_path.as_uri() + '?mode=ro', uri=True)) as observations:
         for ep, ip, scope in observations.execute("SELECT stamp,ip,scope FROM events WHERE kind='ban' AND stamp>=?", (now - window,)):
             if ep < excused.get(ip, 0):
                 continue

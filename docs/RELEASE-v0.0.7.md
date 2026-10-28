@@ -1,0 +1,51 @@
+# v0.0.7
+
+One on/off switch for slow brute-force protection, now covering forwarded ports, and an activity log that explains every ban.
+
+[English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.7/README.md) ·
+[Chinese guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.7/README.zh-CN.md)
+
+## Changes
+
+- `SSH_SLOW_PROTECTION=on/off` replaces `SSH_SLOW_MODE`. It sits directly below
+  `JAIL_PER_PORT` and is on for new installations. `on` detects, logs and bans;
+  `off` does none of these.
+- Forwarded ports are now covered. Logins through the tunnel are invisible, so new
+  connections are counted: more than 300 per source across all forwarded ports in
+  24 hours with shared jails (banned on all ports), or 100 on one port with per-port
+  jails (banned on that port). Port 22 keeps 20 failed logins in 24 hours.
+- Sources in `whitelist.conf` under any port are known administrators and are never
+  counted. Learned administrator addresses (`LOGIN_USERS`) count as whitelisted.
+- `~/.frp-ssh-guard/frp-ssh-guard.log` replaces `alerts.log`. It records every ban
+  with its reason, limit and end time, plus manual bans, strike escalations, releases
+  and accepted settings; newest first, capped by `LOG_MAX_SIZE` (formerly
+  `ALERT_LOG_MAX_SIZE`).
+- `settings.conf` explains when and how changes take effect. `blocklist.conf`
+  explains that an entry without a time is permanent and gives examples.
+- List errors name the cause and line; several smaller fixes are listed in the changelog.
+
+## Upgrading
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+sudo apt install ./frp-ssh-guard_0.0.7.deb
+```
+
+An active guard is refreshed automatically. Upgrades never start bans you did
+not choose: `SSH_SLOW_MODE=enforce` becomes `on` (which now also covers forwarded
+ports), while `observe`, `off` or a missing value become `off`. To enable it later,
+whitelist administrators who use many forwarded machines, set
+`SSH_SLOW_PROTECTION=on`, then run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`.
+The settings file is converted in place with a private backup, so `status` shows
+pending edits until the next check and reload. See the
+[migration notes](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.7/docs/MIGRATING.md).
+
+## Limits
+
+Connection counts are an approximate token bucket that refills across the window,
+and a SYN retransmission counts as a new attempt. Heavy legitimate users of
+forwarded ports who are not whitelisted can reach the limits. Kernel bans are
+sampled about once a minute for the log. Validation status is recorded in
+[VALIDATION.md](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.7/docs/VALIDATION.md).
+
+<sub>An X-project by [XyberMind](http://www.xyber-mind.com/).</sub>

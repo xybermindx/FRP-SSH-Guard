@@ -93,14 +93,20 @@ def upgrade_sets(config):
                             capture_output=True, text=True, check=True)
     objects = json.loads(result.stdout)['nftables']
     existing = {item['set']['name'] for item in objects if 'set' in item}
+    table, commands = config['GUARD_TABLE'], []
+    # Trusted sources are only read by slow-protection rules, which an older table
+    # lacks; list-only updates still flush and refill the set, so it must exist.
+    for family in ('4', '6'):
+        if 'trusted' + family not in existing:
+            commands.append(f'add set inet {table} trusted{family} {{ type ipv{family}_addr; flags interval,timeout; }}')
     missing = [name + family for name in ('learned_pp', 'saved_ban', 'saved_ban_pp')
                for family in ('4', '6') if name + family not in existing]
     if not missing:
-        return ''
+        return '\n'.join(commands)
     handles = [item['rule']['handle'] for item in objects if item.get('rule', {}).get('comment') == 'manual-block v4']
     if not handles:
         raise ValueError('Cannot locate the guard list rules; retry an explicit reload.')
-    table, handle, commands = config['GUARD_TABLE'], int(handles[0]), []
+    handle = int(handles[0])
     for name in missing:
         family = name[-1]
         concat = ' . inet_service' if '_pp' in name else ''
@@ -135,6 +141,15 @@ def allowed(ip, port, config=None):
     if not (state_directory() / 'unified-state.json').exists():
         rows += data.records(read(state_directory() / 'learned.conf'), 'allow')
     return any(matches(row, ip, port, time.time()) for row in rows)
+
+
+def listed(ip, now=None):
+    """Whitelisted on any port in the last applied list: a known administrator."""
+    now = time.time() if now is None else now
+    rows = data.records(read(state_directory() / 'whitelist.conf'), 'allow')
+    address = ipaddress.ip_address(ip)
+    return any((not row.expiry or row.expiry > now) and address in ipaddress.ip_network(row.ip, strict=False)
+               for row in rows)
 
 
 def reconcile(original, previous, live, tombstones, now, kind):

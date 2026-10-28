@@ -3,7 +3,8 @@
 FRP-SSH-Guard owns one nftables `inet` table with an input-hook chain. It returns
 for loopback, established/related traffic, non-TCP traffic, and unselected ports.
 It then checks trusted sources, manual blocks, persisted strike bans, temporary
-bans, per-source/per-port SYN rate meters, and shared per-port SYN limits.
+bans, per-source/per-port SYN rate meters, shared per-port SYN limits, and the
+slow brute-force meters.
 
 Meters (`rate4`/`rate6`) and bans (`ban4`/`ban6`) are separate sets. Per-source
 meters are keyed by address and destination port. With `JAIL_PER_PORT=off`, bans
@@ -11,6 +12,20 @@ are keyed by address and cover all guarded ports. With `on`, both automatic and
 strike sets use address/port tuples; history and escalation retain that scope.
 The shared per-port limit spans sources and both IP families. None of these rules
 inspect SSH credentials. Other firewall tables keep their existing behavior.
+
+With `SSH_SLOW_PROTECTION=on`, each forwarded port gets one more rule after the
+shared limit, so packets that limit already dropped are not counted. It updates
+`slow4`/`slow6`, a token-bucket meter of `N` packets that refills at `N` per
+`SSH_SLOW_WINDOW` (rate per day, or per week for windows over a day). The meter key
+follows the jail mode: the source address alone (`SSH_SLOW_TOTAL_CONNECTIONS`,
+counted across all forwarded ports) or the address/port pair
+(`SSH_SLOW_PORT_CONNECTIONS`). When it overflows, the rule adds the same key to
+`ban4`/`ban6` and to the 10-minute `slowhit4`/`slowhit6` marker that lets the
+sampler record the ban reason. Sources in `trusted4`/`trusted6` are skipped: every
+whitelist address under any port, with permanent networks collapsed and learned
+addresses inside them dropped, because nftables interval sets reject overlaps.
+List-only updates refill the trusted sets; `unban` also clears the meters. Native
+port 22 is excluded and keeps its journal-based failed-login threshold.
 
 ## Editable and accepted configuration
 
@@ -164,8 +179,12 @@ bans and explicit CLI temporary bans are excluded from automatic campaign counts
 Database tables are bounded by time and a 200,000-row limit; reports expose capacity
 loss. SQLite retains reusable free pages rather than vacuuming during protection.
 
-Alert delivery uses owner-privilege subprocesses, pinned directory descriptors,
-O_NOFOLLOW, private modes, fsync and atomic rename. The runtime lock serializes
-writers. Each line has a stable event ID; spool retries deduplicate complete lines.
-The bounded spool is separate from logrotate. Alert failures do not stop enforcement.
+Activity-log delivery (`frp-ssh-guard.log`) uses owner-privilege subprocesses,
+pinned directory descriptors, O_NOFOLLOW, private modes, fsync and atomic rename.
+The runtime lock serializes writers. Each line has a stable event ID; spool retries
+deduplicate complete lines, and a pre-0.0.7 `alerts.log` is merged once and removed.
+Logged kinds are bans (with reason, limit and expiry), manual bans, strike
+escalations, releases, accepted settings, new-source logins and subnet clusters;
+failed logins stay in the database. The bounded spool is separate from logrotate.
+Log failures, and list-view failures after a ban, do not stop enforcement.
 Reports and doctor open existing observation state read-only.

@@ -1,3 +1,27 @@
+# v0.0.7 validation
+
+## Slow protection switch, activity log and instructions: package 0.0.7-1
+
+Checked on 2026-10-27 on the development host only. No firewall was changed.
+
+- Local `make test`: 127 cases, 126 passing and the privileged namespace case
+  skipped (it needs root). New regressions cover the `SSH_SLOW_MODE` conversion
+  matrix and its placement below `JAIL_PER_PORT`, replacement of only shipped
+  comments, the `ALERT_LOG_MAX_SIZE` rename, accepted-snapshot conversion during
+  `_upgrade`, slow rules in both jail modes, rate conversion, no connection rule on
+  native port 22, collapsed trusted sets, administrator exemption, unban meter
+  cleanup, ban reasons, single strike entries, log format, legacy log merge,
+  list header refresh and clearer list errors.
+- Source and history passed the private privacy rules; the built `0.0.7-1` package
+  passed the artifact scan.
+- The privileged namespace test, which loads the new rule syntax into a real
+  kernel, and the Debian 12 / Ubuntu 24.04 package lifecycle checks run in CI for
+  the tagged commit; the release workflow publishes only after they pass.
+- Not run for this release: the disposable QEMU VM scripts
+  `tests/vm-slow-defaults.py` and `tests/vm-observations.py` (real sshd and FRP
+  traffic). Real-traffic behavior of the new connection limits is therefore covered
+  by unit and kernel-syntax tests only.
+
 # v0.0.6 validation
 
 ## Jail mode continuity: package 0.0.6-4

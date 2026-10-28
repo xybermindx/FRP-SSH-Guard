@@ -4,21 +4,22 @@
 
 ![FRP-SSH-Guard — SSH protection at the public edge](docs/images/guard-cover.svg)
 
-**[Download v0.0.6 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)
+**[Download v0.0.7 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.7/frp-ssh-guard_0.0.7.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
 FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
 or per-port jails, and scoped or timed manual blocks. Install on the public
 `frps` host; configuration lives in `~/.frp-ssh-guard/` and upgrades preserve
-custom values and active protection. Both new protection switches default to off.
+custom values and active protection. Local SSH protection and per-port jails
+default to off; slow brute-force protection defaults to on.
 
 > **Observed impact (~10-day window):** **4,255,592** abusive packets dropped
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
 > failed logins in the latest 24-hour window.
 
-**Version 0.0.6 · MIT licensed · Bash and Python**
+**Version 0.0.7 · MIT licensed · Bash and Python**
 
-[What's new in v0.0.6](docs/RELEASE-v0.0.6.md) ·
+[What's new in v0.0.7](docs/RELEASE-v0.0.7.md) ·
 [Configuration and command examples](docs/EXAMPLES.md) ·
 [Upgrade instructions](docs/MIGRATING.md)
 
@@ -79,6 +80,8 @@ attract automated probes and repeated connection attempts. This project adds a
 host firewall policy specifically for the ports you choose:
 
 - Per-source, per-port new-connection rate limits and temporary source bans.
+- Slow brute-force protection: long-window connection limits on forwarded ports and
+  a long-window failed-login limit on this server's port 22. Whitelisted sources are never counted.
 - Optional protection of this server's port 22, including local sshd authentication failures.
 - Shared IP jails by default, or separate jails per port.
 - A shared per-port rate limit to reduce distributed connection bursts.
@@ -133,7 +136,8 @@ has been tested. See [validation results](docs/VALIDATION.md).
 | Distributed connection bursts | The shared per-port limit drops excess new attempts; legitimate traffic can also be affected. |
 | Repeated observed bans | Strike escalation can impose longer bans; sampling can miss short or repeated events. |
 | Known unwanted IPs/networks | Manual blocks drop matching traffic to guarded ports, subject to whitelist and established-connection precedence. |
-| Slow attempts below thresholds or guesses inside a forwarded SSH connection | Not reliably detected; forwarded authentication outcomes are unavailable. |
+| Slow attempts that stay under the per-minute limits | With `SSH_SLOW_PROTECTION=on` (default): banned after more than 300 new connections per source across forwarded ports in 24 hours (100 on one port with per-port jails), or 20 failed logins on local port 22. Counts refill gradually, so they are approximate. |
+| Password guesses inside a forwarded SSH connection | Not visible; forwarded authentication outcomes are unavailable, so only connection counts apply. |
 | Application exploits or stolen credentials | No application-level detection or prevention. |
 | Bandwidth-saturating DDoS | No availability guarantee; host filtering cannot recover an already saturated upstream link. |
 | Unconfigured ports, UDP, and other protocols | Outside the filtering scope. |
@@ -145,18 +149,18 @@ packets, including retransmissions, are measured—not exact sessions or login a
 
 ## Download a release
 
-Download from **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.6)**. Debian `.deb` files are
+Download from **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7)**. Debian `.deb` files are
 release assets; they do not appear in the GitHub **Packages** tab.
-Release v0.0.6 contains:
+Release v0.0.7 contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_0.0.6.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/frp-ssh-guard_0.0.6.deb) | Install on the target Debian/Ubuntu host. |
-| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.6/SHA256SUMS) | Verify the downloaded Debian package. |
+| [frp-ssh-guard_0.0.7.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.7/frp-ssh-guard_0.0.7.deb) | Install on the target Debian/Ubuntu host. |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.7/SHA256SUMS) | Verify the downloaded Debian package. |
 
 The complete source remains in the repository. GitHub automatically provides
-[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.6.zip)
-and [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.6.tar.gz)
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.7.zip)
+and [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.7.tar.gz)
 for the release tag, including the runtime, build scripts, packaging, docs, and tests.
 Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb`.
 
@@ -192,7 +196,7 @@ Download the `.deb` and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.6.deb
+sudo apt install ./frp-ssh-guard_0.0.7.deb
 ```
 
 Confirm the `.deb` reports `OK`. **Upgrading an active guard automatically applies
@@ -207,7 +211,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 Installation automatically creates this folder and migrates existing settings
-and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.6.deb` uses the
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.7.deb` uses the
 invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
 customized values, even when another administrator installs the package.
@@ -227,10 +231,10 @@ deadlines stay unchanged; pending custom edits remain unapplied. Status can show
 pending edits after defaults are added. Set `PROTECT_SERVER_SSH=on` and explicitly
 run `check` then `reload` when ready to activate local SSH protection. An unavailable
 or invalid file is left alone with a notice; fix it and reinstall using
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.6.deb` to retry.
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.7.deb` to retry.
 
 To choose an owner before the first migration, use
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.6.deb`.
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.7.deb`.
 Conflicting existing home files or an unavailable home leave the old configuration
 in use; the installer reports this instead of overwriting data. Use
 `frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
@@ -290,8 +294,13 @@ sudo frp-ssh-guard status
 ```
 
 Saving alone does not apply settings. Background jobs, manual-list updates, table
-recovery, and reboot use the last accepted policy. `reload` updates that policy
-and refreshes the learning service. Validation or nftables application failure
+recovery, and reboot use the last accepted policy. `check` validates without
+changing anything. `reload` accepts the edits and applies them while the guard
+runs; use `enable` instead the first time or after `disable`. `status` then shows
+`Pending edits: no`. Reload keeps current bans and learned entries with their
+remaining time; connection counters start again. `reload` also refreshes the
+monitoring services. `whitelist.conf` and `blocklist.conf` are different: saving
+them applies them automatically, with no reload. Validation or nftables application failure
 keeps previous protection. Service/helper failures are reported separately; rules
 may already be active when such an error is reported.
 
@@ -338,9 +347,10 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `EXCLUDE_PORTS` | Empty | Ports/ranges omitted from the protected selection. |
 | `PROTECT_SERVER_SSH` | `off` | `on` adds this server's port 22 and monitors local sshd outcomes. |
 | `JAIL_PER_PORT` | `off` | `off`: new automatic bans cover all protected ports. `on`: new bans apply to the offending port. Existing scopes stay unchanged. |
+| `SSH_SLOW_PROTECTION` | `on` | Slow brute-force switch, directly below `JAIL_PER_PORT`. `on` detects, logs and bans; `off` does none of these. Forwarded ports count new connections; port 22 counts failed logins when local SSH protection is on. Whitelisted sources (any port) are never counted. |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | Local authentication failure threshold, distinct invalid-user connection threshold, and counting window. |
-| `SSH_SLOW_MODE`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `enforce`, `20`, `24h` | Fresh-install default when local SSH protection is enabled; `observe` reports only, `off` disables. Existing choices are retained. |
-| `ALERT_LOG_MAX_SIZE` | `10MiB` | Newest-first local alerts, oldest complete lines discarded; 1KiB–100MiB, no archives. |
+| `SSH_SLOW_TOTAL_CONNECTIONS`, `SSH_SLOW_PORT_CONNECTIONS`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `300`, `100`, `20`, `24h` | Slow limits: new connections per source across forwarded ports (shared jails) or on one forwarded port (per-port jails), failed logins on port 22, and their shared window. |
+| `LOG_MAX_SIZE` | `10MiB` | Activity log size; newest first, oldest complete lines deleted; 1KiB–100MiB, no archives. Formerly `ALERT_LOG_MAX_SIZE`. |
 | `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | Report distinct automatic sources per /24 or /64 and jail scope; never block a subnet automatically. |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | New SYN rate/minute and burst per source and port. |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | Shared new SYN rate/minute and burst per port, across sources and IP families. |
@@ -381,7 +391,22 @@ logins to SSH servers behind the FRP tunnel.
 
 Manual and automatic entries share `whitelist.conf` and `blocklist.conf`.
 Each file has instructions and `[all]` / per-port sections; see the
-[list examples](docs/EXAMPLES.md#unified-lists). A plain IP/CIDR or `IP forever` is permanent. In the blocklist, `IP tier=1`
+[list examples](docs/EXAMPLES.md#unified-lists). An address written **without a time is
+permanent**, and `IP forever` means the same:
+
+```ini
+[all]
+203.0.113.10                              # no time written: blocked forever
+203.0.113.11 forever                      # the same, written out
+198.51.100.0/24                           # a whole subnet, forever
+203.0.113.12 tier=2                       # 1 day with the default ladder
+203.0.113.15 until=2030-01-31T00:00:00Z   # until this UTC time
+[22001]
+203.0.113.20                              # forever, only on port 22001
+```
+
+Plain times such as `7d` are rejected in the file; use `tier=`/`until=`, or
+`sudo frp-ssh-guard block IP --for 7d`. In the blocklist, `IP tier=1`
 through `IP tier=5` select configured durations (defaults: 6h, 1d, 3d, 7d, 28d).
 Automatic rows include `source=learned`, `source=runtime` or `source=strike` and
 an absolute UTC `until=` expiry. Runtime includes automatic detection and the
@@ -484,6 +509,7 @@ Operational limits:
 | No selected FRP listener | Start `frps` and the relevant `frpc` clients; inspect `sudo ss -lntp`. |
 | Listener is not FRPS | Select the public forwarded ports on the correct host/network namespace. |
 | Settings have no effect | Run `check`, then `reload`; inspect pending edits in `status`. |
+| A legitimate heavy user is banned by slow protection | Add the address to `whitelist.conf` (any port section) and release it with `unban`; whitelisted sources are never counted. |
 | Guard inactive | Run `enable`; `reload` requires an active service. |
 | Invalid configuration | Correct the named setting; `--help` works even with broken edits. |
 | Rules active but helper/startup failed | Inspect the named systemd unit's journal; fix the cause and retry `reload`/`enable`. |
@@ -505,7 +531,7 @@ If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
 to switch to the current version while retaining settings.
 
-Download **v0.0.6** and install it with `sudo apt install ./frp-ssh-guard_0.0.6.deb`.
+Download **v0.0.7** and install it with `sudo apt install ./frp-ssh-guard_0.0.7.deb`.
 APT upgrades earlier builds while keeping your settings. `frp-ssh-guard --version`
 shows the release version; `dpkg-query -W frp-ssh-guard` also shows the internal
 package revision used by APT to recognize newer builds.
@@ -522,8 +548,15 @@ monitors. The new code takes effect during `apt install`; no manual reload or
 reboot is needed. Live bans are saved and restored with their original scope and
 expiry. Rate meters reset; main-service enablement and timer deadlines are retained.
 Pending settings edits are not applied. Local SSH protection and learning remain
-opt-in. Fresh installs default to slow-probe enforcement when local SSH is enabled;
-upgrades retain the existing slow mode, including observation-only configurations.
+opt-in.
+
+Version 0.0.7 replaces `SSH_SLOW_MODE` with the `SSH_SLOW_PROTECTION=on/off`
+switch, placed directly below `JAIL_PER_PORT`. Upgrades never start bans you did
+not choose: `enforce` becomes `on` (which now also covers forwarded ports), while
+`observe`, `off` or a missing value become `off`. The installer prints how to turn
+it on. `ALERT_LOG_MAX_SIZE` is renamed `LOG_MAX_SIZE` with its value kept, and
+`alerts.log` is merged into `frp-ssh-guard.log`. The settings file changes, so
+`status` shows pending edits until the next `check` and `reload`.
 
 Fresh or disabled installations remain inactive. An active trial remains temporary.
 Administrator `policy-rc.d` restrictions defer refresh with a notice. Refresh errors
@@ -580,6 +613,45 @@ Use synthetic addresses and never submit production configurations or authentica
 [MIT License](LICENSE): use, modify, and redistribute with the license and copyright
 notice retained. The software is provided without warranty. See the license for full terms.
 
+## Slow brute-force protection and the activity log (v0.0.7)
+
+Attackers often stay under the per-minute limits and keep trying all day.
+`SSH_SLOW_PROTECTION=on` (the default for new installations) bans them using the
+signal each port offers:
+
+| Port | What is counted | Default limit | Ban |
+| --- | --- | --- | --- |
+| Forwarded ports, `JAIL_PER_PORT=off` | New connections per source, added up across all forwarded ports | more than 300 in 24 h | All protected ports |
+| Forwarded ports, `JAIL_PER_PORT=on` | New connections per source on one port | more than 100 in 24 h | That port |
+| Local port 22 (`PROTECT_SERVER_SSH=on`) | Failed logins from this server's sshd log | 20 in 24 h | Jail scope of `JAIL_PER_PORT` |
+
+The frps server never learns whether a login through the tunnel succeeded, so
+forwarded ports can only count connections. Counting across ports in shared mode
+catches an attacker who spreads a few attempts over many ports. Addresses in
+`whitelist.conf` under **any** port, manual or learned, are treated as known
+administrators and never counted, because an administrator may use many forwarded
+machines each day. Set `LOGIN_USERS` to learn administrator addresses from
+successful logins to this server, or add them manually. Connection counts refill
+gradually across the window, so limits are approximate. Bans use `BAN_TIMEOUT` and
+count toward strikes; existing blocklist entries keep their scope. Set
+`SSH_SLOW_PROTECTION=off`, then `check` and `reload`, to disable it.
+
+`~/.frp-ssh-guard/frp-ssh-guard.log` records one line per event, newest first:
+every ban with its reason, limit and end time, manual `ban` commands, strike
+escalations, `unban`/`release`, accepted settings, first logins from new sources,
+and suspected subnet clusters. For example:
+
+```text
+2026-10-27T09:15:02.000000Z ban source=203.0.113.7 ports=all reason=slow-connections-all-ports limit=300/24h until=2026-10-27T15:15:02Z id=…
+2026-10-27T08:02:41.000000Z ban source=198.51.100.9 ports=22 reason=failed-logins limit=5/10m until=2026-10-27T14:02:41Z id=…
+```
+
+Reasons are `connection-rate`, `slow-connections`, `slow-connections-all-ports`,
+`failed-logins`, `invalid-users` and `slow-failed-logins`. Kernel bans are sampled
+about once a minute. Failed logins themselves stay in the private store and
+appear in `report`. At `LOG_MAX_SIZE` (default 10MiB) the oldest complete lines
+are deleted; there are no archives.
+
 ## Local observations in v0.0.6
 
 Upgrading an active guard to package revision `0.0.6-2` starts the updated monitors
@@ -589,21 +661,14 @@ saved ban expiries and timer deadlines. No extra activation command is needed
 after an active package upgrade.
 
 The fast SSH detector keeps its 5 failures / 3 invalid-user connections / 10-minute
-window. Starting with package revision `0.0.6-3`, fresh settings use
-`SSH_SLOW_MODE=enforce`: 20 failures in 24 hours trigger the existing ban duration
-and jail scope when `PROTECT_SERVER_SSH=on`. Existing `off`, `observe` and `enforce`
-choices remain unchanged; older files missing the setting retain `observe`.
-To switch an existing installation, set `enforce` and run check/reload once.
-`observe` records thresholds without bans or strikes; `off` disables slow detection.
+window. Slow detection was reworked in v0.0.7; see the section above.
 Successful logins clear short-window failures; long-window failures age out normally.
 
-`~/.frp-ssh-guard/alerts.log` contains one event per line, newest first: previously
-untrusted successful logins, slow thresholds, and suspected subnet clusters. A new
-source login is a review signal, not proof of compromise. The file records UTC time,
-source, scope, method where relevant, and counts; it never records account names,
-passwords or raw messages. The default cap is 10MiB; older complete records are
-removed without rotation or archives. Change `ALERT_LOG_MAX_SIZE`, then check/reload
-to trim to a new cap. `status` and `report` show the cap. These files are private
+In the activity log, a new source login is a review signal, not proof of
+compromise. The file records UTC time, source, ports, reason, method where
+relevant, and counts; it never records account names, passwords or raw messages.
+Change `LOG_MAX_SIZE`, then check/reload to trim to a new cap. `status` and
+`report` show the cap. These files are private
 local deployment data: do not commit or share them. If the home is unavailable,
 a private system spool uses the same cap and merges when access returns.
 

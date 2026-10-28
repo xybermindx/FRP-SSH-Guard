@@ -68,17 +68,19 @@ def main():
     guard('release', ip)
     initial_slow = query("SELECT count(*) FROM events WHERE kind='slow-threshold' AND ip=?", (ip,))[0][0]
     initial_bans = query("SELECT count(*) FROM events WHERE kind='ban' AND ip=?", (ip,))[0][0]
-    configure(SSH_AUTH_FAILURES='100', SSH_INVALID_USER_FAILURES='100', SSH_SLOW_FAILURES='3', SSH_SLOW_MODE='observe')
+    initial_failures = query("SELECT count(*) FROM events WHERE kind='auth-failure' AND ip=?", (ip,))[0][0]
+    configure(SSH_AUTH_FAILURES='100', SSH_INVALID_USER_FAILURES='100', SSH_SLOW_FAILURES='3', SSH_SLOW_PROTECTION='off')
     attempts(ip, 3)
-    wait_for(lambda: query("SELECT count(*) FROM events WHERE kind='slow-threshold' AND ip=?", (ip,))[0][0] == initial_slow + 1, seconds=90)
+    wait_for(lambda: query("SELECT count(*) FROM events WHERE kind='auth-failure' AND ip=?", (ip,))[0][0] >= initial_failures + 3, seconds=90)
+    assert query("SELECT count(*) FROM events WHERE kind='slow-threshold' AND ip=?", (ip,))[0][0] == initial_slow
     assert all(not key.startswith(ip) for key in vm.jail())
     assert query("SELECT count(*) FROM events WHERE kind='ban' AND ip=?", (ip,))[0][0] == initial_bans
-    newest = query("SELECT id FROM events WHERE kind='slow-threshold' AND ip=? ORDER BY stamp DESC LIMIT 1", (ip,))[0][0]
-    wait_for(lambda: 'id=' + newest in (home / 'alerts.log').read_text(), seconds=30)
-    print('PASS: actual sshd failures trigger observation without a ban', flush=True)
-    configure(SSH_SLOW_MODE='enforce')
+    print('PASS: with SSH_SLOW_PROTECTION=off, actual sshd failures cause no slow threshold or ban', flush=True)
+    configure(SSH_SLOW_PROTECTION='on')
     attempts(ip, 1)
     wait_for(lambda: any(key.startswith(ip) for key in vm.jail()), seconds=90)
+    wait_for(lambda: 'source=' + ip + ' ' in (home / 'frp-ssh-guard.log').read_text()
+             and 'reason=slow-failed-logins' in (home / 'frp-ssh-guard.log').read_text(), seconds=90)
     before = next(value for key, value in vm.jail().items() if key.startswith(ip))
     run('/usr/lib/frp-ssh-guard/run', 'log')
     run('/usr/lib/frp-ssh-guard/run', 'log')
@@ -97,21 +99,21 @@ def main():
     other = '198.51.100.11'
     run('ip', '-n', 'guard-client', 'addr', 'replace', other + '/24', 'dev', 'guard-peer')
     guard('release', other)
-    configure(SSH_SLOW_MODE='off', SSH_AUTH_FAILURES='5', SSH_INVALID_USER_FAILURES='3', SUBNET_REPORT_MIN_SOURCES='2')
+    configure(SSH_SLOW_PROTECTION='off', SSH_AUTH_FAILURES='5', SSH_INVALID_USER_FAILURES='3', SUBNET_REPORT_MIN_SOURCES='2')
     attempts(other, 3)
     wait_for(lambda: any(key.startswith(other) for key in vm.jail()), seconds=90)
     wait_for(lambda: query("SELECT count(*) FROM events WHERE kind='subnet-cluster'")[0][0] >= 1)
     assert not any('/24' in key or '/64' in key for key in vm.jail())
     print('PASS: fast native SSH protection and subnet report without a subnet ban', flush=True)
-    log = home / 'alerts.log'
+    log = home / 'frp-ssh-guard.log'
     assert log.stat().st_uid == int(vm.output('id', '-u', 'guardmigration'))
     assert log.stat().st_mode & 0o777 == 0o600
     original = log.read_text()
     assert original.splitlines() == sorted(set(original.splitlines()), reverse=True)
     assert 'missing-example-account' not in original and 'for root' not in original
-    configure(ALERT_LOG_MAX_SIZE='1KiB')
+    configure(LOG_MAX_SIZE='1KiB')
     assert log.stat().st_size <= 1024
-    assert not list(home.glob('alerts.log.*'))
+    assert not list(home.glob('frp-ssh-guard.log.*'))
     assert guard('report', '1s').find('slow-threshold: 0') >= 0
     print('PASS: private owner log, newest-first complete records, reload cap and report window', flush=True)
     check_reban()

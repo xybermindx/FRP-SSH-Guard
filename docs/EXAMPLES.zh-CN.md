@@ -27,10 +27,12 @@ PROTECTED_PORTS="22001,22003"
 EXCLUDE_PORTS=""
 PROTECT_SERVER_SSH=off
 JAIL_PER_PORT=off
+SSH_SLOW_PROTECTION=on
 ```
 
 先确保 `frps` 已监听这些转发端口。封禁共享所有已选端口，服务器自身的
-22 端口不在此选择范围内。
+22 端口不在此选择范围内。开启慢速防护时，同一来源 24 小时内在两个端口合计
+超过 300 次新连接会被封禁；白名单中的管理员从不计数。
 
 ### 只保护服务器自身的 SSH 22 端口
 
@@ -39,10 +41,12 @@ PROTECTED_PORTS=""
 EXCLUDE_PORTS=""
 PROTECT_SERVER_SSH=on
 JAIL_PER_PORT=off
+SSH_SLOW_PROTECTION=on
 ```
 
 SSH 开关会自动加入 22 端口、应用连接限制并启动本机 sshd 失败检测。
 要求本机 SSH 正在监听，且 journald 中能读取到 sshd 记录。不收集尝试的密码。
+慢速防护在 24 小时内 20 次失败登录后封禁来源。
 
 ### 同时保护 FRP 和本机 SSH，各端口独立封禁
 
@@ -51,11 +55,27 @@ PROTECTED_PORTS="22001,22003"
 EXCLUDE_PORTS=""
 PROTECT_SERVER_SSH=on
 JAIL_PER_PORT=on
+SSH_SLOW_PROTECTION=on
 ```
 
 端口 `22001` 触发的自动封禁仅影响该端口，本机认证触发的封禁仅影响 22。
 若希望所有已选端口共享封禁，设为 `JAIL_PER_PORT=off`。
 该开关控制封禁范围；两种模式均有每端口连接速率限制。
+此模式下慢速防护按每个转发端口单独统计（24 小时内超过 100 次新连接只封禁该端口）。
+
+### 慢速暴力破解阈值
+
+```ini
+SSH_SLOW_PROTECTION=on           # off：不做慢速检测，也不做慢速封禁
+SSH_SLOW_TOTAL_CONNECTIONS=300   # JAIL_PER_PORT=off：每来源，所有转发端口合计
+SSH_SLOW_PORT_CONNECTIONS=100    # JAIL_PER_PORT=on：每来源，单个转发端口
+SSH_SLOW_FAILURES=20             # PROTECT_SERVER_SSH=on 时 22 端口的失败登录
+SSH_SLOW_WINDOW=24h
+```
+
+隧道隐藏了登录结果，因此转发端口统计的是连接次数。经常访问许多转发主机的管理员
+请加入 `whitelist.conf`（任意端口分节）；名单中的地址从不计数。每次封禁及其原因
+都会写入 `~/.frp-ssh-guard/frp-ssh-guard.log`。
 
 ## 应用并验证配置
 
@@ -67,8 +87,10 @@ sudo frp-ssh-guard status
 sudo frp-ssh-guard ports
 ```
 
-首次启用时用 `enable` 代替 `reload`。仅保存文件不会生效，重启也只恢复
-已接受的策略，不会应用待确认的修改。启用本机 SSH 防护后，状态应显示
+首次启用或 `disable` 之后，用 `enable` 代替 `reload`。仅保存文件不会生效：
+`check` 只做验证，`reload` 接受并应用，之后 `status` 显示 `Pending edits: no`。
+重启也只恢复已接受的策略，不会应用待确认的修改。名单文件不同：保存
+`whitelist.conf` 或 `blocklist.conf` 后自动生效。启用本机 SSH 防护后，状态应显示
 `Server SSH protection: on`。
 
 显式 reload 会重建防护表和速率计数；已保存的封禁及学习条目保留原到期时间。
@@ -80,8 +102,15 @@ sudo frp-ssh-guard ports
 # 只在指定受保护端口信任这个来源。
 sudo frp-ssh-guard allow 198.51.100.10 22001
 
-# 在所有受保护端口永久封禁。
-sudo frp-ssh-guard block 203.0.113.20 --all
+# 在所有受保护端口永久封禁（不指定时长即为永久）。
+sudo frp-ssh-guard block 203.0.113.20
+sudo frp-ssh-guard block 203.0.113.0/24 --all --forever
+
+# 永久封禁，但只针对一个受保护端口。
+sudo frp-ssh-guard block 203.0.113.22 --ports 22001
+
+# 改为临时封禁（默认 BAN_TIMEOUT，或指定时长）。
+sudo frp-ssh-guard ban 203.0.113.23 12h
 
 # 在两个受保护端口封禁六小时，两种 jail 模式都适用。
 sudo frp-ssh-guard block 203.0.113.21 --ports 22001,22003 --for 6h
@@ -103,14 +132,16 @@ Fail2ban 及其他防火墙相互独立；在那里被封禁的地址也需要�
 ## 升级时不重载策略
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.6.deb
+sudo apt install ./frp-ssh-guard_0.0.7.deb
 dpkg-query -W frp-ssh-guard
 sudo frp-ssh-guard status
 ```
 
 安装器补齐缺失的默认参数与注释，修改前在旁边保存私密的
 `settings.conf.before-upgrade-*` 备份。现有值、已接受策略、待应用修改、当前封禁及
-定时任务触发时间均保留。新开关默认 off，配置完整时重复安装不会更改文件。
+定时任务触发时间均保留。本机 SSH 防护和按端口封禁默认 off。`SSH_SLOW_MODE=enforce`
+转换为 `SSH_SLOW_PROTECTION=on`；`observe`、`off` 或缺失则转换为 `off`。
+`ALERT_LOG_MAX_SIZE` 更名为 `LOG_MAX_SIZE`。配置完整时重复安装不会更改文件。
 首次从 v0.0.4 升级时，旧版本卸载钩子可能重算自定义 `OnActiveSec` 触发时间，
 详见[迁移说明](MIGRATING.md)（英文）。
 
@@ -154,40 +185,38 @@ sudo frp-ssh-guard blocklist
 
 ```ini
 [all]
-198.51.100.20 forever
-198.51.100.21 tier=1
+198.51.100.19                             # 不写时间：永久
+198.51.100.20 forever                     # 永久，显式写出
+198.51.100.21 tier=1                      # BAN_TIMEOUT（默认 6 小时）
+198.51.100.22 until=2030-01-31T00:00:00Z  # 到此 UTC 时间为止
 [22]
-203.0.113.20 tier=2
+203.0.113.20 tier=2                       # 1 天
 [22001]
-203.0.113.21 tier=5
+203.0.113.21 tier=5                       # 28 天
 ```
 
-在 `blocklist.conf` 中，`forever` 表示永久；默认 1–5 档为 6 小时、1 天、3 天、7 天、28 天。
+在 `blocklist.conf` 中，不写时间的条目和 `forever` 都表示永久。文件中不接受 `7d`
+这类直接时长（请使用 `tier=`、`until=` 或 `block IP --for 7d`），错误信息会指出行号。默认 1–5 档为 6 小时、1 天、3 天、7 天、28 天。
 第 1 档使用 `BAN_TIMEOUT`；第 2–5 档使用 `STRIKE_LADDER` 中相应次数对应的时长，
 并受 `STRIKE_MAX` 限制。自定义 ladder 缺少某档时会拒绝该档。
 这些是手动时长选择，不会改变自动累犯计数。首次应用写入 `until=`；重复 apply、升级和重启
 保留原到期时间。需要重新开始某档时长时，请删除旧的 `until=`。
 
-## v0.0.6 本地观察记录
+## 本地观察记录（自 v0.0.6 起）
 
-安装后执行 `sudo frp-ssh-guard check && sudo frp-ssh-guard reload` 启动新版监控；
-首次启用使用 `enable`。安装会补齐缺失设置，保留自定义值、已接受的防火墙策略、
-原封禁到期时间和定时器截止时间，不会重启服务。
+已运行的守卫升级后会自动启动新版监控，无需手动 reload；首次启用使用 `enable`。
+安装会补齐缺失设置，保留自定义值、已接受的防火墙策略、原封禁到期时间和定时器截止时间。
 
-短窗口仍为 10 分钟内 5 次失败或 3 个无效用户连接。
-从软件包修订 `0.0.6-3` 开始，新安装默认 `SSH_SLOW_MODE=enforce`：
-启用 `PROTECT_SERVER_SSH=on` 后，24 小时内 20 次失败会按现有时长和 jail 范围封禁。
-升级保留已有的 `off`、`observe` 或 `enforce`；缺少该项的旧配置继续使用 `observe`。
-已有安装若要改为封禁，请设置 `enforce` 并执行一次 check/reload。
-`observe` 只记录，不添加封禁或累犯次数；`off` 关闭慢速检测。
+短窗口仍为 10 分钟内 5 次失败或 3 个无效用户连接。自 v0.0.7 起慢速检测由
+`SSH_SLOW_PROTECTION` 开关控制，见[慢速暴力破解阈值](#慢速暴力破解阈值)。
 成功登录清空短窗口失败，长窗口失败按时间自然过期。
 
-`~/.frp-ssh-guard/alerts.log` 每行一个事件，最新在前，记录此前不受信任来源的
-成功登录、慢速阈值和疑似子网群集。新来源登录是复核信号，不代表已被入侵。
-内容包括 UTC 时间、来源、范围、适用时的认证方式和计数，不保存账户名、密码或
-原始日志。默认上限 10MiB，超限删除最旧完整行，不轮转、不留档。
-修改 `ALERT_LOG_MAX_SIZE` 后执行 check/reload 可按新上限裁剪；status 和 report
-显示上限。这些文件属于本地私密部署数据，请勿提交或分享。家目录不可用时使用
+`~/.frp-ssh-guard/frp-ssh-guard.log`（原 `alerts.log`）每行一个事件，最新在前：
+封禁及其原因和结束时间、手动封禁、累犯升级、解除封禁、已接受的设置、此前不受信任
+来源的成功登录和疑似子网群集。新来源登录是复核信号，不代表已被入侵。内容包括 UTC
+时间、来源、端口、原因、适用时的认证方式和计数，不保存账户名、密码或原始日志。
+默认上限 10MiB，超限删除最旧完整行，不轮转、不留档。修改 `LOG_MAX_SIZE` 后执行
+check/reload 可按新上限裁剪；status 和 report 显示上限。这些文件属于本地私密部署数据，请勿提交或分享。家目录不可用时使用
 相同上限的私密系统暂存文件，恢复访问后合并。
 
 学习仍需配置 `LOGIN_USERS` 才启用。匹配账户的密码、公钥及 PAM 成功登录均可

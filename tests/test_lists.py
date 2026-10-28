@@ -44,6 +44,49 @@ class ListTests(unittest.TestCase):
         self.assertEqual(data.render_list(rendered, data.records(rendered, 'allow'), 'allow'), rendered)
         self.assertEqual(data.entries('[22]\n198.51.100.1 all\n'), [('198.51.100.1', '*', 0)])
 
+    def test_shipped_examples_match_generated_headers_and_old_header_is_refreshed(self):
+        for kind, name in (('block', 'blocklist'), ('allow', 'whitelist')):
+            with self.subTest(kind=kind):
+                self.assertEqual((ROOT / 'etc' / (name + '.conf.example')).read_text(), data.render_list('', [], kind))
+                body = '\n[all]\n198.51.100.1  # my note\n[22001]\n203.0.113.1\n'
+                old = '\n'.join(data.LEGACY_HEADERS[kind]) + '\n' + body
+                refreshed = data.render_list(old, data.records(old, kind), kind)
+                self.assertTrue(refreshed.startswith('\n'.join(data.HEADERS[kind]) + '\n\n[all]\n'), refreshed)
+                self.assertEqual(data.records(refreshed, kind), data.records(old, kind))
+                self.assertIn('# my note', refreshed)
+                for line in set(data.LEGACY_HEADERS[kind]) - set(data.HEADERS[kind]):
+                    self.assertNotIn(line, refreshed.splitlines())
+                # A header the user changed is never replaced.
+                edited = old.replace('# Delete an entry', '# My own wording. Delete an entry')
+                kept = data.render_list(edited, data.records(edited, kind), kind)
+                self.assertTrue(kept.startswith(edited.split('\n\n[all]')[0] + '\n\n[all]\n'), kept)
+        self.assertIn('blocked FOREVER', '\n'.join(data.HEADERS['block']))
+        self.assertNotIn('tier=', '\n'.join(data.HEADERS['allow']))
+
+    def test_list_errors_name_the_problem(self):
+        for text, message in (('203.0.113.10 7d', 'no time means forever'),
+                              ('203.0.113.10 for=7d', 'not a supported option'),
+                              ('203.0.113.10 until=tomorrow', 'until=2030-01-31T00:00:00Z'),
+                              ('[ports]', 'Use all, or comma-separated')):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, 'line 1: .*' + message):
+                data.records(text)
+        with self.assertRaisesRegex(ValueError, 'Invalid whitelist entry on line 2: tier= is only used in the blocklist'):
+            data.records('198.51.100.1\n198.51.100.2 tier=2\n', 'allow')
+
+    def test_trusted_sources_cover_every_scope_without_overlaps(self):
+        text = ('[22001]\n198.51.100.0/24\n198.51.100.7\n198.51.100.9 source=learned until=2030-01-01T00:00:00Z\n'
+                '[22003]\n198.51.100.7\n203.0.113.5 source=learned until=2030-01-01T00:00:00Z\n'
+                '[all]\n203.0.113.5 source=learned until=2031-01-01T00:00:00Z\n'
+                '203.0.113.6 source=learned until=2001-01-01T00:00:00Z\n2001:db8::/64\n2001:db8::1\n')
+        self.assertEqual(data.trusted_sources(text, now=1000000000),
+                         [(4, '198.51.100.0/24', 0), (6, '2001:db8::/64', 0), (4, '203.0.113.5', 1924992000)])
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {'GUARD_LIST_DIR': tmp}):
+            Path(tmp, 'whitelist.conf').write_text(text)
+            self.assertTrue(lists.listed('198.51.100.200'))
+            self.assertTrue(lists.listed('2001:db8::abcd'))
+            self.assertFalse(lists.listed('203.0.113.6'))  # expired learned entry
+            self.assertFalse(lists.listed('192.0.2.1'))
+
     def test_invalid_sections_metadata_and_automatic_permanent_entries_fail(self):
         for text in ('[0]\n', '[65536]\n', '[22] junk\n', '[22-21]\n',
                      '198.51.100.1 source=runtime\n', '198.51.100.1 source=unknown\n',

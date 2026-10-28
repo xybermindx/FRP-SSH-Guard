@@ -79,11 +79,11 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-Release tag `v0.0.6` provides `frp-ssh-guard_0.0.6.deb` and `SHA256SUMS`.
+Release tag `v0.0.7` provides `frp-ssh-guard_0.0.7.deb` and `SHA256SUMS`.
 The workflow requires the application tag, then independently checks Debian
 metadata against `VERSION` and `PACKAGE_REVISION`.
 It uses `docs/RELEASE-vVERSION.md` when present, otherwise `CHANGELOG.md`, for notes.
-Existing v0.0.4 and v0.0.5 tags and assets remain unchanged.
+Existing v0.0.4, v0.0.5 and v0.0.6 tags and assets remain unchanged.
 The filename omits the internal Debian revision and optional architecture suffix; Debian metadata remains
 `Architecture: all` because the package contains architecture-independent scripts.
 
@@ -113,7 +113,7 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 - `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.
 
-`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.6-4`.
+`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.7-1`.
 APT compares this metadata, not the filename. Revision `1` sorts after the older
 bare `0.0.5`, and increasing revisions allow ordinary `sudo apt install ./FILE.deb`
 upgrades. A new application version sorts after revisions of the previous one.

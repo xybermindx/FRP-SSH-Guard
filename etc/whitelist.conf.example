@@ -1,24 +1,29 @@
 # FRP-SSH-Guard unified list
-# [all] means every protected port (including 22 when enabled).
-# [22001] means only that port; comma-separated ports/ranges also work.
-# Add one IP or CIDR per line. A plain entry or explicit forever is permanent.
-# Block periods: forever or tier=1..5 (default 6h,1d,3d,7d,28d).
-# Tier 1 uses BAN_TIMEOUT; tiers 2..5 use STRIKE_LADDER, capped by STRIKE_MAX.
-# First apply saves until=. To start a new tier period, remove the old until=.
-# until=YYYY-MM-DDTHH:MM:SSZ is an absolute UTC expiry; never renewed by apply.
-# source=learned identifies learned trust; keep its expiry.
-# Delete an entry to remove it; a new login/attack may add it again.
-# Saves are watched while active. Apply now: sudo frp-ssh-guard apply
-# Settings changes still require check and reload. Do not edit a stale copy.
-# Kernel bans are sampled by the log timer (normally within 60 seconds).
+# WHITELIST: sources listed here bypass this guard's limits and bans on the chosen
+# ports, and are never counted by slow brute-force protection on any port.
+# Saving applies this file automatically while the guard is active; no reload
+# is needed. Apply at once: sudo frp-ssh-guard apply
+# Find mistakes: sudo frp-ssh-guard check (a rejected edit changes nothing).
+#
+# A section header chooses the ports for the lines below it:
+#   [all]                every protected port (and 22 when PROTECT_SERVER_SSH=on)
+#   [22]                 only this server's SSH port 22
+#   [22001]              only port 22001
+#   [22001,23000-23010]  several ports or ranges
+#
+# One IP or CIDR per line. Manual entries never expire:
+#   198.51.100.10                    trusted on this section's ports
+#   198.51.100.0/24                  a whole subnet
+#   2001:db8::10                     IPv6 works the same way
+# The same from the command line:
+#   sudo frp-ssh-guard allow 198.51.100.10                 all protected ports
+#   sudo frp-ssh-guard allow 198.51.100.10 22001           one port
+#   sudo frp-ssh-guard unallow 198.51.100.10               remove its lines
+#
+# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)
+# and expire at until=; keep that time. Delete any line to remove the trust
+# (a new trusted login may add it again).
+# Reopen this file before editing: saving an old copy removes newer learned entries.
 # Whitelist entries override this guard only; other firewalls are independent.
 
 [all]
-
-# 198.51.100.10 forever
-
-[22]
-# 203.0.113.10
-
-[22001]
-# 2001:db8::10

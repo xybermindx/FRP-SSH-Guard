@@ -1,3 +1,58 @@
+# Migration to 0.0.7
+
+Install with `sudo apt install ./frp-ssh-guard_0.0.7.deb`; it upgrades v0.0.5 and
+every v0.0.6 build. As in v0.0.6, an active guard is refreshed automatically during
+installation: accepted policy is recompiled and the SSH monitors restart. Saved ban
+scopes and expiry, boot enablement and timer deadlines are kept; rate meters reset.
+
+## One slow brute-force switch
+
+`SSH_SLOW_MODE` (`off`, `observe`, `enforce`) is replaced by `SSH_SLOW_PROTECTION`
+(`on`/`off`), placed directly below `JAIL_PER_PORT`. There is no observe-only mode:
+`on` detects, logs and bans; `off` does none of these. Upgrades never start bans you
+did not choose:
+
+| Before | After the upgrade |
+| --- | --- |
+| `SSH_SLOW_MODE=enforce` | `SSH_SLOW_PROTECTION=on` |
+| `observe`, `off`, or no slow setting | `SSH_SLOW_PROTECTION=off` |
+
+The same conversion applies to the accepted policy, so the refreshed guard behaves
+as the converted file says. `on` now also covers forwarded ports. With shared jails
+it bans a source after more than 300 new connections across all forwarded ports in
+24 hours (on all ports). With per-port jails the limit is 100 on one port (that port
+only). Port 22 keeps 20 failed logins in 24 hours. Whitelisted sources, under any
+port, are never counted.
+
+The installer keeps your old line as a comment and replaces only the comment text
+it shipped earlier; your own comments stay. It saves an exact private copy first
+(`settings.conf.before-upgrade-*`) and prints what changed. The new thresholds
+`SSH_SLOW_TOTAL_CONNECTIONS` and `SSH_SLOW_PORT_CONNECTIONS` are added beside
+`SSH_SLOW_FAILURES`. `check` reports any leftover `SSH_SLOW_MODE` line and how it
+was read; an invalid old value is rejected with a message.
+
+To enable slow protection on an upgraded server, first whitelist administrators
+who use many forwarded machines, then set `SSH_SLOW_PROTECTION=on` and run
+`sudo frp-ssh-guard check && sudo frp-ssh-guard reload`.
+
+## Activity log
+
+`~/.frp-ssh-guard/alerts.log` becomes `frp-ssh-guard.log`. Its lines are merged
+into the new file once, and the old file is removed. The log now records every
+ban with its reason, plus manual bans, strike escalations, releases and accepted
+settings. Bans from before the upgrade are not added, because no reason was
+recorded for them. `ALERT_LOG_MAX_SIZE` is renamed `LOG_MAX_SIZE` and keeps its
+value; the old name is still read if it remains.
+
+## Instructions in your files
+
+The reload instructions at the top of `settings.conf`, and the instruction
+headers of `whitelist.conf` and `blocklist.conf`, are refreshed only while they
+are exactly the text an earlier release shipped. List entries are never changed
+by this. Because the settings file changes, `status` shows `Pending edits: yes`.
+The converted file means the same as the accepted policy, so the next
+`check && reload` changes nothing unless you had other pending edits.
+
 # Migration to 0.0.6
 
 Install `frp-ssh-guard_0.0.6.deb` with `sudo apt install ./frp-ssh-guard_0.0.6.deb`.

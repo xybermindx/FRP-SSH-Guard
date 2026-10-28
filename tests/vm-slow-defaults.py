@@ -24,16 +24,17 @@ def main():
     home = Path('/home/guardslowfresh/.frp-ssh-guard')
     settings = home / 'settings.conf'
     fresh = settings.read_text()
-    assert 'SSH_SLOW_MODE=enforce\n' in fresh
+    assert 'SSH_SLOW_PROTECTION=on\n' in fresh
+    assert 'SSH_SLOW_MODE' not in fresh
     assert 'PROTECT_SERVER_SSH=off\n' in fresh
     assert 'LOGIN_USERS=""\n' in fresh
     assert vm.run('systemctl', 'is-active', '--quiet', 'frp-ssh-guard.service', check=False).returncode != 0
-    # Keep the shipped long-window mode/threshold; isolate it from fast detection.
+    # Keep the shipped slow switch/threshold; isolate it from fast detection.
     settings.write_text(fresh.replace('PROTECT_SERVER_SSH=off', 'PROTECT_SERVER_SSH=on')
                         .replace('SSH_AUTH_FAILURES=5', 'SSH_AUTH_FAILURES=100')
                         .replace('SSH_INVALID_USER_FAILURES=3', 'SSH_INVALID_USER_FAILURES=100'))
     vm.guard('enable')
-    assert 'Slow SSH detection: enforce' in vm.guard('doctor')
+    assert 'Slow SSH protection: on' in vm.guard('doctor')
     vm.run('ip', 'netns', 'add', 'guard-slow-client')
     vm.run('ip', 'link', 'add', 'guard-slow-host', 'type', 'veth', 'peer', 'name', 'guard-slow-peer')
     vm.run('ip', 'link', 'set', 'guard-slow-peer', 'netns', 'guard-slow-client')
@@ -60,9 +61,10 @@ def main():
     assert count('slow-threshold') == 1
     assert any(key.startswith('198.51.100.77') for key in vm.jail())
     vm.run('dpkg', '-i', package)
-    assert 'SSH_SLOW_MODE=enforce\n' in settings.read_text()
+    assert 'SSH_SLOW_PROTECTION=on\n' in settings.read_text()
     assert count('ban') == 1
-    print('PASS: fresh default enforces at 20 real sshd failures; no earlier ban; reinstall preserves mode and offense count', flush=True)
+    assert 'reason=slow-failed-logins' in (home / 'frp-ssh-guard.log').read_text()
+    print('PASS: fresh default bans at 20 real sshd failures; no earlier ban; reinstall preserves switch and offense count', flush=True)
     vm.guard('disable')
     vm.run('ip', 'netns', 'del', 'guard-slow-client')
 

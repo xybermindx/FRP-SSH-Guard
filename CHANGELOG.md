@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.0.7
+
+- Replace `SSH_SLOW_MODE` (off/observe/enforce) with one `SSH_SLOW_PROTECTION=on/off`
+  switch, placed directly below `JAIL_PER_PORT` and on by default. `on` detects,
+  logs and bans; there is no observe-only mode. Upgrades convert `enforce` to `on`
+  and `observe`, `off` or a missing value to `off`, in both the settings file and the
+  accepted policy, so no upgrade starts bans an operator did not choose.
+- Extend slow protection to forwarded ports, where login results are invisible:
+  more than 300 new connections per source across all forwarded ports in 24 hours
+  with shared jails, or 100 on one port with per-port jails. Port 22 keeps 20 failed
+  logins in 24 hours. Sources whitelisted under any port are never counted.
+  `unban` also resets the slow counters.
+- Rename `alerts.log` to `frp-ssh-guard.log` and record every ban with its reason,
+  limit and end time, plus manual bans, strike escalations, releases and accepted
+  settings. The old file is merged once. `ALERT_LOG_MAX_SIZE` becomes `LOG_MAX_SIZE`.
+- Explain in `settings.conf` when and how changes take effect (check, reload or
+  enable, status). Explain in `blocklist.conf` that an entry without a time is
+  permanent, with examples for subnets, IPv6, tiers, `until=` and the matching
+  commands. Refresh these instructions in existing files only when unchanged.
+- Fixes: list errors now name the cause (for example `7d` instead of `tier=`/`until=`);
+  the whitelist header no longer describes block-only tiers; `release` now removes
+  its address from the legacy strike file; `unblock`/`unallow` help describes that
+  they remove every line for the address; the examples guide no longer says a
+  manual reload is needed after upgrading; monitors keep running when a list file
+  being edited is invalid; the strike helper closes its database.
+
 ## 0.0.6
 
 - Package revision 4 makes jail mode switches affect new bans only. Existing

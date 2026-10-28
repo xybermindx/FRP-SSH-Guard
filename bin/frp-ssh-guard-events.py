@@ -33,9 +33,12 @@ def module(name):
 lists, alerts = module('lists'), module('alerts')
 data = lists.data
 KEYS = lists.KEYS + ('PROTECT_SERVER_SSH', 'SSH_AUTH_FAILURES', 'SSH_INVALID_USER_FAILURES',
-    'SSH_AUTH_WINDOW', 'SSH_SLOW_MODE', 'SSH_SLOW_FAILURES', 'SSH_SLOW_WINDOW',
-    'ALERT_LOG_MAX_SIZE', 'SUBNET_REPORT_MIN_SOURCES', 'SUBNET_REPORT_WINDOW',
-    'OBSERVABILITY_VERSION', 'STRIKE_WINDOW')
+    'SSH_AUTH_WINDOW', 'SSH_SLOW_PROTECTION', 'SSH_SLOW_TOTAL_CONNECTIONS', 'SSH_SLOW_PORT_CONNECTIONS',
+    'SSH_SLOW_FAILURES', 'SSH_SLOW_WINDOW',
+    'LOG_MAX_SIZE', 'SUBNET_REPORT_MIN_SOURCES', 'SUBNET_REPORT_WINDOW',
+    'OBSERVABILITY_VERSION', 'STRIKE_WINDOW', 'PER_IP_RATE', 'PER_IP_BURST')
+# Event kinds written to the activity log. Failed logins stay in the private store.
+LOGGED = ('ban', 'manual-ban', 'strike-ban', 'release', 'settings-applied', 'new-source-login', 'subnet-cluster')
 SUCCESS = re.compile(r'^Accepted (password|publickey|keyboard-interactive(?:/pam)?) for (\S+) from ')
 MAX_ROWS = 200000
 
@@ -63,7 +66,34 @@ def utc(stamp):
     return dt.datetime.fromtimestamp(stamp, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
 
+def until(stamp):
+    return dt.datetime.fromtimestamp(stamp, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def ban_limit(config, reason):
+    window = config['SSH_SLOW_WINDOW']
+    return {'connection-rate': config['PER_IP_RATE'] + '/minute,burst=' + config['PER_IP_BURST'],
+            'slow-connections': config['SSH_SLOW_PORT_CONNECTIONS'] + '/' + window,
+            'slow-connections-all-ports': config['SSH_SLOW_TOTAL_CONNECTIONS'] + '/' + window,
+            'failed-logins': config['SSH_AUTH_FAILURES'] + '/' + config['SSH_AUTH_WINDOW'],
+            'invalid-users': config['SSH_INVALID_USER_FAILURES'] + '/' + config['SSH_AUTH_WINDOW'],
+            'slow-failed-logins': config['SSH_SLOW_FAILURES'] + '/' + window}.get(reason)
+
+
+def log_line(record):
+    fields = [utc(record['stamp']), record['kind']]
+    if record['ip']:
+        fields += ['source=' + record['ip'], 'ports=' + ('all' if record['scope'] == '*' else record['scope'])]
+    if record['detail']:
+        fields.append(record['detail'])
+    if record['count']:
+        fields.append('count=' + str(record['count']))
+    return ' '.join(fields + ['id=' + record['id'][:16]]) + '\n'
+
+
 class Store:
+    reason = None  # why the last processed failure asked for a ban
+
     def __init__(self, directory=None, now=None, readonly=False):
         self.directory = Path(directory or root())
         if self.directory.is_symlink():
@@ -98,6 +128,10 @@ class Store:
         self.now = time.time() if now is None else now
         if self.get('coverage_start') is None:
             self.set('coverage_start', self.now)
+        if self.get('log_version') != 2:
+            # Bans recorded before v0.0.7 have no reason; start the activity log fresh.
+            self.db.execute("UPDATE events SET exported=1 WHERE kind='ban'")
+            self.set('log_version', 2)
         self.db.commit()
 
     def close(self):
@@ -150,7 +184,10 @@ class Store:
         self.set('legacy_migrated', True)
         self.db.commit()
 
-    def process(self, record, config, event, now, trusted=False):
+    def process(self, record, config, event, now, trusted=False, admin=None):
+        # trusted: whitelisted for port 22. admin: whitelisted on any port, so it is
+        # never counted by slow protection (administrators reach many ports a day).
+        admin = trusted if admin is None else admin
         cursor = record.get('__CURSOR')
         if not cursor:
             return None
@@ -189,16 +226,21 @@ class Store:
         if prior and (slow - 1 < int(config['SSH_SLOW_FAILURES']) or prior[0] < now - data.duration(config['SSH_SLOW_WINDOW'])):
             self.db.execute('DELETE FROM episodes WHERE key=?', (key,))
             prior = None
-        if config['SSH_SLOW_MODE'] != 'off' and slow >= int(config['SSH_SLOW_FAILURES']) and prior is None:
+        slow_hit = (config['SSH_SLOW_PROTECTION'] == 'on' and not admin
+                    and slow >= int(config['SSH_SLOW_FAILURES']))
+        if slow_hit and prior is None:
             self.db.execute('INSERT OR REPLACE INTO episodes VALUES (?,?)', (key, stamp))
             self.emit(identity + '-slow', stamp, 'slow-threshold', ip, '22',
-                      'mode=' + config['SSH_SLOW_MODE'] + ' trust=' + ('allowed' if trusted else 'untrusted'), slow)
+                      'signal=failed-logins action=' + ('none' if trusted else 'ban')
+                      + ' trust=' + ('allowed' if trusted else 'untrusted'), slow)
         fast_hit = fast[0] >= int(config['SSH_AUTH_FAILURES']) or fast[1] >= int(config['SSH_INVALID_USER_FAILURES'])
         if fast_hit:
             self.db.execute('UPDATE failures SET short_on=0 WHERE ip=?', (ip,))
-        return 'ban' if not trusted and (fast_hit or slow >= int(config['SSH_SLOW_FAILURES']) and config['SSH_SLOW_MODE'] == 'enforce') else None
+        self.reason = ('failed-logins' if fast[0] >= int(config['SSH_AUTH_FAILURES']) else
+                       'invalid-users' if fast_hit else 'slow-failed-logins' if slow_hit else None)
+        return 'ban' if not trusted and (fast_hit or slow_hit) else None
 
-    def record_ban(self, ip, scope, expiry, origin, config, now):
+    def record_ban(self, ip, scope, expiry, origin, config, now, reason=None):
         prior = self.db.execute('SELECT expiry,origin FROM bans WHERE ip=? AND scope=?', (ip, scope)).fetchone()
         self.db.execute('INSERT OR REPLACE INTO bans VALUES (?,?,?,?)', (ip, scope, expiry, origin))
         # Auth enforcement has already verified that no live/restored jail
@@ -207,7 +249,10 @@ class Store:
         if origin not in ('auth', 'kernel') or origin == 'kernel' and prior and prior['expiry'] > now:
             return False
         identity = digest(f'ban|{ip}|{scope}|{now}')
-        self.emit(identity, now, 'ban', ip, scope, 'origin=' + origin)
+        reason = reason or ('failed-logins' if origin == 'auth' else 'connection-rate')
+        limit = ban_limit(config, reason)
+        self.emit(identity, now, 'ban', ip, scope, 'reason=' + reason + (' limit=' + limit if limit else '')
+                  + ' until=' + until(expiry))
         address = ipaddress.ip_address(ip)
         prefix = str(ipaddress.ip_network(f'{ip}/{24 if address.version == 4 else 64}', strict=False))
         since = now - data.duration(config['SUBNET_REPORT_WINDOW'])
@@ -221,17 +266,18 @@ class Store:
         return True
 
     def export(self, config, force=False):
-        records = list(self.db.execute("SELECT * FROM events WHERE exported=0 AND kind IN ('new-source-login','slow-threshold','subnet-cluster') ORDER BY stamp DESC"))
+        marks = ','.join('?' * len(LOGGED))
+        records = list(self.db.execute(f'SELECT * FROM events WHERE exported=0 AND kind IN ({marks}) ORDER BY stamp DESC', LOGGED))
         if not records and not force and not (self.directory / 'alerts-spool.log').exists():
             self.db.commit()
             return
-        lines = ''.join(f"{utc(r['stamp'])} {r['kind']} source={r['ip']} scope={r['scope']} {r['detail']} count={r['count']} id={r['id']}\n" for r in records)
+        lines = ''.join(log_line(r) for r in records)
         # A bounded spool is the durable retry queue. Older records may be
         # discarded by the requested cap; do not regenerate discarded entries.
         delivered = alerts.deliver(config, self.directory, lines)
         if not delivered and not (self.directory / 'alerts-spool.log').is_file():
             return
-        self.db.execute("UPDATE events SET exported=1 WHERE kind IN ('new-source-login','slow-threshold','subnet-cluster')")
+        self.db.execute(f'UPDATE events SET exported=1 WHERE kind IN ({marks})', LOGGED)
         self.db.commit()
 
 
@@ -275,13 +321,88 @@ def sample(store, config, now, document=None, baseline=False):
             for k, v in counters.items())
         store.db.execute('INSERT INTO samples VALUES (?,?,?,?)', (now, previous['stamp'], delta, int(reset)))
     store.set('counter_checkpoint', dict(stamp=now, counters=counters, generation=generation))
+    slow_alerts(store, config, document, now)
     initialized = store.get('ban_baseline', False)
-    live = {(row.ip, row.scope): row.expiry for name, row in lists.kernel_rows(document, now) if name in ('ban4', 'ban6')}
+    rows = lists.kernel_rows(document, now)
+    marks = set(slow_marks(document))
+    live = {(row.ip, row.scope): row.expiry for name, row in rows if name in ('ban4', 'ban6')}
     for (ip, scope), expiry in live.items():
-        store.record_ban(ip, scope, expiry, 'kernel' if initialized and not baseline else 'restored', config, now)
+        # A slow-protection rule marks the same key when it adds the ban.
+        reason = ('slow-connections-all-ports' if scope == '*' else 'slow-connections') if (ip, scope) in marks else None
+        store.record_ban(ip, scope, expiry, 'kernel' if initialized and not baseline else 'restored', config, now, reason)
+    strikes = {(row.ip, row.scope): row.expiry for name, row in rows if name in ('hardban4', 'hardban6')}
+    for (ip, scope), expiry in strikes.items():
+        key = 'strike|' + ip + '|' + scope
+        prior = store.db.execute('SELECT stamp FROM episodes WHERE key=?', (key,)).fetchone()
+        if prior and expiry <= prior[0] + 120:  # nft reports rounded seconds
+            continue
+        store.db.execute('INSERT OR REPLACE INTO episodes VALUES (?,?)', (key, expiry))
+        if initialized and not baseline:
+            store.emit(digest(key + '|' + str(expiry)), now, 'strike-ban', ip, scope,
+                       'reason=repeat-offender until=' + until(expiry))
     store.set('ban_baseline', True)
     store.prune(config, now)
     store.db.commit()
+
+
+def slow_marks(document):
+    """Sources the kernel banned for too many new connections (the slowhit sets)."""
+    for item in document.get('nftables', []):
+        obj = item.get('set', {})
+        if obj.get('name') not in ('slowhit4', 'slowhit6'):
+            continue
+        for element in obj.get('elem', []):
+            value = element.get('elem', {}).get('val') if isinstance(element, dict) and 'elem' in element else element
+            try:
+                if isinstance(value, dict) and 'concat' in value:
+                    ip, port = value['concat']
+                    yield str(ipaddress.ip_address(ip)), str(int(port))
+                elif isinstance(value, str):
+                    yield str(ipaddress.ip_address(value)), '*'
+            except (TypeError, ValueError):
+                continue
+
+
+def slow_alerts(store, config, document, now):
+    """Report each connection-based slow ban once per window."""
+    window = data.duration(config['SSH_SLOW_WINDOW'])
+    for ip, scope in sorted(set(slow_marks(document))):
+        key = 'slowconn|' + ip + '|' + scope
+        prior = store.db.execute('SELECT stamp FROM episodes WHERE key=?', (key,)).fetchone()
+        if prior and prior[0] >= now - window:
+            continue
+        store.db.execute('INSERT OR REPLACE INTO episodes VALUES (?,?)', (key, now))
+        limit = config['SSH_SLOW_TOTAL_CONNECTIONS' if scope == '*' else 'SSH_SLOW_PORT_CONNECTIONS']
+        store.emit(digest(key + '|' + str(now)), now, 'slow-threshold', ip, scope,
+                   'signal=' + ('connections-all-ports' if scope == '*' else 'connections') + ' action=ban', int(limit))
+
+
+def applied(config):
+    """Short summary of newly accepted settings for the activity log."""
+    try:
+        version = next(p.read_text().strip() for p in (LIB / 'VERSION', LIB.parent / 'VERSION') if p.is_file())
+    except StopIteration:
+        version = 'unknown'
+    ports = [spec.split(':')[0] for spec in config['PROTECTED_PORTS'].split(',') if spec]
+    return ' '.join(['version=' + version, 'protected-ports=' + str(len(ports)),
+                     'server-ssh=' + config['PROTECT_SERVER_SSH'],
+                     'jail=' + ('per-port' if config['JAIL_PER_PORT'] == 'on' else 'shared'),
+                     'slow-protection=' + config['SSH_SLOW_PROTECTION'],
+                     'learning=' + ('on' if config['LOGIN_USERS'] else 'off')])
+
+
+def describe_slow(config):
+    if config['SSH_SLOW_PROTECTION'] != 'on':
+        return 'Slow SSH protection: off'
+    window = config['SSH_SLOW_WINDOW']
+    if config['JAIL_PER_PORT'] == 'on':
+        custom = 'over ' + config['SSH_SLOW_PORT_CONNECTIONS'] + ' new connections per source and port/' + window
+    else:
+        custom = 'over ' + config['SSH_SLOW_TOTAL_CONNECTIONS'] + ' new connections per source across ports/' + window
+    native = (config['SSH_SLOW_FAILURES'] + ' failed logins/' + window if config['PROTECT_SERVER_SSH'] == 'on'
+              else 'not protected')
+    return ('Slow SSH protection: on (custom ports: ' + custom + '; port 22: ' + native
+            + '; whitelisted sources are not counted)')
 
 
 def enforce(store, config, ip, now):
@@ -301,9 +422,13 @@ def enforce(store, config, ip, now):
     if result.returncode:
         print('SSH authentication threshold reached; guard ban could not be applied.', file=sys.stderr, flush=True)
         return False
-    store.record_ban(ip, scope, now + duration, 'auth', config, now)
+    store.record_ban(ip, scope, now + duration, 'auth', config, now, store.reason)
     store.db.commit()
-    lists.sync(config)
+    try:
+        lists.sync(config)
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        # The ban is active; an invalid list being edited must not stop monitoring.
+        print('Ban applied, but the blocklist view could not be updated; check list format.', file=sys.stderr, flush=True)
     return True
 
 
@@ -321,7 +446,8 @@ def handle(record, reader='auth'):
         store = Store(now=now)
         try:
             trusted = lists.allowed(event[1], 22, config)
-            result = store.process(record, config, event, now, trusted)
+            admin = trusted or lists.listed(event[1])
+            result = store.process(record, config, event, now, trusted, admin)
             if record.get('__CURSOR'):
                 store.set('cursor_' + reader, record['__CURSOR'])
             store.set('heartbeat_' + reader, now)
@@ -334,8 +460,12 @@ def handle(record, reader='auth'):
                                             stdout=subprocess.DEVNULL).returncode == 0:
                     expiry = int(event[3]) + data.duration(config['LEARN_TIMEOUT'])
                     if expiry > now:
-                        lists.sync(config, addition=('allow', data.Row(event[1], '*', expiry, 'learned')))
-                        learned_ip = event[1]
+                        try:
+                            lists.sync(config, addition=('allow', data.Row(event[1], '*', expiry, 'learned')))
+                            learned_ip = event[1]
+                        except (OSError, ValueError, subprocess.CalledProcessError):
+                            print('Trusted login seen, but the whitelist could not be updated; check list format.',
+                                  file=sys.stderr, flush=True)
             store.prune(config, now)
             store.export(config)
         finally:
@@ -378,9 +508,9 @@ def follow(reader):
 
 
 def show(config, store=None, window=None):
-    print('Slow SSH detection: ' + config['SSH_SLOW_MODE'])
-    print('Alerts: ' + str(Path(config['MANUAL_DIR']) / 'alerts.log'))
-    print('Alert maximum size: ' + config['ALERT_LOG_MAX_SIZE'] + ' (oldest records discarded; no archives)')
+    print(describe_slow(config))
+    print('Log: ' + str(Path(config['MANUAL_DIR']) / alerts.LOG_NAME))
+    print('Log maximum size: ' + config['LOG_MAX_SIZE'] + ' (newest first; oldest lines deleted; no archives)')
     if store is None:
         print('Observation coverage: not activated; run check, then reload')
         return
@@ -390,7 +520,7 @@ def show(config, store=None, window=None):
         print('Report window: ' + utc(since) + ' to ' + utc(now))
         if since < store.get('coverage_start'):
             print('Partial coverage: requested window starts before observation activation.')
-        for kind in ('auth-failure', 'slow-threshold', 'new-source-login', 'ban', 'subnet-cluster'):
+        for kind in ('auth-failure', 'slow-threshold', 'new-source-login', 'ban', 'manual-ban', 'strike-ban', 'subnet-cluster'):
             count = store.db.execute('SELECT count(*) FROM events WHERE kind=? AND stamp>=? AND stamp<=?', (kind, since, now)).fetchone()[0]
             print(kind + ': ' + str(count))
         rows = list(store.db.execute('SELECT * FROM samples WHERE stamp>=? AND stamp<=?', (since, now)))
@@ -432,9 +562,9 @@ def main():
                 account = __import__('pwd').getpwnam(owner['user']) if owner else None
                 kwargs = dict(user=account.pw_uid, group=account.pw_gid, extra_groups=[]) if account and os.geteuid() == 0 else {}
                 result = subprocess.run([sys.executable, str(LIB / 'frp-ssh-guard-alerts.py'), 'inspect',
-                                         str(Path(config['MANUAL_DIR']) / 'alerts.log')], capture_output=True, text=True, **kwargs)
-                print('Alert file access as owner: ' + ('available' if result.returncode == 0 else 'unavailable or unsafe; system spool used'))
-                print('Pending system alert spool: ' + ('yes' if (root() / 'alerts-spool.log').exists() else 'no'))
+                                         str(Path(config['MANUAL_DIR']) / alerts.LOG_NAME)], capture_output=True, text=True, **kwargs)
+                print('Log file access as owner: ' + ('available' if result.returncode == 0 else 'unavailable or unsafe; system spool used'))
+                print('Pending system log spool: ' + ('yes' if (root() / 'alerts-spool.log').exists() else 'no'))
                 print('Whitelist learning: ' + ('configured; trusts successful password/key/PAM logins for matching users' if config['LOGIN_USERS'] else 'off'))
                 rows = data.records(lists.read(lists.state_directory() / 'whitelist.conf'), 'allow')
                 native = sum(1 for r in rows if (not r.expiry or r.expiry > time.time()) and (r.scope == '*' or any(int(t.split('-')[0]) <= 22 <= int(t.split('-')[-1]) for t in r.scope.split(','))))
@@ -457,16 +587,25 @@ def main():
         if action == 'activate':
             store.migrate(config, now)
             sample(store, config, now, baseline=True)
+            store.emit(digest('settings|' + str(now)), now, 'settings-applied', '', '*', applied(config))
         elif action == 'manual':
             ip, duration = sys.argv[2:4]
-            for name, row in lists.snapshot(config['GUARD_TABLE'], now):
-                if name in ('ban4', 'ban6') and row.ip == ip:
-                    store.record_ban(row.ip, row.scope, row.expiry, 'manual', config, now)
+            rows = [row for name, row in lists.snapshot(config['GUARD_TABLE'], now) if name in ('ban4', 'ban6') and row.ip == ip]
+            for row in rows:
+                store.record_ban(row.ip, row.scope, row.expiry, 'manual', config, now)
+            if rows:
+                scope = '*' if any(row.scope == '*' for row in rows) else data.ports(','.join(row.scope for row in rows))
+                store.emit(digest(f'manual|{ip}|{now}'), now, 'manual-ban', ip, scope,
+                           'reason=ban-command until=' + until(max(row.expiry for row in rows)))
         elif action == 'forgive':
             ip = str(ipaddress.ip_address(sys.argv[2]))
             store.db.execute('DELETE FROM bans WHERE ip=?', (ip,))
             store.db.execute('DELETE FROM failures WHERE ip=?', (ip,))
-            store.db.execute('DELETE FROM episodes WHERE key=?', ('slow|' + ip,))
+            store.db.execute('DELETE FROM episodes WHERE key=? OR key LIKE ? OR key LIKE ?',
+                             ('slow|' + ip, 'slowconn|' + ip + '|%', 'strike|' + ip + '|%'))
+            # unban and release can both forgive; one line per minute is enough.
+            store.emit(digest(f'release|{ip}|{int(now // 60)}'), now, 'release', ip, '*',
+                       'reason=unban-command strikes=forgiven')
             store.db.commit()
         elif action in ('sample', 'checkpoint'):
             sample(store, config, now)

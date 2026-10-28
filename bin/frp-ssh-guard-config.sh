@@ -43,10 +43,12 @@ load_guard_config() {
     STRIKE_WINDOW=90d STRIKE_MAX=28d STRIKE_LADDER='2:1d 3:3d 4:7d 5:28d'
     PROTECT_SERVER_SSH=off JAIL_PER_PORT=off
     SSH_AUTH_FAILURES=5 SSH_INVALID_USER_FAILURES=3 SSH_AUTH_WINDOW=10m
-    # Compatibility fallback for old/minimal files and accepted snapshots.
-    # Fresh installs explicitly set enforce in the shipped settings template.
-    SSH_SLOW_MODE=observe SSH_SLOW_FAILURES=20 SSH_SLOW_WINDOW=24h
-    ALERT_LOG_MAX_SIZE=10MiB SUBNET_REPORT_MIN_SOURCES=5 SUBNET_REPORT_WINDOW=24h
+    # SSH_SLOW_PROTECTION has no fallback value here: see the conversion below.
+    unset SSH_SLOW_PROTECTION
+    SSH_SLOW_MODE='' SSH_SLOW_TOTAL_CONNECTIONS=300 SSH_SLOW_PORT_CONNECTIONS=100
+    SSH_SLOW_FAILURES=20 SSH_SLOW_WINDOW=24h
+    unset LOG_MAX_SIZE
+    ALERT_LOG_MAX_SIZE='' SUBNET_REPORT_MIN_SOURCES=5 SUBNET_REPORT_WINDOW=24h
     OBSERVABILITY_VERSION=0
     unset PROTECTED_PORTS
     CONFIG_INPUT_DIGEST=''
@@ -74,6 +76,14 @@ load_guard_config() {
             eval "$assignments"  # parser emits only known keys and shell-quoted literal values
         fi
     fi
+    if [[ -z ${SSH_SLOW_PROTECTION+x} ]]; then
+        # Older files and accepted snapshots used SSH_SLOW_MODE. Only explicit
+        # enforcement keeps slow bans; observe, off or a missing value become off.
+        # Fresh installs set SSH_SLOW_PROTECTION=on in the shipped template.
+        if [[ "$SSH_SLOW_MODE" == enforce ]]; then SSH_SLOW_PROTECTION=on; else SSH_SLOW_PROTECTION=off; fi
+    fi
+    # ALERT_LOG_MAX_SIZE is the pre-0.0.7 name of LOG_MAX_SIZE.
+    [[ -n ${LOG_MAX_SIZE+x} ]] || LOG_MAX_SIZE=${ALERT_LOG_MAX_SIZE:-10MiB}
     DEFAULT_RATE=$GLOBAL_RATE DEFAULT_BURST=$GLOBAL_BURST
 }
 
@@ -92,7 +102,8 @@ write_accepted_config() {
         PER_IP_RATE PER_IP_BURST GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT LOGIN_USERS \
         MAX_LEARNED LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER CONFIG_INPUT_DIGEST \
         PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW \
-        SSH_SLOW_MODE SSH_SLOW_FAILURES SSH_SLOW_WINDOW ALERT_LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW OBSERVABILITY_VERSION; do
+        SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW \
+        LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW OBSERVABILITY_VERSION; do
         printf '%s=%q\n' "$key" "${!key-}"
     done
 }

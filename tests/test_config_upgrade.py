@@ -61,9 +61,15 @@ class ConfigUpgradeTests(unittest.TestCase):
         self.path.write_text(original)
         self.upgrade()
         updated = self.path.read_text()
-        self.assertTrue(updated.startswith(original))
-        self.assertNotIn('PROTECT_SERVER_SSH=off', updated)
-        self.assertNotIn('JAIL_PER_PORT=off', updated)
+        lines = updated.splitlines()
+        for line in original.splitlines():
+            self.assertIn(line, lines)
+        self.assertNotIn('PROTECT_SERVER_SSH=off', lines)
+        self.assertNotIn('JAIL_PER_PORT=off', lines)
+        # The new switch sits directly below the existing jail switch.
+        between = lines[lines.index('JAIL_PER_PORT=on') + 1:lines.index('SSH_SLOW_PROTECTION=off')]
+        self.assertTrue(between and all(not line or line.startswith('#') for line in between), between)
+        self.assertLess(lines.index('SSH_SLOW_PROTECTION=off'), lines.index('PER_IP_RATE=2'))
         values = data.settings(updated)
         for key, value in data.settings(original).items():
             self.assertEqual(values[key], value)
@@ -77,19 +83,64 @@ class ConfigUpgradeTests(unittest.TestCase):
         self.assertEqual((self.root / 'ports.conf').read_text(), '22001\n')
         self.assertEqual(data.settings(self.path.read_text())['PROTECT_SERVER_SSH'], 'off')
 
-    def test_slow_mode_fresh_enforcement_and_existing_choices_are_preserved(self):
-        self.assertEqual(data.settings(TEMPLATE)['SSH_SLOW_MODE'], 'enforce')
-        for mode in ('off', 'observe', 'enforce', None):
+    def test_slow_mode_becomes_one_switch_below_jail_switch(self):
+        self.assertEqual(data.settings(TEMPLATE)['SSH_SLOW_PROTECTION'], 'on')
+        self.assertNotIn('SSH_SLOW_MODE', data.settings(TEMPLATE))
+        # Only explicit enforcement stays on; an upgrade never adds bans by itself.
+        for mode, expected in (('enforce', 'on'), ('observe', 'off'), ('off', 'off'), (None, 'off')):
             with self.subTest(mode=mode):
-                original = 'PROTECTED_PORTS="22001"\n'
+                original = 'PROTECTED_PORTS="22001"\nJAIL_PER_PORT=on\nPER_IP_RATE=9\n'
                 if mode is not None:
-                    original += 'SSH_SLOW_MODE=' + mode + ' # operator choice\n'
+                    original += '# my note\nSSH_SLOW_MODE=' + mode + ' # operator choice\n'
                 updated, keys = data.merge_defaults(original, TEMPLATE)
-                self.assertEqual(data.settings(updated)['SSH_SLOW_MODE'], mode or 'observe')
-                for line in original.splitlines():
-                    self.assertIn(line, updated.splitlines())
+                values = data.settings(updated)
+                lines = updated.splitlines()
+                self.assertEqual(values['SSH_SLOW_PROTECTION'], expected)
+                self.assertNotIn('SSH_SLOW_MODE', values)
+                between = lines[lines.index('JAIL_PER_PORT=on') + 1:lines.index('SSH_SLOW_PROTECTION=' + expected)]
+                self.assertTrue(all(not line or line.startswith('#') for line in between), between)
+                if mode is not None:
+                    self.assertIn('SSH_SLOW_MODE', keys)
+                    self.assertIn('# my note', lines)  # user comments are kept
+                    self.assertIn('# SSH_SLOW_MODE=' + mode + ' # operator choice', lines)
+                self.assertEqual(values['PER_IP_RATE'], '9')
                 self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
         self.assertEqual(data.merge_defaults(TEMPLATE, TEMPLATE), (TEMPLATE, []))
+
+    def test_shipped_comments_header_and_renamed_log_size_are_replaced(self):
+        for variant in data.LEGACY_SLOW_COMMENTS:
+            with self.subTest(variant=variant[0]):
+                original = ('# FRP-SSH-Guard settings (literal KEY=value assignments; no shell execution).\n'
+                            + ''.join(line + '\n' for line in data.LEGACY_SETTINGS_HEADER)
+                            + '\nPROTECTED_PORTS="22001"\nPROTECT_SERVER_SSH=on\nJAIL_PER_PORT=off\n\n'
+                            + ''.join(line + '\n' for line in variant)
+                            + 'SSH_SLOW_MODE=enforce\nSSH_SLOW_FAILURES=20\nSSH_SLOW_WINDOW=24h\n\n'
+                            + ''.join(line + '\n' for line in data.LEGACY_RENAMED_COMMENTS['ALERT_LOG_MAX_SIZE'][0])
+                            + 'ALERT_LOG_MAX_SIZE=2MiB\n')
+                updated, keys = data.merge_defaults(original, TEMPLATE)
+                values = data.settings(updated)
+                self.assertEqual(values['SSH_SLOW_PROTECTION'], 'on')
+                self.assertEqual(values['LOG_MAX_SIZE'], '2MiB')
+                self.assertNotIn('ALERT_LOG_MAX_SIZE', values)
+                for line in (data.LEGACY_SETTINGS_HEADER + variant
+                             + data.LEGACY_RENAMED_COMMENTS['ALERT_LOG_MAX_SIZE'][0]):
+                    self.assertNotIn(line, updated.splitlines())
+                self.assertIn('# === When and how changes take effect ===', updated)
+                lines = updated.splitlines()
+                # New thresholds join the existing slow settings, not the end of the file.
+                self.assertLess(lines.index('SSH_SLOW_TOTAL_CONNECTIONS=300'), lines.index('SSH_SLOW_FAILURES=20'))
+                self.assertEqual(lines.index('SSH_SLOW_PORT_CONNECTIONS=100') + 1, lines.index('SSH_SLOW_FAILURES=20'))
+                self.assertIn('instructions', keys)
+                self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
+
+    def test_upgrade_message_explains_how_to_enable_off_switch(self):
+        self.path.write_text('PROTECTED_PORTS="22001"\nJAIL_PER_PORT=off\nSSH_SLOW_MODE=observe\n')
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            data.append_defaults(self.path, TEMPLATE)
+        self.assertIn('replaced obsolete SSH_SLOW_MODE with SSH_SLOW_PROTECTION=off', output.getvalue())
+        self.assertIn('set SSH_SLOW_PROTECTION=on, then run: sudo frp-ssh-guard check && sudo frp-ssh-guard reload',
+                      output.getvalue())
 
     def test_invalid_input_and_unsafe_file_types_are_unchanged(self):
         for kind in ('invalid', 'symlink', 'hardlink', 'fifo', 'directory'):

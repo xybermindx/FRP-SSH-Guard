@@ -89,6 +89,36 @@ cat "$GUARD_DIR/rules.nft"
         self.assertIn('allow_pp6 { 2001:db8::1 . 22001 }', result.stdout)
         self.assertIn('block_pp4 { 203.0.113.0/24 . 22001,203.0.113.0/24 . 22003 }', result.stdout)
 
+    def test_slow_protection_rules_follow_jail_mode_and_skip_native_ssh(self):
+        shared = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\n')
+        self.assertEqual(shared.returncode, 0, shared.stderr)
+        self.assertIn('tcp dport 22001 ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 '
+                      'update @slow4 { ip saddr limit rate over 300/day burst 300 packets } '
+                      'add @slowhit4 { ip saddr } add @ban4 { ip saddr timeout 6h } counter drop comment "22001 slow v4"',
+                      shared.stdout)
+        self.assertIn('set slow6 { type ipv6_addr; flags dynamic,timeout; timeout 24h; size 65536; }', shared.stdout)
+        # Global drops are not counted: the slow rule comes after the shared ceiling.
+        self.assertLess(shared.stdout.index('"22001 global"'), shared.stdout.index('"22001 slow v4"'))
+        per_port = self.rules('22001\n', config='SSH_SLOW_PROTECTION=on\nJAIL_PER_PORT=on\nSSH_SLOW_WINDOW=12h\n')
+        self.assertIn('update @slow4 { ip saddr . tcp dport limit rate over 200/day burst 100 packets } '
+                      'add @slowhit4 { ip saddr . tcp dport } add @ban4 { ip saddr . tcp dport timeout 6h }', per_port.stdout)
+        weekly = self.rules('22001\n', config='SSH_SLOW_PROTECTION=on\nSSH_SLOW_WINDOW=3d\n')
+        self.assertIn('limit rate over 700/week burst 300 packets', weekly.stdout)
+        native = self.rules('22001\n', config='SSH_SLOW_PROTECTION=on\nPROTECT_SERVER_SSH=on\n')
+        self.assertIn('"22001 slow v4"', native.stdout)
+        self.assertNotIn('"22 slow v4"', native.stdout)  # port 22 counts failed logins instead
+        off = self.rules('22001\n', config='SSH_SLOW_PROTECTION=off\n')
+        self.assertNotIn(' slow v4', off.stdout)
+
+    def test_any_whitelisted_source_is_trusted_without_overlaps(self):
+        (self.root / 'lists/whitelist.conf').write_text(
+            '[22001]\n198.51.100.0/24\n198.51.100.7\n[22003]\n198.51.100.7\n'
+            '203.0.113.5 source=learned until=2030-01-01T00:00:00Z\n[all]\n2001:db8::/64\n2001:db8::1\n')
+        result = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r'trusted4 \{ 198\.51\.100\.0/24,203\.0\.113\.5 timeout [0-9]+s \}')
+        self.assertIn('trusted6 { 2001:db8::/64 }', result.stdout)
+
     def test_configured_default_manual_ban(self):
         (self.root / 'etc/guard.conf').write_text('BAN_TIMEOUT=3h\n')
         result = self.run_guard('NFTP=echo; table_active() { return 0; }; cmd_ban 198.51.100.1')
@@ -176,11 +206,12 @@ cat "$GUARD_DIR/rules.nft"
             f'{stamp} ban4 {ip}' + ('' if scope == '*' else ' ' + scope) + '\n'
             for ip, scope in histories))
         (self.root / 'observations').mkdir()
-        with sqlite3.connect(self.root / 'observations/events.sqlite3') as db:
+        with contextlib.closing(sqlite3.connect(self.root / 'observations/events.sqlite3')) as db:
             db.execute('CREATE TABLE events (stamp INTEGER, ip TEXT, scope TEXT, kind TEXT)')
             db.executemany('INSERT INTO events VALUES (?,?,?,?)',
                            [(now, ip, scope, 'ban') for ip, scope in histories[:2]] +
                            [(now, '2001:db8::11', scope, 'ban') for scope in ('*', '*', '22003', '22003')])
+            db.commit()
         expected = None
         real_run = subprocess.run
         def run_command(args, **kwargs):
@@ -217,9 +248,10 @@ cat "$GUARD_DIR/rules.nft"
             f'203.0.113.0/24 22001,22003\n2001:db8::7 all until={expiry}\n'
             f'[22001-22003]\n198.51.100.78 source=runtime until={expiry}\n')
         (self.root / 'lists/whitelist.conf').write_text(
-            f'[22,22001]\n198.51.100.77 source=learned until={expiry}\n')
-        initial = self.rules('22001\n22003\n')
-        replacement = self.rules('22001\n22003\n', config='JAIL_PER_PORT=on\n', active=True)
+            f'[22,22001]\n198.51.100.77 source=learned until={expiry}\n[22003]\n198.51.100.0/24\n198.51.100.79\n')
+        initial = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\n')
+        replacement = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\nJAIL_PER_PORT=on\n', active=True)
+        self.assertIn('slow v4', initial.stdout)
         self.assertEqual(initial.returncode, 0, initial.stderr)
         self.assertEqual(replacement.returncode, 0, replacement.stderr)
         a, b = self.root / 'initial.nft', self.root / 'replacement.nft'

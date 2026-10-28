@@ -10,7 +10,8 @@ def validate(values):
         raise ValueError(f"Invalid {key}={values.get(key)!r}: {expected}. Edit settings.conf and run check.")
 
     for key in ('PER_IP_RATE', 'PER_IP_BURST', 'GLOBAL_RATE', 'GLOBAL_BURST', 'MAX_LEARNED',
-                'SSH_AUTH_FAILURES', 'SSH_INVALID_USER_FAILURES', 'SSH_SLOW_FAILURES', 'SUBNET_REPORT_MIN_SOURCES'):
+                'SSH_AUTH_FAILURES', 'SSH_INVALID_USER_FAILURES', 'SSH_SLOW_FAILURES', 'SUBNET_REPORT_MIN_SOURCES',
+                'SSH_SLOW_TOTAL_CONNECTIONS', 'SSH_SLOW_PORT_CONNECTIONS'):
         value = values[key]
         if not re.fullmatch(r'[1-9][0-9]{0,6}', value) or int(value) > 1000000:
             fail(key, 'expected an integer from 1 to 1000000')
@@ -22,14 +23,14 @@ def validate(values):
     for key in ('BAN_TIMEOUT', 'LEARN_TIMEOUT', 'STRIKE_WINDOW', 'STRIKE_MAX', 'SSH_AUTH_WINDOW', 'SSH_SLOW_WINDOW', 'SUBNET_REPORT_WINDOW'):
         if not re.fullmatch(r'[1-9][0-9]{0,8}[smhdw]', values[key]):
             fail(key, 'expected a positive duration, e.g. 30m, 6h, 7d, or 4w')
-    if values['SSH_SLOW_MODE'] not in ('off', 'observe', 'enforce'):
-        fail('SSH_SLOW_MODE', 'expected off, observe or enforce')
-    size = re.fullmatch(r'([1-9][0-9]*)(KiB|MiB)', values['ALERT_LOG_MAX_SIZE'])
+    if values.get('SSH_SLOW_MODE', '') not in ('', 'off', 'observe', 'enforce'):
+        fail('SSH_SLOW_MODE', 'this setting is obsolete; delete it and set SSH_SLOW_PROTECTION=on or off')
+    size = re.fullmatch(r'([1-9][0-9]*)(KiB|MiB)', values['LOG_MAX_SIZE'])
     if not size or not 1024 <= int(size[1]) * (1024 if size[2] == 'KiB' else 1048576) <= 104857600:
-        fail('ALERT_LOG_MAX_SIZE', 'expected 1KiB to 100MiB')
+        fail('LOG_MAX_SIZE', 'expected 1KiB to 100MiB')
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', values['GUARD_TABLE']):
         fail('GUARD_TABLE', 'expected a simple nftables identifier')
-    for key in ('PROTECT_SERVER_SSH', 'JAIL_PER_PORT'):
+    for key in ('PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'SSH_SLOW_PROTECTION'):
         if values[key] not in ('on', 'off'):
             fail(key, 'expected on or off')
     try:

@@ -28,6 +28,7 @@ class DeploymentTests(unittest.TestCase):
         self.env['PATH'] = str(self.root / 'fakebin') + ':' + self.env['PATH']
         (self.root / 'unit').write_text('# Managed by frp-ssh-guard-persistent.sh\n')
         self.fake('nft', '''#!/bin/bash
+printf '%s\\n' "$*" >> "$TEST_ROOT/nft.calls"
 case "$1" in
  -j) echo '{"nftables":[{"rule":{"comment":"manual-block v4","handle":42}}]}' ;;
  list) test -f "$TEST_ROOT/live.nft" ;;
@@ -166,7 +167,8 @@ else:
         accepted = (self.root / 'applied.conf').read_text()
         # Simulate a previously accepted pre-observation policy and broken edits.
         (self.root / 'applied.conf').write_text(accepted.replace(
-            'OBSERVABILITY_VERSION=1', 'OBSERVABILITY_VERSION=0').replace('SSH_SLOW_MODE=observe\n', ''))
+            'OBSERVABILITY_VERSION=1', 'OBSERVABILITY_VERSION=0').replace('SSH_SLOW_PROTECTION=off\n', '')
+            .replace('LOG_MAX_SIZE=10MiB', 'ALERT_LOG_MAX_SIZE=10MiB'))
         self.settings('PROTECTED_PORTS="22003"\nPER_IP_RATE=invalid\n')
         (self.root / 'no-listener').touch()
         (self.root / 'systemctl.calls').write_text('')
@@ -182,6 +184,36 @@ else:
         self.assertNotIn('restart frp-ssh-guard.service', calls)
         self.assertNotIn('enable ', calls)
         self.assertNotIn('.timer', calls)
+
+    def test_upgrade_converts_accepted_slow_mode_and_check_explains_old_key(self):
+        self.require_ok(self.run_guard('enable'))
+        accepted = (self.root / 'applied.conf').read_text()
+        self.assertIn('SSH_SLOW_PROTECTION=off\n', accepted)  # minimal settings: no slow bans
+        self.assertNotIn(' slow v4', (self.root / 'live.nft').read_text())
+        for mode, expected in (('enforce', 'on'), ('observe', 'off')):
+            with self.subTest(mode=mode):
+                (self.root / 'applied.conf').write_text(accepted.replace(
+                    'SSH_SLOW_PROTECTION=off', 'SSH_SLOW_MODE=' + mode))
+                self.require_ok(self.run_guard('_upgrade'))
+                self.assertIn('SSH_SLOW_PROTECTION=' + expected + '\n', (self.root / 'applied.conf').read_text())
+                self.assertNotIn('SSH_SLOW_MODE', (self.root / 'applied.conf').read_text())
+                self.assertEqual(' slow v4' in (self.root / 'live.nft').read_text(), expected == 'on')
+        self.settings('PROTECTED_PORTS="22001"\nSSH_SLOW_MODE=enforce\n')
+        result = self.run_guard('check')
+        self.require_ok(result)
+        self.assertIn('SSH_SLOW_MODE is obsolete; slow protection uses SSH_SLOW_PROTECTION=on', result.stderr)
+        self.settings('PROTECTED_PORTS="22001"\nSSH_SLOW_MODE=typo\n')
+        self.assertIn('SSH_SLOW_MODE', self.run_guard('check').stderr)
+
+    def test_unban_also_clears_slow_connection_counters(self):
+        self.settings('PROTECTED_PORTS="22001,22003"\nSSH_SLOW_PROTECTION=on\nJAIL_PER_PORT=on\n')
+        self.require_ok(self.run_guard('enable'))
+        (self.root / 'nft.calls').write_text('')
+        self.require_ok(self.run_guard('unban', '198.51.100.7'))
+        calls = (self.root / 'nft.calls').read_text()
+        for name in ('ban4', 'slow4', 'slowhit4'):
+            for port in ('22001', '22003'):
+                self.assertIn(f'delete element inet frp_ssh_persistent_guard {name} {{ 198.51.100.7 . {port} }}', calls)
 
     def test_upgrade_does_not_activate_fresh_or_disabled_installations(self):
         self.require_ok(self.run_guard('_upgrade'))

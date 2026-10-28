@@ -21,7 +21,90 @@ POLICY_KEYS = set('GUARD_TABLE PORT_MIN PORT_MAX EXCLUDE_PORTS EDIT_USER PROTECT
     'PER_IP_RATE PER_IP_BURST GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT LOGIN_USERS MAX_LEARNED '
     'LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER PROTECT_SERVER_SSH JAIL_PER_PORT '
     'SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW '
-    'SSH_SLOW_MODE SSH_SLOW_FAILURES SSH_SLOW_WINDOW ALERT_LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW'.split())
+    'SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW '
+    'LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW '
+    # Obsolete names, still read so older files keep working; upgrades convert them.
+    'SSH_SLOW_MODE ALERT_LOG_MAX_SIZE'.split())
+
+LIST_MARKER = '# FRP-SSH-Guard unified list'
+_SECTIONS = [
+    '# A section header chooses the ports for the lines below it:',
+    '#   [all]                every protected port (and 22 when PROTECT_SERVER_SSH=on)',
+    '#   [22]                 only this server\'s SSH port 22',
+    '#   [22001]              only port 22001',
+    '#   [22001,23000-23010]  several ports or ranges',
+]
+_APPLY = [
+    '# Saving applies this file automatically while the guard is active; no reload',
+    '# is needed. Apply at once: sudo frp-ssh-guard apply',
+    '# Find mistakes: sudo frp-ssh-guard check (a rejected edit changes nothing).',
+]
+HEADERS = {
+    'block': [LIST_MARKER,
+        '# BLOCKLIST: sources listed here cannot open new connections to the chosen ports.',
+        *_APPLY, '#', *_SECTIONS, '#',
+        '# One IP or CIDR per line. A line WITHOUT a time is blocked FOREVER:',
+        '#   203.0.113.10                     forever (nothing after the address)',
+        '#   203.0.113.11 forever             forever (written out)',
+        '#   198.51.100.0/24                  a whole subnet, forever',
+        '#   2001:db8::10                     IPv6 works the same way',
+        '# Timed blocks use tier= or until= (plain times such as 7d are rejected here):',
+        '#   203.0.113.12 tier=1              BAN_TIMEOUT (default 6 hours)',
+        '#   203.0.113.13 tier=2              1 day (tier=3: 3 days, tier=4: 7 days)',
+        '#   203.0.113.14 tier=5              28 days (tiers 2-5 follow STRIKE_LADDER)',
+        '#   203.0.113.15 until=2030-01-31T00:00:00Z   until this UTC date and time',
+        '# The first apply adds until= to a tier line; delete until= to restart its period.',
+        '#',
+        '# The same from the command line (default: all protected ports, forever):',
+        '#   sudo frp-ssh-guard block 203.0.113.10                  forever, all ports',
+        '#   sudo frp-ssh-guard block 203.0.113.10 --ports 22001    forever, one port',
+        '#   sudo frp-ssh-guard block 203.0.113.10 --for 7d         7 days',
+        '#   sudo frp-ssh-guard unblock 203.0.113.10                remove its lines',
+        '#   sudo frp-ssh-guard ban 203.0.113.10 12h                temporary (default BAN_TIMEOUT)',
+        '#',
+        '# Lines with source=runtime or source=strike are automatic bans; keep their until=.',
+        '# Delete any line to unblock it (a new attack may add it again). To also forgive',
+        '# its strike history: sudo frp-ssh-guard release 203.0.113.10',
+        '# New automatic bans appear here within about 60 seconds. Reopen this file before',
+        '# editing: saving an old copy removes newer automatic bans.',
+        '# Whitelist entries win over this list; other firewalls are independent.'],
+    'allow': [LIST_MARKER,
+        '# WHITELIST: sources listed here bypass this guard\'s limits and bans on the chosen',
+        '# ports, and are never counted by slow brute-force protection on any port.',
+        *_APPLY, '#', *_SECTIONS, '#',
+        '# One IP or CIDR per line. Manual entries never expire:',
+        '#   198.51.100.10                    trusted on this section\'s ports',
+        '#   198.51.100.0/24                  a whole subnet',
+        '#   2001:db8::10                     IPv6 works the same way',
+        '# The same from the command line:',
+        '#   sudo frp-ssh-guard allow 198.51.100.10                 all protected ports',
+        '#   sudo frp-ssh-guard allow 198.51.100.10 22001           one port',
+        '#   sudo frp-ssh-guard unallow 198.51.100.10               remove its lines',
+        '#',
+        '# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)',
+        '# and expire at until=; keep that time. Delete any line to remove the trust',
+        '# (a new trusted login may add it again).',
+        '# Reopen this file before editing: saving an old copy removes newer learned entries.',
+        '# Whitelist entries override this guard only; other firewalls are independent.'],
+}
+# The exact header shipped in v0.0.5 and v0.0.6. Only this text is refreshed.
+_OLD_COMMON = [LIST_MARKER,
+    '# [all] means every protected port (including 22 when enabled).',
+    '# [22001] means only that port; comma-separated ports/ranges also work.',
+    '# Add one IP or CIDR per line. A plain entry or explicit forever is permanent.',
+    '# Block periods: forever or tier=1..5 (default 6h,1d,3d,7d,28d).',
+    '# Tier 1 uses BAN_TIMEOUT; tiers 2..5 use STRIKE_LADDER, capped by STRIKE_MAX.',
+    '# First apply saves until=. To start a new tier period, remove the old until=.',
+    '# until=YYYY-MM-DDTHH:MM:SSZ is an absolute UTC expiry; never renewed by apply.']
+_OLD_TAIL = ['# Delete an entry to remove it; a new login/attack may add it again.',
+    '# Saves are watched while active. Apply now: sudo frp-ssh-guard apply',
+    '# Settings changes still require check and reload. Do not edit a stale copy.',
+    '# Kernel bans are sampled by the log timer (normally within 60 seconds).',
+    '# Whitelist entries override this guard only; other firewalls are independent.']
+LEGACY_HEADERS = {
+    'block': _OLD_COMMON + ['# source=runtime/strike identifies automatic bans; keep their expiry.'] + _OLD_TAIL,
+    'allow': _OLD_COMMON + ['# source=learned identifies learned trust; keep its expiry.'] + _OLD_TAIL,
+}
 
 
 def settings(text):
@@ -89,7 +172,7 @@ def list_lines(text, kind='block'):
             if words[0].startswith('['):
                 header = ' '.join(words)
                 if not re.fullmatch(r'\[[^\[\]]+\]', header):
-                    raise ValueError('Invalid section.')
+                    raise ValueError('Invalid section header; use [all], [22001] or [22001,23000-23010].')
                 section = ports(header[1:-1])
                 continue
             ip = address(words.pop(0))
@@ -101,22 +184,30 @@ def list_lines(text, kind='block'):
                     forever = True
                     continue
                 if '=' not in word:
+                    if not re.fullmatch(r'all|\*|[0-9][0-9,-]*', word):
+                        raise ValueError(f'"{word}" is not a port list or option; use forever, '
+                                         'tier=1..5 or until=YYYY-MM-DDTHH:MM:SSZ (no time means forever)')
                     scopes.append(word)
                     continue
                 key, value = word.split('=', 1)
                 if key in seen or key not in ('until', 'source', 'tier'):
-                    raise ValueError('Invalid metadata.')
+                    raise ValueError(f'"{word}" is not a supported option; use forever, tier=, until= or source=')
                 seen.add(key)
                 if key == 'source':
                     source = value
                     continue
                 if key == 'tier':
-                    if kind != 'block' or not re.fullmatch('[1-5]', value):
+                    if kind != 'block':
+                        raise ValueError('tier= is only used in the blocklist.')
+                    if not re.fullmatch('[1-5]', value):
                         raise ValueError('Block tiers are 1 through 5.')
                     tier = int(value)
                     continue
-                stamp = value
-                expiry = int(dt.datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=dt.timezone.utc).timestamp())
+                try:
+                    stamp = dt.datetime.strptime(value, '%Y-%m-%dT%H:%M:%SZ')
+                except ValueError:
+                    raise ValueError('until= needs a UTC time such as until=2030-01-31T00:00:00Z') from None
+                expiry = int(stamp.replace(tzinfo=dt.timezone.utc).timestamp())
                 if expiry <= 0:
                     raise ValueError('Expiry must be after the epoch.')
             if source not in (('manual', 'learned') if kind == 'allow' else ('manual', 'runtime', 'strike')):
@@ -136,7 +227,8 @@ def list_lines(text, kind='block'):
             scope = ports(' '.join(scopes)) if scopes else section
             result.append((number, Row(ip, scope, expiry, source, tier)))
         except ValueError as error:
-            raise ValueError(f'Invalid {kind} list entry on line {number}.') from error
+            name = 'whitelist' if kind == 'allow' else 'blocklist'
+            raise ValueError(f'Invalid {name} entry on line {number}: {error}') from error
     return result
 
 
@@ -146,6 +238,28 @@ def records(text, kind='block'):
 
 def entries(text, kind='block', now=None):
     return [(row.ip, row.scope, row.expiry) for row in records(text, kind)]
+
+
+def trusted_sources(text, now=None):
+    """Whitelisted on any port: never counted by slow brute-force protection.
+
+    nftables interval sets reject overlapping elements, so permanent networks
+    are collapsed and timed (learned) addresses inside them are dropped.
+    """
+    now = int(time.time()) if now is None else now
+    permanent, timed = {4: [], 6: []}, {}
+    for row in records(text, 'allow'):
+        network = ipaddress.ip_network(row.ip, strict=False)
+        if not row.expiry:
+            permanent[network.version].append(network)
+        elif row.expiry > now:
+            timed[network] = max(timed.get(network, 0), row.expiry)
+    collapsed = {version: list(ipaddress.collapse_addresses(networks)) for version, networks in permanent.items()}
+    result = [(version, address(str(network)), 0) for version, networks in collapsed.items() for network in networks]
+    for network, expiry in sorted(timed.items(), key=lambda item: (item[0].version, item[0])):
+        if not any(network.subnet_of(wider) for wider in collapsed[network.version]):
+            result.append((network.version, address(str(network)), expiry))
+    return result
 
 
 def format_entry(ip, scope, expiry=0, source='manual', tier=0):
@@ -177,28 +291,23 @@ def resolve_tiers(rows, base, ladder, cap, now=None):
     return result
 
 
+def refresh_header(original, kind):
+    """Replace only the exact instructions an earlier release generated."""
+    lines = original.splitlines()
+    old = LEGACY_HEADERS[kind]
+    if lines[:len(old)] != old:
+        return original
+    return '\n'.join(HEADERS[kind] + lines[len(old):]) + '\n'
+
+
 def render_list(original, rows, kind):
     """Preserve comments and section order while replacing individual records."""
+    original = refresh_header(original, kind)
     pending = {row.key: row for row in rows}
     indexed = dict(list_lines(original, kind))
     lines, scope = [], '*'
-    marker = '# FRP-SSH-Guard unified list'
-    if marker not in original.splitlines():
-        lines.extend([marker,
-            '# [all] means every protected port (including 22 when enabled).',
-            '# [22001] means only that port; comma-separated ports/ranges also work.',
-            '# Add one IP or CIDR per line. A plain entry or explicit forever is permanent.',
-            '# Block periods: forever or tier=1..5 (default 6h,1d,3d,7d,28d).',
-            '# Tier 1 uses BAN_TIMEOUT; tiers 2..5 use STRIKE_LADDER, capped by STRIKE_MAX.',
-            '# First apply saves until=. To start a new tier period, remove the old until=.',
-            '# until=YYYY-MM-DDTHH:MM:SSZ is an absolute UTC expiry; never renewed by apply.',
-            ('# source=learned identifies learned trust; keep its expiry.' if kind == 'allow' else
-             '# source=runtime/strike identifies automatic bans; keep their expiry.'),
-            '# Delete an entry to remove it; a new login/attack may add it again.',
-            '# Saves are watched while active. Apply now: sudo frp-ssh-guard apply',
-            '# Settings changes still require check and reload. Do not edit a stale copy.',
-            '# Kernel bans are sampled by the log timer (normally within 60 seconds).',
-            '# Whitelist entries override this guard only; other firewalls are independent.', '', '[all]'])
+    if LIST_MARKER not in original.splitlines():
+        lines.extend(HEADERS[kind] + ['', '[all]'])
     for number, line in enumerate(original.splitlines(), 1):
         old = indexed.get(number)
         if old is None:
@@ -396,10 +505,112 @@ def auto_home(base, state, units, command):
         return migrate(base, state, units, installer_user(), command)
 
 
+# Text shipped by earlier releases. Only exact matches are replaced on upgrade.
+LEGACY_SETTINGS_HEADER = [
+    '# Edit this file, then: sudo frp-ssh-guard check && sudo frp-ssh-guard reload',
+    '# First activation: sudo frp-ssh-guard enable',
+    '# Saving alone does not change protection; reboot restores accepted settings.']
+LEGACY_SLOW_COMMENTS = [
+    ['# Independent long-window detector. observe reports without adding bans/strikes.',
+     '# off disables it; enforce opts into the existing ban duration and jail scope.'],
+    ['# Independent long-window detector, active only when PROTECT_SERVER_SSH=on.',
+     '# Fresh installs enforce the existing ban duration and jail scope at the threshold.',
+     '# observe reports without bans/strikes; off disables the long-window detector.',
+     '# Upgrades preserve existing choices; legacy missing settings retain observe.'],
+    ['# Preserve observation behavior for this older configuration.',
+     '# Set enforce and check/reload to enable slow-probe bans.']]
+# Renamed settings keep their value and position; the old comment is replaced.
+RENAMED = {'ALERT_LOG_MAX_SIZE': 'LOG_MAX_SIZE'}
+LEGACY_RENAMED_COMMENTS = {'ALERT_LOG_MAX_SIZE': [
+    ['# Local alerts: newest complete record first, discard oldest records at the cap.',
+     '# No rotated archives or remote notifications. Accepted settings change on reload.']]}
+SWITCH_KEYS = ('EXCLUDE_PORTS', 'PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'SSH_SLOW_PROTECTION')
+# Missing thresholds placed beside a related setting instead of at the end.
+INSERT_BEFORE = {'SSH_SLOW_TOTAL_CONNECTIONS': 'SSH_SLOW_FAILURES',
+                 'SSH_SLOW_PORT_CONNECTIONS': 'SSH_SLOW_FAILURES'}
+
+
+def instructions(template):
+    """The template's reload instructions, without its title line."""
+    lines = template.splitlines()
+    if '# === Ports and protection switches ===' not in lines:
+        return []
+    block = lines[1:lines.index('# === Ports and protection switches ===')]
+    while block and not block[-1].strip():
+        block.pop()
+    return block
+
+
+def template_comments(template):
+    """Comment lines that precede each setting in the template."""
+    result, comments = {}, []
+    for line in template.splitlines(keepends=True):
+        parsed = settings(line)
+        if not parsed:
+            comments.append(line)
+            continue
+        result[next(iter(parsed))] = ''.join(comments)
+        comments = []
+    return result
+
+
 def merge_defaults(original, template):
+    """Add missing settings and retire SSH_SLOW_MODE without changing other values."""
     present = settings(original)
+    before = dict(present)
     settings(template)  # validate the trusted template before changing anything
-    additions, switches, comments, keys = [], [], [], []
+    lines = original.splitlines(keepends=True)
+    plain = [line.rstrip('\r\n') for line in lines]
+    parsed_lines = [settings(line) for line in lines]
+    edits, changes = [], []
+
+    def where(*names):
+        return [i for i, parsed in enumerate(parsed_lines) if set(names) & parsed.keys()]
+
+    def edit(start, stop, text):
+        edits.append((start, stop, text, len(edits)))
+
+    def known_comments(index, blocks):
+        # First line of a shipped comment block directly above line `index`.
+        run = index
+        while run > 0 and plain[run - 1].lstrip().startswith('#'):
+            run -= 1
+        for known in blocks:
+            if plain[run:index][-len(known):] == known:
+                return index - len(known)
+        return index
+
+    block = instructions(template)
+    for index in range(len(plain) - len(LEGACY_SETTINGS_HEADER) + 1):
+        if block and plain[index:index + len(LEGACY_SETTINGS_HEADER)] == LEGACY_SETTINGS_HEADER:
+            edit(index, index + len(LEGACY_SETTINGS_HEADER), ''.join(line + '\n' for line in block))
+            changes.append('instructions')
+            break
+
+    # Only explicit enforcement keeps slow bans; upgrades never add bans by themselves.
+    legacy = present.get('SSH_SLOW_MODE')
+    switch = present.get('SSH_SLOW_PROTECTION', 'on' if legacy == 'enforce' else 'off')
+    for index in where('SSH_SLOW_MODE'):
+        edit(known_comments(index, LEGACY_SLOW_COMMENTS), index + 1, '# Obsolete since 0.0.7; replaced by SSH_SLOW_PROTECTION=' + switch +
+             ' (below JAIL_PER_PORT):\n# ' + plain[index].strip() + '\n')
+    if legacy is not None:
+        changes.append('SSH_SLOW_MODE')
+
+    described = template_comments(template)
+    for old_key, new_key in RENAMED.items():
+        positions = where(old_key)
+        for index in positions:
+            if index == positions[-1] and new_key not in present:
+                text = (described.get(new_key, '').lstrip('\r\n')
+                        + re.sub(r'^(\s*(?:export\s+)?)' + old_key, r'\g<1>' + new_key, plain[index]) + '\n')
+            else:
+                text = '# Obsolete since 0.0.7; renamed ' + new_key + ':\n# ' + plain[index].strip() + '\n'
+            edit(known_comments(index, LEGACY_RENAMED_COMMENTS.get(old_key, [])), index + 1, text)
+        if positions:
+            present.setdefault(new_key, present[old_key])
+            changes.append(old_key)
+
+    additions, switches, anchored, comments = [], [], {}, []
     for line in template.splitlines(keepends=True):
         parsed = settings(line)
         if not parsed:
@@ -409,34 +620,61 @@ def merge_defaults(original, template):
         # An absent port selection can intentionally use legacy ports.conf.
         # Never shadow it with the template's empty selection.
         if key not in present and key != 'PROTECTED_PORTS':
-            block = ''.join(comments) + line.rstrip('\r\n') + '\n'
-            if key == 'SSH_SLOW_MODE':
-                # Fresh installs already contain the template's explicit mode.
-                # An older file missing it must not acquire new enforcement.
-                parsed[key] = 'observe'
-                block = ('# Preserve observation behavior for this older configuration.\n'
-                         '# Set enforce and check/reload to enable slow-probe bans.\n'
-                         'SSH_SLOW_MODE=observe\n')
-            (switches if key in ('EXCLUDE_PORTS', 'PROTECT_SERVER_SSH', 'JAIL_PER_PORT') else additions).append(block)
+            text = line.rstrip('\r\n') + '\n'
+            if key == 'SSH_SLOW_PROTECTION':
+                parsed[key] = switch
+                text = ('# Converted from SSH_SLOW_MODE=' + legacy + ' during upgrade.\n' if legacy is not None else
+                        '# Set to off during upgrade: this older configuration had no slow-probe bans.\n')
+                if switch == 'off':
+                    text += '# To enable it: set on, then sudo frp-ssh-guard check && sudo frp-ssh-guard reload\n'
+                text += 'SSH_SLOW_PROTECTION=' + switch + '\n'
+            text = ''.join(comments) + text
+            if key in SWITCH_KEYS:
+                switches.append((key, text))
+            elif INSERT_BEFORE.get(key) in present:
+                anchored.setdefault(INSERT_BEFORE[key], []).append(text)
+            else:
+                additions.append(text)
             present[key] = parsed[key]
-            keys.append(key)
+            changes.append(key)
         comments = []
-    updated = original
-    if switches:
-        lines = original.splitlines(keepends=True)
-        position = 0
-        for number, line in enumerate(lines, 1):
-            if {'PROTECTED_PORTS', 'EXCLUDE_PORTS'} & settings(line).keys():
-                position = number
-        before = ''.join(lines[:position])
-        updated = (before + ('\n' if before and not before.endswith('\n') else '')
-                   + '\n# Missing port settings and protection switches added during installation.\n'
-                   + ''.join(switches) + '\n' + ''.join(lines[position:]))
+
+    # The slow switch belongs directly below an existing jail switch.
+    jail = where('JAIL_PER_PORT')
+    below_jail = [text for key, text in switches if key == 'SSH_SLOW_PROTECTION' and jail]
+    group = [text for key, text in switches if not (key == 'SSH_SLOW_PROTECTION' and jail)]
+    if group:
+        ports = where('PROTECTED_PORTS', 'EXCLUDE_PORTS')
+        position = ports[-1] + 1 if ports else 0
+        edit(position, position, '\n# Missing port settings and protection switches added during installation.\n'
+             + ''.join(group) + '\n')
+    if below_jail:
+        edit(jail[-1] + 1, jail[-1] + 1, ''.join(below_jail))
+    for target, texts in anchored.items():
+        position = where(target)[0]
+        edit(position, position, ''.join(texts))
+
+    # Apply from the bottom up. At one position, replace the existing line first,
+    # then insert; earlier insertions stay above later ones.
+    for start, stop, text, _ in sorted(edits, key=lambda item: (item[0], item[1] > item[0], item[3]), reverse=True):
+        if start == len(lines) and lines and not lines[-1].endswith('\n'):
+            text = '\n' + text
+        lines[start:stop] = [text]
+    updated = ''.join(lines)
     if additions:
         updated += ('\n\n# Missing defaults added by FRP-SSH-Guard during installation.\n'
                     '# Existing values are retained; policy changes need check/reload.\n'
                     + ''.join(additions))
-    return updated, keys
+    result = settings(updated)
+    for old_key, new_key in RENAMED.items():
+        if old_key in before:
+            before.setdefault(new_key, before[old_key])
+    obsolete = ('SSH_SLOW_MODE', *RENAMED)
+    if (any(result.get(key) != value for key, value in before.items() if key not in obsolete)
+            or any(key not in result for key in present if key not in obsolete)
+            or any(key in result for key in obsolete)):
+        raise ValueError('Settings merge would change an existing value; configuration retained.')
+    return updated, changes
 
 
 def append_defaults(path, template):
@@ -452,7 +690,7 @@ def append_defaults(path, template):
             raise ValueError('Configuration must be a regular file owned by its selected administrator.')
         original = source.read()
         updated, keys = merge_defaults(original.decode('utf-8'), template)
-        if not keys:
+        if not keys or updated == original.decode('utf-8'):
             return []
         descriptor, temporary = tempfile.mkstemp(prefix='.guard-', dir=path.parent)
         try:
@@ -481,7 +719,22 @@ def append_defaults(path, template):
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
-    print('Added missing settings: ' + ', '.join(keys) + '. Original saved as ' + Path(backup).name)
+    parts = []
+    added = [key for key in keys if key not in ('SSH_SLOW_MODE', 'instructions', *RENAMED)]
+    switch = settings(updated).get('SSH_SLOW_PROTECTION')
+    if added:
+        parts.append('added ' + ', '.join(added))
+    if 'SSH_SLOW_MODE' in keys:
+        parts.append('replaced obsolete SSH_SLOW_MODE with SSH_SLOW_PROTECTION=' + str(switch))
+    for old_key, new_key in RENAMED.items():
+        if old_key in keys:
+            parts.append('renamed ' + old_key + ' to ' + new_key)
+    if 'instructions' in keys:
+        parts.append('refreshed the reload instructions')
+    print('Settings updated: ' + '; '.join(parts) + '. Original saved as ' + Path(backup).name)
+    if 'SSH_SLOW_PROTECTION' in keys and switch == 'off':
+        print('Slow brute-force protection stays off for this older configuration. To enable it, set '
+              'SSH_SLOW_PROTECTION=on, then run: sudo frp-ssh-guard check && sudo frp-ssh-guard reload')
     return keys
 
 
@@ -544,6 +797,9 @@ def main():
             if expiry and expiry <= now:
                 continue
             print(f'{6 if ":" in ip else 4}|{ip}|{scope}|{expiry}|{format_entry(ip, scope, expiry, source, tier)}')
+    elif action == 'trusted':
+        for version, value, expiry in trusted_sources(Path(args[0]).read_text()):
+            print(f'{version}|{value}|{expiry}')
     elif action == 'replace-list':
         replace_list(*json.load(sys.stdin))
     elif action == 'edit-list':
