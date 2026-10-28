@@ -29,9 +29,13 @@
 #   sudo frp-ssh-guard unblock 203.0.113.10                remove its lines
 #   sudo frp-ssh-guard ban 203.0.113.10 12h                temporary (default BAN_TIMEOUT)
 #
-# Lines with source=runtime or source=strike are automatic bans; keep their until=.
-# Delete any line to unblock it (a new attack may add it again). To also forgive
-# its strike history: sudo frp-ssh-guard release 203.0.113.10
+# Automatic bans follow the manual lines of each section, sorted by address:
+#   source=runtime  a limit was crossed (lasts BAN_TIMEOUT)
+#   source=strike   a longer repeat-offender ban (STRIKE_LADDER)
+# One address may have both lines; it stays blocked until the later until=.
+# Leave until= as it is. Delete a line to unblock that address early; a new
+# attack may add it again. To also forgive its strike history, run:
+#   sudo frp-ssh-guard release 203.0.113.10
 # New automatic bans appear here within about 60 seconds. Reopen this file before
 # editing: saving an old copy removes newer automatic bans.
 # Whitelist entries win over this list; other firewalls are independent.

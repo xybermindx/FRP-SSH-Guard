@@ -2,6 +2,14 @@
 
 ## 0.0.7
 
+- Package revision 4 fixes busy blocklists that repeated the same port header (for example `[22]`)
+  many times, because new automatic bans were appended under a fresh header whenever
+  the last section belonged to another port. Each port now has one section; new
+  entries join it, and automatic bans follow the manual lines, sorted by address,
+  so an address's `runtime` and `strike` lines sit together. Existing repeated
+  headers are merged at the next update; comments and manual lines stay in place.
+  The header explains `runtime`, `strike` and which `until=` applies.
+
 - Package revision 3 sets new default ban durations: first offense 12 hours (`BAN_TIMEOUT=12h`), then
   3 days, 7 days, 30 days and 90 days for the 2nd to 5th offense within
   `STRIKE_WINDOW` (`STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"`, `STRIKE_MAX=90d`).

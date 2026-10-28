@@ -1,5 +1,15 @@
 # v0.0.7 validation
 
+## One section per port in lists: package 0.0.7-4
+
+Checked on 2026-10-28 on the development host with synthetic addresses only.
+
+- Local `make test`: 140 cases, 139 passing and the privileged namespace case
+  skipped locally (CI runs it). New regressions: repeated port headers merge into
+  one section, automatic bans sort numerically with runtime/strike pairs together,
+  user comments and manual lines keep their place, re-rendering is stable, new CLI
+  entries join the existing section, and every previously shipped header refreshes.
+
 ## Ban durations and repeat-offender steps: package 0.0.7-3
 
 Checked on 2026-10-28 on the development host. No firewall was changed.

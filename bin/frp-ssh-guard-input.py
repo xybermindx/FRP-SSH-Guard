@@ -62,9 +62,13 @@ HEADERS = {
         '#   sudo frp-ssh-guard unblock 203.0.113.10                remove its lines',
         '#   sudo frp-ssh-guard ban 203.0.113.10 12h                temporary (default BAN_TIMEOUT)',
         '#',
-        '# Lines with source=runtime or source=strike are automatic bans; keep their until=.',
-        '# Delete any line to unblock it (a new attack may add it again). To also forgive',
-        '# its strike history: sudo frp-ssh-guard release 203.0.113.10',
+        '# Automatic bans follow the manual lines of each section, sorted by address:',
+        '#   source=runtime  a limit was crossed (lasts BAN_TIMEOUT)',
+        '#   source=strike   a longer repeat-offender ban (STRIKE_LADDER)',
+        '# One address may have both lines; it stays blocked until the later until=.',
+        '# Leave until= as it is. Delete a line to unblock that address early; a new',
+        '# attack may add it again. To also forgive its strike history, run:',
+        '#   sudo frp-ssh-guard release 203.0.113.10',
         '# New automatic bans appear here within about 60 seconds. Reopen this file before',
         '# editing: saving an old copy removes newer automatic bans.',
         '# Whitelist entries win over this list; other firewalls are independent.'],
@@ -108,25 +112,43 @@ LEGACY_HEADERS = {
 
 
 def _shipped(kind, *changes):
-    # A previous release's header: the current one with some lines as they were then.
+    # A previous release's header: the current one with some runs of lines as they were then.
     lines = list(HEADERS[kind])
     for current, previous in changes:
-        lines[lines.index(current)] = previous
+        current, previous = list(current), list(previous)
+        start = lines.index(current[0])
+        lines[start:start + len(current)] = previous
     return lines
+
+
+_BLOCK_AUTOMATIC = (
+    ['# Automatic bans follow the manual lines of each section, sorted by address:',
+     '#   source=runtime  a limit was crossed (lasts BAN_TIMEOUT)',
+     '#   source=strike   a longer repeat-offender ban (STRIKE_LADDER)',
+     '# One address may have both lines; it stays blocked until the later until=.',
+     '# Leave until= as it is. Delete a line to unblock that address early; a new',
+     '# attack may add it again. To also forgive its strike history, run:',
+     '#   sudo frp-ssh-guard release 203.0.113.10'],
+    ['# Lines with source=runtime or source=strike are automatic bans; keep their until=.',
+     '# Delete any line to unblock it (a new attack may add it again). To also forgive',
+     '# its strike history: sudo frp-ssh-guard release 203.0.113.10'])
+_BLOCK_DURATIONS = (
+    ['#   203.0.113.12 tier=1              BAN_TIMEOUT (default 12 hours)',
+     '#   203.0.113.13 tier=2              3 days (tier=3: 7 days, tier=4: 30 days)',
+     '#   203.0.113.14 tier=5              90 days (tiers 2-5 follow STRIKE_LADDER)'],
+    ['#   203.0.113.12 tier=1              BAN_TIMEOUT (default 6 hours)',
+     '#   203.0.113.13 tier=2              1 day (tier=3: 3 days, tier=4: 7 days)',
+     '#   203.0.113.14 tier=5              28 days (tiers 2-5 follow STRIKE_LADDER)'])
 
 
 # Every header an earlier release generated, oldest first; only these are refreshed.
 PREVIOUS_HEADERS = {
-    'block': [LEGACY_HEADERS['block'], _shipped('block',  # v0.0.7-1 and -2: old default durations
-        ('#   203.0.113.12 tier=1              BAN_TIMEOUT (default 12 hours)',
-         '#   203.0.113.12 tier=1              BAN_TIMEOUT (default 6 hours)'),
-        ('#   203.0.113.13 tier=2              3 days (tier=3: 7 days, tier=4: 30 days)',
-         '#   203.0.113.13 tier=2              1 day (tier=3: 3 days, tier=4: 7 days)'),
-        ('#   203.0.113.14 tier=5              90 days (tiers 2-5 follow STRIKE_LADDER)',
-         '#   203.0.113.14 tier=5              28 days (tiers 2-5 follow STRIKE_LADDER)'))],
+    'block': [LEGACY_HEADERS['block'],
+              _shipped('block', _BLOCK_DURATIONS, _BLOCK_AUTOMATIC),  # v0.0.7-1 and -2
+              _shipped('block', _BLOCK_AUTOMATIC)],                   # v0.0.7-3
     'allow': [LEGACY_HEADERS['allow'], _shipped('allow',  # v0.0.7-1, before administrator learning
-        ('# Lines with source=learned come from administrator logins to this server',
-         '# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)'))],
+        (['# Lines with source=learned come from administrator logins to this server'],
+         ['# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)']))],
 }
 
 
@@ -411,13 +433,67 @@ def render_list(original, rows, kind):
         if '#' in line:
             value += ' #' + line.split('#', 1)[1]
         lines.append(value)
-    for row in pending.values():
-        if scope != row.scope:
-            lines.extend(['', '[' + ('all' if row.scope == '*' else row.scope) + ']'])
-            scope = row.scope
-        flat = format_entry(*row).split(' ', 2)
-        lines.append(row.ip + (' ' + flat[2] if len(flat) > 2 else ''))
-    return '\n'.join(lines).rstrip() + '\n'
+    return _arrange(lines, list(pending.values()), kind)
+
+
+def _entry(row):
+    flat = format_entry(*row).split(' ', 2)
+    return row.ip + (' ' + flat[2] if len(flat) > 2 else '')
+
+
+def _arrange(lines, new_rows, kind):
+    """Keep one section per port scope: user lines stay in place, automatic and new
+    entries join the first section for their ports, and automatic entries are
+    sorted by address after the manual ones. Repeated headers left by earlier
+    versions disappear once they hold nothing but moved automatic entries."""
+    rows = dict(list_lines('\n'.join(lines) + '\n', kind))
+    starts = [i for i, line in enumerate(lines) if line.split('#', 1)[0].strip().startswith('[')]
+    sections = []  # (header index or -1 for lines before any header, end, scope)
+    bounds = [-1] + starts
+    for n, start in enumerate(bounds):
+        end = bounds[n + 1] if n + 1 < len(bounds) else len(lines)
+        scope = '*' if start < 0 else ports(lines[start].split('#', 1)[0].strip()[1:-1])
+        sections.append((start, end, scope))
+    home, automatic, manual, drop = {}, {}, {}, set()
+    for n, (start, end, scope) in enumerate(sections):
+        if scope not in home and (start >= 0 or any(i + 1 in rows for i in range(end))):
+            home[scope] = n
+    for n, (start, end, scope) in enumerate(sections):
+        if scope not in home:
+            continue
+        for i in range(start + 1, end):
+            row = rows.get(i + 1)
+            if row and row.source != 'manual' and row.scope == scope and '#' not in lines[i]:
+                automatic.setdefault(scope, []).append(row)
+                drop.add(i)
+        if n != home[scope] and start >= 0 and not any(
+                lines[i].strip() for i in range(start + 1, end) if i not in drop):
+            drop.update(range(start, end))
+    for row in new_rows:
+        (manual if row.source == 'manual' else automatic).setdefault(row.scope, []).append(row)
+
+    def entries(scope):
+        found = sorted(automatic.pop(scope, []), key=lambda r: (
+            ipaddress.ip_network(r.ip, strict=False).version, ipaddress.ip_network(r.ip, strict=False),
+            r.source != 'runtime', r.expiry))
+        return [_entry(r) for r in manual.pop(scope, []) + found]
+
+    result = []
+    for n, (start, end, scope) in enumerate(sections):
+        segment = [lines[i] for i in range(max(start, 0), end) if i not in drop]
+        if home.get(scope) == n:
+            k = len(segment)
+            while k and not segment[k - 1].strip():
+                k -= 1
+            segment[k:k] = entries(scope)
+        result.extend(segment)
+    for scope in list(dict.fromkeys([*manual, *automatic])):
+        result.extend(['', '[' + ('all' if scope == '*' else scope) + ']'] + entries(scope))
+    tidy = []
+    for line in result:
+        if line.strip() or not tidy or tidy[-1].strip():
+            tidy.append(line)
+    return '\n'.join(tidy).rstrip() + '\n'
 
 
 def atomic_write(path, data, mode=0o600):

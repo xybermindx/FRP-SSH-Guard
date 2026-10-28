@@ -7,6 +7,10 @@ One on/off switch for slow brute-force protection, now covering forwarded ports,
 
 ## Changes
 
+- Package revision `0.0.7-4`: one section per port in `blocklist.conf` and
+  `whitelist.conf`. Busy lists no longer repeat headers such as `[22]`; automatic
+  bans follow the manual lines, sorted by address, with an address's `runtime` and
+  `strike` lines together. Existing files are tidied at their next update.
 - Package revision `0.0.7-3`: new default ban durations. First offense 12 hours,
   then 3 days, 7 days, 30 days and 90 days (`STRIKE_MAX=90d`). Existing settings
   keep their own values; see the migration notes to adopt the new ones.
@@ -48,8 +52,8 @@ sha256sum --ignore-missing -c SHA256SUMS
 sudo apt install ./frp-ssh-guard_0.0.7.deb
 ```
 
-An active guard is refreshed automatically. Debian version `0.0.7-3` replaces
-the earlier v0.0.7 packages (`0.0.7-1`, `0.0.7-2`) under the same download name;
+An active guard is refreshed automatically. Debian version `0.0.7-4` replaces
+the earlier v0.0.7 packages (`0.0.7-1` to `0.0.7-3`) under the same download name;
 download both files again and APT upgrades the earlier build. Upgrades never start bans you did
 not choose: `SSH_SLOW_MODE=enforce` becomes `on` (which now also covers forwarded
 ports), while `observe`, `off` or a missing value become `off`. To enable it later,

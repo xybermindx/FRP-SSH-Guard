@@ -371,7 +371,7 @@ sudo frp-ssh-guard status
 
 文件中不接受 `7d` 这类直接时长；请使用 `tier=`/`until=`，或
 `sudo frp-ssh-guard block IP --for 7d`。黑名单中的 `IP tier=1` 到
-`IP tier=5` 选择已配置时长（默认 12h、3d、7d、30d、90d）。自动条目带有 `source=learned`、`source=runtime`
+`IP tier=5` 选择已配置时长（默认 12h、3d、7d、30d、90d）。每个端口只有一个分节；自动条目排在手动条目之后，按地址排序。自动条目带有 `source=learned`、`source=runtime`
 或 `source=strike`，以及绝对 UTC `until=` 到期时间。runtime 包括自动检测和 `ban` 命令。
 删除自动行可移除对应信任/封禁；新的攻击或可信登录仍可重新添加。`unban` 还会豁免累犯历史。
 

@@ -412,6 +412,7 @@ permanent**, and `IP forever` means the same:
 Plain times such as `7d` are rejected in the file; use `tier=`/`until=`, or
 `sudo frp-ssh-guard block IP --for 7d`. In the blocklist, `IP tier=1`
 through `IP tier=5` select configured durations (defaults: 12h, 3d, 7d, 30d, 90d).
+Each port has one section; automatic rows follow the manual lines, sorted by address.
 Automatic rows include `source=learned`, `source=runtime` or `source=strike` and
 an absolute UTC `until=` expiry. Runtime includes automatic detection and the
 `ban` command. Deleting an automatic row removes that ban/trust entry; a new

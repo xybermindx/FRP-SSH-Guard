@@ -94,6 +94,37 @@ class ListTests(unittest.TestCase):
                 self.assertEqual(learn(1000 + 120 * 86400), [1000 + 120 * 86400])  # a later login renews
                 self.assertEqual(learn(1000 + 100 * 86400), [1000 + 120 * 86400])  # an older replay never shortens
 
+    def test_one_section_per_port_with_sorted_automatic_bans(self):
+        when = lambda day: f'2030-01-0{day}T00:00:00Z'
+        text = ('[all]\n\n[22]\n'
+                f'203.0.113.40 source=strike until={when(3)}\n198.51.100.20 source=runtime until={when(1)}\n'
+                f'198.51.100.9 source=runtime until={when(1)}\n198.51.100.9 source=strike until={when(4)}\n\n'
+                f'[22001]\n198.51.100.77 source=runtime until={when(1)}\n\n'
+                f'[22]\n198.51.100.10 source=runtime until={when(1)}\n# my note\n203.0.113.5 forever\n\n'
+                f'[22001]\n203.0.113.9 source=runtime until={when(2)}\n\n'
+                f'[22]\n198.51.100.100 source=runtime until={when(2)}\n')
+        out = data.render_list(text, data.records(text), 'block')
+        body = out[out.index('\n[all]\n') + 1:]
+        self.assertEqual(body.count('[22001]'), 1)
+        self.assertEqual(body.count('[22]'), 2)  # the user's own note keeps its section
+        automatic = [line.split()[0] for line in body.split('[22001]')[0].splitlines() if 'source=' in line]
+        self.assertEqual(automatic, ['198.51.100.9', '198.51.100.9', '198.51.100.10', '198.51.100.20',
+                                     '198.51.100.100', '203.0.113.40'])  # numeric order, pairs together
+        self.assertIn('198.51.100.9 source=runtime until=2030-01-01T00:00:00Z\n'
+                      '198.51.100.9 source=strike until=2030-01-04T00:00:00Z', body)
+        self.assertIn('# my note\n203.0.113.5 forever', body)
+        self.assertEqual(sorted(data.records(out)), sorted(data.records(text)))
+        self.assertEqual(data.render_list(out, data.records(out), 'block'), out)
+
+    def test_new_entries_join_the_existing_section_for_their_ports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'blocklist.conf'
+            path.write_text(data.render_list('', [data.Row('198.51.100.1', '22001'), data.Row('198.51.100.2', '22003')], 'block'))
+            data.edit_list(path, 'block', 'add', '198.51.100.3', '22001', 0)
+            text = path.read_text()
+            self.assertEqual(text.splitlines().count('[22001]'), 1)  # header comments mention it too
+            self.assertIn('\n[22001]\n198.51.100.1 forever\n198.51.100.3 forever\n', text)
+
     def test_list_errors_name_the_problem(self):
         for text, message in (('203.0.113.10 7d', 'no time means forever'),
                               ('203.0.113.10 for=7d', 'not a supported option'),
