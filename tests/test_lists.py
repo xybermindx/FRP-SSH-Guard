@@ -87,6 +87,23 @@ class ListTests(unittest.TestCase):
             self.assertFalse(lists.listed('203.0.113.6'))  # expired learned entry
             self.assertFalse(lists.listed('192.0.2.1'))
 
+    def test_covered_entries_are_kept_out_of_nftables_and_partial_overlaps_refused(self):
+        rows = data.records('198.51.100.0/24\n198.51.100.7\n198.51.100.7 until=2030-01-01T00:00:00Z\n'
+                            '[22001-22003]\n203.0.113.0/24\n[22002]\n203.0.113.5\n'
+                            '203.0.113.6 source=runtime until=2030-01-01T00:00:00Z\n'
+                            '[22001]\n203.0.113.6 source=runtime until=2031-01-01T00:00:00Z\n')
+        skips = data.redundant_elements(rows, 'block')
+        self.assertEqual(skips, {1: {'*'}, 2: {'*'}, 4: {'22002'}})  # automatic and manual sets differ
+        for text in ('198.51.100.0/24 until=2030-01-01T00:00:00Z\n198.51.100.7\n',   # wider but shorter
+                     '[22001-22002]\n203.0.113.0/24\n[22002-22003]\n203.0.113.5\n'):  # ports only partly covered
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, 'lines 1 and 2 overlap'):
+                data.redundant_elements(data.records(text, 'block'), 'block', [1, 2])
+        # Learned addresses in [all] use an address-only set: duplicates are fine there.
+        learned = data.records('198.51.100.9 source=learned until=2030-01-01T00:00:00Z\n'
+                               '[22]\n198.51.100.9 source=learned until=2031-01-01T00:00:00Z\n'
+                               '[22,22001]\n198.51.100.9 source=learned until=2030-01-01T00:00:00Z\n', 'allow')
+        self.assertEqual(data.redundant_elements(learned, 'allow'), {2: {'22'}})
+
     def test_invalid_sections_metadata_and_automatic_permanent_entries_fail(self):
         for text in ('[0]\n', '[65536]\n', '[22] junk\n', '[22-21]\n',
                      '198.51.100.1 source=runtime\n', '198.51.100.1 source=unknown\n',

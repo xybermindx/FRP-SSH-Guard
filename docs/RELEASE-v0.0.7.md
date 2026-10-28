@@ -22,6 +22,9 @@ One on/off switch for slow brute-force protection, now covering forwarded ports,
   `ALERT_LOG_MAX_SIZE`).
 - `settings.conf` explains when and how changes take effect. `blocklist.conf`
   explains that an entry without a time is permanent and gives examples.
+- Fix: a list holding a subnet plus an address inside it (same ports) no longer
+  makes nftables reject every rule. Covered entries are skipped in the firewall and
+  kept in the file; overlaps that cannot be stored are reported with both lines.
 - List errors name the cause and line; several smaller fixes are listed in the changelog.
 
 ## Upgrading

@@ -258,8 +258,11 @@ read_ports() {
     (( ${#SPECS[@]} > 0 )) || die "No SSH ports selected after exclusions."
 }
 
+# Skip list entries a wider entry already covers (nftables rejects overlaps).
+covered() { [[ ",$1," == *",$2,"* ]]; }
+
 read_allow() {
-    local input=${1:-$ALLOW_FILE} parsed family ip scope expiry canonical token suffix remaining now trusted
+    local input=${1:-$ALLOW_FILE} parsed family ip scope expiry canonical token suffix remaining now trusted skip
     ALLOW4=(); ALLOW6=(); ALLOW_PP4=(); ALLOW_PP6=(); ALLOW_SNAPSHOT=''
     LEARNED4=(); LEARNED6=(); LEARNED_PP4=(); LEARNED_PP6=(); TRUSTED4=(); TRUSTED6=()
     now=$(date +%s)
@@ -278,7 +281,7 @@ read_allow() {
         fi
         if [[ "$family" == 6 ]]; then TRUSTED6+=("$ip$suffix"); else TRUSTED4+=("$ip$suffix"); fi
     done <<< "$trusted"
-    while IFS='|' read -r family ip scope expiry canonical; do
+    while IFS='|' read -r family ip scope expiry canonical skip; do
         [[ -n "$family" ]] || continue
         ALLOW_SNAPSHOT+="$canonical"$'\n'
         if (( expiry > 0 )); then
@@ -289,15 +292,18 @@ read_allow() {
                 if [[ "$family" == 6 ]]; then LEARNED6+=("$ip$suffix"); else LEARNED4+=("$ip$suffix"); fi
             else
                 for token in ${scope//,/ }; do
+                    covered "$skip" "$token" && continue
                     if [[ "$family" == 6 ]]; then LEARNED_PP6+=("$ip . $token$suffix"); else LEARNED_PP4+=("$ip . $token$suffix"); fi
                 done
             fi
             continue
         fi
         if [[ "$scope" == '*' ]]; then
+            covered "$skip" '*' && continue
             if [[ "$family" == 6 ]]; then ALLOW6+=("$ip"); else ALLOW4+=("$ip"); fi
         else
             for token in ${scope//,/ }; do
+                covered "$skip" "$token" && continue
                 if [[ "$family" == 6 ]]; then ALLOW_PP6+=("$ip . $token"); else ALLOW_PP4+=("$ip . $token"); fi
             done
         fi
@@ -321,14 +327,14 @@ read_learned() {
 }
 
 read_blocklist() {
-    local input=${1:-$BLOCKLIST_FILE} parsed family ip scope expiry canonical token suffix remaining now
+    local input=${1:-$BLOCKLIST_FILE} parsed family ip scope expiry canonical token suffix remaining now skip
     MANUAL4=(); MANUAL6=(); BLOCK_PP4=(); BLOCK_PP6=(); BLOCK_SNAPSHOT=''
     AUTO4=(); AUTO6=(); AUTO_PP4=(); AUTO_PP6=()
     if [[ ! -f "$input" && "$MANUAL_DIR" != "$LIST_DIR" ]]; then input="$LIST_DIR/blocklist.conf"; fi
     [[ -f "$input" ]] || return 0
     parsed=$(python3 "$INPUT_HELPER" read-list "$input" block "$BAN_TIMEOUT" "$STRIKE_LADDER" "$STRIKE_MAX") || die 'Invalid manual block list; no rules changed.'
     now=$(date +%s)
-    while IFS='|' read -r family ip scope expiry canonical; do
+    while IFS='|' read -r family ip scope expiry canonical skip; do
         [[ -n "$family" ]] || continue
         suffix=''
         if (( expiry > 0 )); then
@@ -342,15 +348,18 @@ read_blocklist() {
                 if [[ "$family" == 6 ]]; then AUTO6+=("$ip$suffix"); else AUTO4+=("$ip$suffix"); fi
             else
                 for token in ${scope//,/ }; do
+                    covered "$skip" "$token" && continue
                     if [[ "$family" == 6 ]]; then AUTO_PP6+=("$ip . $token$suffix"); else AUTO_PP4+=("$ip . $token$suffix"); fi
                 done
             fi
             continue
         fi
         if [[ "$scope" == '*' ]]; then
+            covered "$skip" '*' && continue
             if [[ "$family" == 6 ]]; then MANUAL6+=("$ip$suffix"); else MANUAL4+=("$ip$suffix"); fi
         else
             for token in ${scope//,/ }; do
+                covered "$skip" "$token" && continue
                 if [[ "$family" == 6 ]]; then BLOCK_PP6+=("$ip . $token$suffix"); else BLOCK_PP4+=("$ip . $token$suffix"); fi
             done
         fi
@@ -375,7 +384,7 @@ read_hardban() {
     [[ -f "$input" ]] || input="$LIST_DIR/hardguard.conf"
     [[ -f "$input" ]] || return 0
     parsed=$(python3 "$INPUT_HELPER" read-list "$input" block) || die 'Invalid strike list.'
-    while IFS='|' read -r family ip scope expiry canonical; do
+    while IFS='|' read -r family ip scope expiry canonical _; do
         [[ -n "$family" ]] || continue
         if [[ "$JAIL_PER_PORT" == on ]]; then
             if [[ "$scope" == '*' ]]; then

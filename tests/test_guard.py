@@ -244,8 +244,10 @@ cat "$GUARD_DIR/rules.nft"
     @unittest.skipUnless(os.environ.get('FRP_GUARD_LIVE_TESTS') == '1', 'requires root and isolated network namespace')
     def test_kernel_accepts_initial_and_replacement_rules(self):
         expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        # Covered and duplicate entries must not reach nftables interval sets.
         (self.root / 'lists/blocklist.conf').write_text(
-            f'203.0.113.0/24 22001,22003\n2001:db8::7 all until={expiry}\n'
+            f'203.0.113.0/24 22001,22003\n203.0.113.9 22001\n203.0.113.0/24\n203.0.113.9\n'
+            f'2001:db8::7 all until={expiry}\n2001:db8::/64\n'
             f'[22001-22003]\n198.51.100.78 source=runtime until={expiry}\n')
         (self.root / 'lists/whitelist.conf').write_text(
             f'[22,22001]\n198.51.100.77 source=learned until={expiry}\n[22003]\n198.51.100.0/24\n198.51.100.79\n')

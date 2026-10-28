@@ -240,6 +240,66 @@ def entries(text, kind='block', now=None):
     return [(row.ip, row.scope, row.expiry) for row in records(text, kind)]
 
 
+def _port_span(token):
+    if token == '*':
+        return 0, 65535
+    first, _, last = token.partition('-')
+    return int(first), int(last or first)
+
+
+def redundant_elements(rows, kind, numbers=None):
+    """Return {row index: scope tokens} that nftables must not receive.
+
+    Interval sets reject overlapping elements, for example a /24 and an address
+    inside it under the same port. An element fully covered by another one with an
+    equal or longer lifetime adds nothing, so it is skipped; it still matches through
+    the wider entry and stays in the file. A partial overlap cannot be stored.
+    """
+    numbers = numbers or list(range(1, len(rows) + 1))
+    groups = {}
+    for index, row in enumerate(rows):
+        network = ipaddress.ip_network(row.ip, strict=False)
+        if kind == 'allow':
+            name = 'learned' if row.expiry else 'allow'
+        else:
+            name = 'manual' if row.source == 'manual' else 'saved_ban'
+        if row.scope == '*':
+            if name in ('learned', 'saved_ban'):
+                continue  # address-only sets without intervals accept duplicates
+            tokens = ['*']
+        else:
+            name += '_pp'
+            tokens = row.scope.split(',')
+        for token in tokens:
+            groups.setdefault((name, network.version), []).append(
+                (network, _port_span(token), row.expiry, index, token))
+    skipped = {}
+    for elements in groups.values():
+        # Wider networks and port ranges first, then longer lifetimes (0 = forever).
+        elements.sort(key=lambda e: (e[0].prefixlen, e[1][0] - e[1][1], e[2] != 0, -e[2]))
+        kept = []
+        for network, span, expiry, index, token in elements:
+            covered, clash = False, None
+            for other, other_span, other_expiry, other_index, _ in kept:
+                if not (network.overlaps(other) and span[0] <= other_span[1] and other_span[0] <= span[1]):
+                    continue
+                if (network.subnet_of(other) and other_span[0] <= span[0] and span[1] <= other_span[1]
+                        and (not other_expiry or expiry and other_expiry >= expiry)):
+                    covered = True
+                    break
+                clash = clash if clash is not None else other_index
+            if covered:
+                skipped.setdefault(index, set()).add(token)
+            elif clash is not None:
+                name = 'whitelist' if kind == 'allow' else 'blocklist'
+                raise ValueError(f'The {name} entries on lines {numbers[clash]} and {numbers[index]} overlap '
+                                 'with different durations or port ranges, which nftables cannot store. '
+                                 'Give them the same duration, or remove or narrow one.')
+            else:
+                kept.append((network, span, expiry, index, token))
+    return skipped
+
+
 def trusted_sources(text, now=None):
     """Whitelisted on any port: never counted by slow brute-force protection.
 
@@ -779,24 +839,28 @@ def main():
     elif action == 'read-list':
         path, kind, *tier_settings = args
         now = int(time.time())
-        rows = records(Path(path).read_text(), kind)
+        numbered = list_lines(Path(path).read_text(), kind)
+        rows = [row for _, row in numbered]
         if any(row.tier and not row.expiry for row in rows):
             if len(tier_settings) != 3:
                 raise ValueError('Apply tier entries first so their expiry can be saved.')
             rows = resolve_tiers(rows, *tier_settings, now=now)
+        numbered = [(number, row) for (number, _), row in zip(numbered, rows)]
         # A runtime ban and a strike can share a key; restore the longer deadline
         # once. Keep both origins in the editable file, outside kernel encoding.
         automatic = {}
-        for row in rows:
+        for number, row in numbered:
             if row.source in ('runtime', 'strike'):
                 identity = (row.ip, row.scope)
-                if identity not in automatic or row.expiry > automatic[identity].expiry:
-                    automatic[identity] = row
-        rows = [row for row in rows if row.source not in ('runtime', 'strike')] + list(automatic.values())
-        for ip, scope, expiry, source, tier in rows:
-            if expiry and expiry <= now:
-                continue
-            print(f'{6 if ":" in ip else 4}|{ip}|{scope}|{expiry}|{format_entry(ip, scope, expiry, source, tier)}')
+                if identity not in automatic or row.expiry > automatic[identity][1].expiry:
+                    automatic[identity] = (number, row)
+        numbered = [item for item in numbered if item[1].source not in ('runtime', 'strike')] + list(automatic.values())
+        numbered = [(number, row) for number, row in numbered if not (row.expiry and row.expiry <= now)]
+        # Last field: scope tokens already covered by a wider entry (skip in nftables).
+        skips = redundant_elements([row for _, row in numbered], kind, [number for number, _ in numbered])
+        for index, (_, (ip, scope, expiry, source, tier)) in enumerate(numbered):
+            print(f'{6 if ":" in ip else 4}|{ip}|{scope}|{expiry}|{format_entry(ip, scope, expiry, source, tier)}'
+                  f'|{",".join(sorted(skips.get(index, ())))}')
     elif action == 'trusted':
         for version, value, expiry in trusted_sources(Path(args[0]).read_text()):
             print(f'{version}|{value}|{expiry}')

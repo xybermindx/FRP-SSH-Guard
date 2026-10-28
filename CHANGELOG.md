@@ -19,6 +19,10 @@
   enable, status). Explain in `blocklist.conf` that an entry without a time is
   permanent, with examples for subnets, IPv6, tiers, `until=` and the matching
   commands. Refresh these instructions in existing files only when unchanged.
+- Fix: a whitelist or blocklist holding a subnet plus an address inside it under the
+  same ports made nftables reject the whole rule set ("File exists"), so enable,
+  reload or apply failed. Covered entries are now kept out of nftables (they stay in
+  the file and still match); partial overlaps are reported with both line numbers.
 - Fixes: list errors now name the cause (for example `7d` instead of `tier=`/`until=`);
   the whitelist header no longer describes block-only tiers; `release` now removes
   its address from the legacy strike file; `unblock`/`unallow` help describes that
