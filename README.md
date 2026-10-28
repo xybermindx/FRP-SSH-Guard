@@ -87,7 +87,8 @@ host firewall policy specifically for the ports you choose:
 - A shared per-port rate limit to reduce distributed connection bursts.
 - IPv4/IPv6 IP and CIDR allow/block lists, optionally restricted to selected ports.
 - Ban history and longer bans for repeatedly observed offenders.
-- Optional trusted-source learning from successful logins to the public host's sshd.
+- Automatic administrator learning: after a successful login to the public host's sshd
+  by root, the settings owner or a sudo/admin/wheel member, that source is whitelisted.
 - Explicit configuration activation, reboot restoration, and recovery of a missing guard table.
 - An architecture-independent Debian package, complete source, and reproducible builds.
 
@@ -253,6 +254,7 @@ PER_IP_BURST=40
 GLOBAL_RATE=30
 GLOBAL_BURST=20
 BAN_TIMEOUT=6h
+LEARN_ADMINS=on
 LOGIN_USERS=""
 ```
 
@@ -324,11 +326,12 @@ preserving saved ban deadlines and timer schedules.
 
 Fail2ban can remain installed: the tools have separate rules and independent bans.
 If both block an address, release it in both tools. The guard does not modify
-Fail2ban jail settings; optional `LOGIN_USERS` learning can add trusted addresses
-to an existing Fail2ban sshd jail's ignore list. Learning defaults to disabled.
-Set `LOGIN_USERS` to your trusted local account names, then run `check` and
-`reload`; `status` reports whether learning is enabled. Password, public-key and
-keyboard-interactive/PAM successes are supported. Learned `[all]` entries cover
+Fail2ban jail settings; learning can add trusted addresses to an existing
+Fail2ban sshd jail's ignore list. `LEARN_ADMINS=on` (the default) learns from
+successful logins by root, the account that owns the settings folder, and members
+of the `sudo`, `admin` or `wheel` groups; no usernames need to be typed in.
+`LOGIN_USERS` adds other accounts by regex. `status` reports what is learned.
+Password, public-key and keyboard-interactive/PAM successes are supported. Learned `[all]` entries cover
 port 22 when protected; an entry under another port does not. Check Fail2ban
 separately if an allowed source is still blocked.
 
@@ -355,7 +358,8 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | New SYN rate/minute and burst per source and port. |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | Shared new SYN rate/minute and burst per port, across sources and IP families. |
 | `BAN_TIMEOUT` | `6h` | Temporary source-ban duration. |
-| `LOGIN_USERS` | Empty; disabled | Extended regex of trusted local sshd accounts, e.g. `alice|bob`. |
+| `LEARN_ADMINS` | `on` | Whitelist the source of a successful local login by root, the settings owner or a `sudo`/`admin`/`wheel` member for `LEARN_TIMEOUT`. Anyone sharing that public IP is trusted too. |
+| `LOGIN_USERS` | Empty | Extra accounts that teach trust, as an extended regex, e.g. `alice|bob`. |
 | `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | Learned-source cap and time since the last trusted login. |
 | `STRIKE_WINDOW` | `90d` | History window for observed ban events. |
 | `STRIKE_LADDER` | `2:1d 3:3d 4:7d 5:28d` | Increasing strike thresholds and ban durations; empty disables escalation. |
@@ -510,6 +514,7 @@ Operational limits:
 | Listener is not FRPS | Select the public forwarded ports on the correct host/network namespace. |
 | Settings have no effect | Run `check`, then `reload`; inspect pending edits in `status`. |
 | A legitimate heavy user is banned by slow protection | Add the address to `whitelist.conf` (any port section) and release it with `unban`; whitelisted sources are never counted. |
+| An administrator is banned after unstable connection attempts | From another network or the console: `sudo frp-ssh-guard release IP`, then `allow IP`. Since `0.0.7-2`, keys rejected inside a successful login are not counted and rejected keys in a dropped connection count once; one successful login with `LEARN_ADMINS=on` whitelists the address. |
 | Guard inactive | Run `enable`; `reload` requires an active service. |
 | Invalid configuration | Correct the named setting; `--help` works even with broken edits. |
 | Rules active but helper/startup failed | Inspect the named systemd unit's journal; fix the cause and retry `reload`/`enable`. |
@@ -547,8 +552,9 @@ recompiles the accepted firewall policy and restarts its long-running Python
 monitors. The new code takes effect during `apt install`; no manual reload or
 reboot is needed. Live bans are saved and restored with their original scope and
 expiry. Rate meters reset; main-service enablement and timer deadlines are retained.
-Pending settings edits are not applied. Local SSH protection and learning remain
-opt-in.
+Pending settings edits are not applied. Local SSH protection remains opt-in.
+Package revision `0.0.7-2` turns on administrator learning (`LEARN_ADMINS=on`),
+also for upgraded installations: it only adds trust and never adds bans.
 
 Version 0.0.7 replaces `SSH_SLOW_MODE` with the `SSH_SLOW_PROTECTION=on/off`
 switch, placed directly below `JAIL_PER_PORT`. Upgrades never start bans you did
@@ -630,8 +636,9 @@ forwarded ports can only count connections. Counting across ports in shared mode
 catches an attacker who spreads a few attempts over many ports. Addresses in
 `whitelist.conf` under **any** port, manual or learned, are treated as known
 administrators and never counted, because an administrator may use many forwarded
-machines each day. Set `LOGIN_USERS` to learn administrator addresses from
-successful logins to this server, or add them manually. Connection counts refill
+machines each day. With `LEARN_ADMINS=on` (the default), an administrator's
+address is learned automatically after one successful login to this server;
+addresses can also be added manually. Connection counts refill
 gradually across the window, so limits are approximate. Bans use `BAN_TIMEOUT` and
 count toward strikes; existing blocklist entries keep their scope. Set
 `SSH_SLOW_PROTECTION=off`, then `check` and `reload`, to disable it.
@@ -672,8 +679,9 @@ Change `LOG_MAX_SIZE`, then check/reload to trim to a new cap. `status` and
 local deployment data: do not commit or share them. If the home is unavailable,
 a private system spool uses the same cap and merges when access returns.
 
-Learning remains opt-in through `LOGIN_USERS`. Matching password, public-key and
-PAM successes can teach trust, after the login is classified. Trust applies to the
+Learning is on for administrators by default (`LEARN_ADMINS`), and `LOGIN_USERS`
+adds other accounts. Password, public-key and PAM successes can teach trust, after
+the login is classified. Trust applies to the
 observed source IP: it does not automatically follow you to a new dynamic address,
 and a successful compromised account could teach trust. Keep recovery access.
 The guard does not change sshd authentication settings or Fail2ban's firewall rules.

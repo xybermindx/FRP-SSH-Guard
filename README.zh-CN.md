@@ -77,7 +77,8 @@ FRP 可以通过公网服务器暴露内网服务，转发的 SSH 端口也可�
 - 对每个端口设置共享速率上限，缓解分布式连接突发。
 - 支持 IPv4/IPv6 地址、CIDR 网段以及按端口限定的白名单和黑名单。
 - 记录封禁历史，对重复被观察到的违规来源延长封禁时间。
-- 可选：通过公网服务器本机 sshd 的成功登录学习可信来源。
+- 自动学习管理员：root、设置所有者或 sudo/admin/wheel 组成员成功登录公网服务器本机 sshd 后，
+  其来源会加入白名单。
 - 显式应用配置、重启恢复，以及防护表丢失后的恢复。
 - 提供架构无关的 Debian 软件包、完整源码和可重复构建流程。
 
@@ -229,6 +230,7 @@ PER_IP_BURST=40
 GLOBAL_RATE=30
 GLOBAL_BURST=20
 BAN_TIMEOUT=6h
+LEARN_ADMINS=on
 LOGIN_USERS=""
 ```
 
@@ -292,9 +294,9 @@ sudo frp-ssh-guard status
 
 可继续保留 Fail2ban：两者使用各自的规则，封禁相互独立。
 如果同一个地址被两者封禁，需要分别解除。本工具不会修改 Fail2ban jail 配置；
-可选的 `LOGIN_USERS` 学习功能会把可信地址加入现有 Fail2ban sshd jail 的忽略名单，
-该学习功能默认关闭。
-将 `LOGIN_USERS` 设为可信本机账户名后执行 `check`、`reload`；`status` 会显示学习是否开启。
+学习功能会把可信地址加入现有 Fail2ban sshd jail 的忽略名单。`LEARN_ADMINS=on`（默认）
+从 root、设置目录所有者以及 `sudo`、`admin` 或 `wheel` 组成员的成功登录中学习，无需输入用户名。
+`LOGIN_USERS` 可按正则表达式添加其他账户；`status` 会显示学习范围。
 支持密码、公钥及 keyboard-interactive/PAM 成功认证。学习的 `[all]` 条目覆盖已启用防护的 22 端口，
 其他端口分节下的条目不会覆盖 22。已允许的来源仍被拦截时，请另行检查 Fail2ban。
 
@@ -320,7 +322,8 @@ sudo frp-ssh-guard status
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | 每来源、每端口的新 SYN 每分钟速率及突发额度。 |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | 每端口共享的新 SYN 每分钟速率及突发额度，跨来源和 IP 协议族共享。 |
 | `BAN_TIMEOUT` | `6h` | 临时封禁来源的时长。 |
-| `LOGIN_USERS` | 空，禁用 | 可信的本机 sshd 账户扩展正则表达式，例如 `alice|bob`。 |
+| `LEARN_ADMINS` | `on` | root、设置所有者或 `sudo`/`admin`/`wheel` 组成员在本机成功登录后，将来源加入白名单，有效期 `LEARN_TIMEOUT`。共用该公网 IP 的其他人也会被信任。 |
+| `LOGIN_USERS` | 空 | 额外可学习信任的账户，扩展正则表达式，例如 `alice|bob`。 |
 | `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | 学习来源数量上限，以及距上次可信登录的有效时长。 |
 | `STRIKE_WINDOW` | `90d` | 观察到的封禁事件的历史统计窗口。 |
 | `STRIKE_LADDER` | `2:1d 3:3d 4:7d 5:28d` | 递增的违规次数及封禁时长；空字符串禁用升级。 |
@@ -463,6 +466,7 @@ sudo journalctl -u frp-ssh-guard.service -u frp-ssh-guard-learn.service --since 
 | 监听进程不是 FRPS | 确认主机、网络命名空间及公网转发端口。 |
 | 配置没有生效 | 先 `check` 再 `reload`，通过 `status` 查看待应用修改。 |
 | 正常的高频用户被慢速防护封禁 | 将该地址加入 `whitelist.conf`（任意端口分节），再用 `unban` 解除；白名单来源从不计数。 |
+| 管理员连接不稳定、多次尝试后被封禁 | 从其他网络或控制台执行 `sudo frp-ssh-guard release IP`，再执行 `allow IP`。自 `0.0.7-2` 起，成功登录内被拒绝的密钥不计数，掉线连接中被拒绝的密钥每个连接只计一次；`LEARN_ADMINS=on` 时成功登录一次即将该地址加入白名单。 |
 | 防护未运行 | 执行 `enable`；`reload` 要求服务处于活动状态。 |
 | 配置无效 | 修正错误信息指出的参数；配置损坏时仍可使用 `--help`。 |
 | 规则已生效但辅助任务/开机设置失败 | 检查对应 systemd 单元日志，修复后重试 `reload`/`enable`。 |
@@ -496,8 +500,9 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 从软件包修订 `0.0.6-2` 开始，安装会自动重新编译已接受的防火墙策略，并重启运行中的
 Python 监控进程。新版代码在 `apt install` 过程中生效，无需手动 reload 或重启系统。
 当前封禁会先保存，再按原作用范围和到期时间恢复。速率计数重置；主服务开机启用状态
-和定时任务截止时间保留。尚未确认的设置修改不会被应用。本机 SSH 防护和可信登录学习
-仍需管理员主动开启。
+和定时任务截止时间保留。尚未确认的设置修改不会被应用。本机 SSH 防护仍需管理员主动开启。
+软件包修订 `0.0.7-2` 起默认开启管理员学习（`LEARN_ADMINS=on`），升级的安装也同样开启：
+它只增加信任，不会增加封禁。
 
 0.0.7 版用位于 `JAIL_PER_PORT` 下方的 `SSH_SLOW_PROTECTION=on/off` 开关取代
 `SSH_SLOW_MODE`。升级不会启用您未选择的封禁：`enforce` 变为 `on`（现在也覆盖转发端口），
@@ -567,7 +572,8 @@ sudo env GUARD_DIR=/opt/frp-ssh-guard /opt/frp-ssh-guard/bin/frp-ssh-guard statu
 frps 服务器无从得知经隧道的登录是否成功，因此转发端口只能统计连接。共享模式下
 跨端口合计，可以发现把少量尝试分散到许多端口的攻击者。`whitelist.conf` 中**任意**端口
 下的地址（手动或学习所得）都视为已知管理员，从不计数，因为管理员可能每天访问许多
-转发主机。可设置 `LOGIN_USERS`，从本机的成功登录中学习管理员地址，或手动添加。
+转发主机。`LEARN_ADMINS=on`（默认）时，管理员在本机成功登录一次后其地址即被自动学习；
+也可以手动添加。
 连接计数在窗口内逐步恢复，因此限制为近似值。封禁使用 `BAN_TIMEOUT` 并计入累犯；
 已有黑名单条目保持原范围。设置 `SSH_SLOW_PROTECTION=off` 后执行 `check` 和 `reload`
 即可关闭。
@@ -600,8 +606,8 @@ frps 服务器无从得知经隧道的登录是否成功，因此转发端口只
 后执行 check/reload 可按新上限裁剪；status 和 report 显示上限。这些文件属于本地私密部署数据，请勿提交或分享。家目录不可用时使用
 相同上限的私密系统暂存文件，恢复访问后合并。
 
-学习仍需配置 `LOGIN_USERS` 才启用。匹配账户的密码、公钥及 PAM 成功登录均可
-在完成来源分类后学习信任。信任针对已观察到的来源 IP，不会自动跟随动态地址；
+管理员学习默认开启（`LEARN_ADMINS`），`LOGIN_USERS` 可添加其他账户。密码、公钥及 PAM
+成功登录均可在完成来源分类后学习信任。信任针对已观察到的来源 IP，不会自动跟随动态地址；
 被盗账户的成功登录也可能建立信任，请保留恢复访问方式。本工具不修改 sshd
 认证设置或 Fail2ban 的防火墙规则。
 

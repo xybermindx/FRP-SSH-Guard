@@ -38,9 +38,11 @@ class AuthTests(unittest.TestCase):
             for identity in ('sshd', 'sshd-session', 'sshd-auth'):
                 record = event(f'Accepted {method} for alice from 198.51.100.7 port 45001 ssh2')
                 record['SYSLOG_IDENTIFIER'] = identity
-                self.assertEqual(learner.accepted(record, 'alice|bob'), ('198.51.100.7', 1700000000))
-                self.assertIsNone(learner.accepted({**record, '_UID': '1001'}, 'alice'))
-                self.assertIsNone(learner.accepted(record, 'bob'))
+                users = lambda pattern: dict(LOGIN_USERS=pattern, LEARN_ADMINS='off', CONFIG_BASE='/nonexistent')
+                self.assertEqual(learner.accepted(record, users('alice|bob')), ('198.51.100.7', 1700000000))
+                self.assertIsNone(learner.accepted({**record, '_UID': '1001'}, users('alice')))
+                self.assertIsNone(learner.accepted(record, users('bob')))
+                self.assertIsNone(learner.accepted(record, users('')))
 
     def test_invalid_user_double_log_is_one_attempt(self):
         tracker = auth.Tracker(POLICY)

@@ -189,9 +189,11 @@ sudo frp-ssh-guard whitelist
 sudo frp-ssh-guard blocklist
 ```
 
-For automatic learning, set `LOGIN_USERS="alice|bob"` to your trusted local
-accounts, then `check` and `reload`. The names here are invented examples.
-Port-22 protection alone does not enable learning. `[all]` learned entries cover
+Administrator learning is on by default (`LEARN_ADMINS=on`): after a successful
+login to this server by root, the settings owner or a member of `sudo`, `admin` or
+`wheel`, the source is added under `[all]` with `source=learned`. To trust other
+accounts too, set `LOGIN_USERS="alice|bob"` (invented example names), then
+`check` and `reload`. Logins to machines behind FRP cannot teach trust. `[all]` learned entries cover
 every protected port; a `[22001]` whitelist entry does not cover 22. Other firewall
 rules, including Fail2ban, remain independent.
 
@@ -242,8 +244,9 @@ Change `LOG_MAX_SIZE`, then check/reload to trim to a new cap. `status` and
 local deployment data: do not commit or share them. If the home is unavailable,
 a private system spool uses the same cap and merges when access returns.
 
-Learning remains opt-in through `LOGIN_USERS`. Matching password, public-key and
-PAM successes can teach trust, after the login is classified. Trust applies to the
+Learning is on for administrators by default (`LEARN_ADMINS`), and `LOGIN_USERS`
+adds other accounts. Password, public-key and PAM successes can teach trust, after
+the login is classified. Trust applies to the
 observed source IP: it does not automatically follow you to a new dynamic address,
 and a successful compromised account could teach trust. Keep recovery access.
 The guard does not change sshd authentication settings or Fail2ban's firewall rules.

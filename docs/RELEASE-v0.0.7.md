@@ -7,6 +7,13 @@ One on/off switch for slow brute-force protection, now covering forwarded ports,
 
 ## Changes
 
+- Package revision `0.0.7-2`: administrators on unstable networks are no longer
+  banned by their own key retries. Keys rejected inside a login that then succeeds
+  do not count; rejected keys in a dropped connection count once per connection.
+- Package revision `0.0.7-2`: `LEARN_ADMINS=on` learns administrator addresses
+  automatically from successful logins to this server (root, the settings owner,
+  and `sudo`/`admin`/`wheel` members), with no usernames to type in. It is also
+  enabled on upgrade; it only adds trust and never adds bans.
 - `SSH_SLOW_PROTECTION=on/off` replaces `SSH_SLOW_MODE`. It sits directly below
   `JAIL_PER_PORT` and is on for new installations. `on` detects, logs and bans;
   `off` does none of these.
@@ -34,7 +41,9 @@ sha256sum --ignore-missing -c SHA256SUMS
 sudo apt install ./frp-ssh-guard_0.0.7.deb
 ```
 
-An active guard is refreshed automatically. Upgrades never start bans you did
+An active guard is refreshed automatically. Debian version `0.0.7-2` replaces
+the first v0.0.7 package (`0.0.7-1`) under the same download name; download both
+files again and APT upgrades the earlier build. Upgrades never start bans you did
 not choose: `SSH_SLOW_MODE=enforce` becomes `on` (which now also covers forwarded
 ports), while `observe`, `off` or a missing value become `off`. To enable it later,
 whitelist administrators who use many forwarded machines, set

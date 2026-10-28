@@ -106,10 +106,18 @@ GLOBAL_BURST=20
 # sudo frp-ssh-guard block 203.0.113.10 (see blocklist.conf for more examples).
 BAN_TIMEOUT=6h
 
-# Optional learning from successful logins to THIS SERVER's sshd, not tunneled SSH.
-# Default empty = disabled. grep extended regex, e.g. "alice|bob".
-# Matching source IPs bypass guard limits/blocks; also exempted from an existing
-# fail2ban sshd jail. Enable only for trusted operator accounts.
+# LEARN_ADMINS: trust administrators automatically (on/off). Default on.
+# When root, the account that owns this settings folder, or a member of the
+# sudo, admin or wheel group logs in successfully to THIS server's sshd, the
+# source IP is added to whitelist.conf for LEARN_TIMEOUT: it is then never banned
+# or counted on any protected port. No usernames need to be typed in.
+# Everyone sharing that public IP (for example an office NAT) is trusted too.
+# Logins to SSH servers behind FRP are invisible here and teach nothing.
+# Learned sources are also exempted from an existing fail2ban sshd jail.
+LEARN_ADMINS=on
+
+# Optional extra accounts that teach trust the same way: grep extended regex,
+# e.g. "alice|bob". Default empty. Use only for trusted operator accounts.
 LOGIN_USERS=""
 
 # Maximum learned addresses (integer 1–1000000); oldest entries evicted. Default 500.

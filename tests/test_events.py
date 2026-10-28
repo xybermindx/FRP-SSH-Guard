@@ -91,6 +91,61 @@ class EventTests(unittest.TestCase):
             self.assertIsNone(self.process(self.failure(i), trusted=True))
         self.assertEqual(self.count('slow-threshold'), 1)
 
+    def connection(self, message, cursor, pid, stamp=NOW):
+        record = event(message, cursor, stamp)
+        record['_PID'] = pid  # one sshd process per client connection
+        return record
+
+    def failures(self):
+        return self.store.db.execute('SELECT count(*) FROM failures').fetchone()[0]
+
+    def test_rejected_keys_before_a_successful_login_never_count(self):
+        key = 'Failed publickey for alice from 198.51.100.7 port 45001 ssh2: ED25519 SHA256:example'
+        for i in range(4):
+            self.assertIsNone(self.process(self.connection(key, 'key-' + str(i), '700')))
+        self.assertEqual(self.failures(), 1)  # several key offers are one attempt
+        accepted = 'Accepted publickey for alice from 198.51.100.7 port 45001 ssh2: ED25519 SHA256:example'
+        self.assertEqual(self.process(self.connection(accepted, 'ok', '700')), 'accepted')
+        self.assertEqual(self.failures(), 0)  # nor do they count toward the 24-hour limit
+        # Daily logins with several keys never approach the slow threshold.
+        for day in range(30):
+            for i in range(3):
+                self.process(self.connection(key, f'd{day}-{i}', str(800 + day), NOW + day * 600))
+            self.process(self.connection(accepted, f'd{day}-ok', str(800 + day), NOW + day * 600))
+        self.assertEqual(self.failures(), 0)
+        self.assertEqual(self.count('slow-threshold'), 0)
+
+    def test_dropped_connections_count_once_each_and_passwords_count_singly(self):
+        key = 'Failed publickey for alice from 198.51.100.7 port 45001 ssh2: ED25519 SHA256:example'
+        results = []
+        for connection in range(5):  # a bad network drops each attempt before success
+            for i in range(3):
+                results.append(self.process(self.connection(key, f'{connection}-{i}', str(900 + connection))))
+        # The fifth separate attempt within ten minutes still bans, at its first rejected key.
+        self.assertEqual(results, [None] * 12 + ['ban', None, None])
+        self.assertEqual(self.store.reason, 'failed-logins')
+        password = 'Failed password for bob from 198.51.100.8 port 45002 ssh2'
+        outcomes = [self.process(self.connection(password, 'pw-' + str(i), '950')) for i in range(5)]
+        self.assertEqual(outcomes[-1], 'ban')
+
+    def test_failure_table_gains_method_column_on_existing_state(self):
+        import sqlite3
+        directory = self.root / 'old-state'
+        directory.mkdir()
+        with contextlib.closing(sqlite3.connect(directory / 'events.sqlite3')) as db:
+            db.execute('CREATE TABLE failures (id TEXT PRIMARY KEY, stamp REAL, ip TEXT, conn TEXT, invalid INTEGER, short_on INTEGER)')
+            db.execute("INSERT INTO failures VALUES ('old', ?, '198.51.100.7', ':1:45001', 0, 1)", (NOW,))
+            db.commit()
+        store = events.Store(directory, now=NOW)
+        try:
+            columns = [row[1] for row in store.db.execute('PRAGMA table_info(failures)')]
+            self.assertIn('method', columns)
+            record = self.failure(5)
+            store.process(record, self.config, auth.parse_event(record), NOW)
+            self.assertEqual(store.db.execute('SELECT count(*) FROM failures').fetchone()[0], 2)
+        finally:
+            store.close()
+
     def test_success_clears_only_short_counter_for_all_methods(self):
         for i in range(4):
             self.process(self.failure(i))
@@ -187,6 +242,25 @@ class EventTests(unittest.TestCase):
             self.assertEqual(len(seen), 1)
             self.assertGreater(seen[0], 0)
 
+    def test_administrator_login_is_learned_with_no_login_users(self):
+        record = event('Accepted publickey for root from 198.51.100.7 port 45001', 'admin-login')
+        self.config.update(LOGIN_USERS='', LEARN_ADMINS='on')
+        additions = []
+        with mock.patch.object(events, 'lock', contextlib.nullcontext), \
+             mock.patch.object(events, 'policy', return_value=self.config), \
+             mock.patch.object(events, 'root', return_value=self.root / 'state'), \
+             mock.patch.object(events.time, 'time', return_value=NOW), \
+             mock.patch.object(events.lists, 'allowed', return_value=False), \
+             mock.patch.object(events.lists, 'sync', side_effect=lambda config, addition: additions.append(addition)), \
+             mock.patch.object(events.shutil, 'which', return_value=None), \
+             mock.patch.dict(os.environ, {'GUARD_COMMAND': '/bin/true'}):
+            self.assertTrue(events.handle(record, 'learn'))
+            self.config['LEARN_ADMINS'] = 'off'
+            other = event('Accepted publickey for root from 198.51.100.8 port 45002', 'admin-off')
+            self.assertFalse(events.handle(other, 'learn'))
+        self.assertEqual([(kind, row.ip, row.scope, row.source) for kind, row in additions],
+                         [('allow', '198.51.100.7', '*', 'learned')])
+
     def test_two_readers_share_real_runtime_lock(self):
         from concurrent.futures import ThreadPoolExecutor
         self.config['LOGIN_USERS'] = 'alice'
@@ -267,7 +341,7 @@ class EventTests(unittest.TestCase):
     def test_invalid_new_settings_fail_validation(self):
         validator = events.module('validate')
         validator.validate(self.config)
-        for key, value in (('SSH_SLOW_PROTECTION', 'enforce'), ('SSH_SLOW_PROTECTION', ''),
+        for key, value in (('SSH_SLOW_PROTECTION', 'enforce'), ('SSH_SLOW_PROTECTION', ''), ('LEARN_ADMINS', 'yes'),
                            ('SSH_SLOW_MODE', 'automatic'), ('SSH_SLOW_FAILURES', '0'),
                            ('SSH_SLOW_PORT_CONNECTIONS', '0'), ('SSH_SLOW_TOTAL_CONNECTIONS', '1000001'),
                            ('SSH_SLOW_WINDOW', 'forever'), ('SUBNET_REPORT_MIN_SOURCES', '-1'),

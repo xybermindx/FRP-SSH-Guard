@@ -2,6 +2,15 @@
 
 ## 0.0.7
 
+- Package revision 2 stops banning administrators on unstable networks. Keys or
+  typos rejected inside a login that then succeeds no longer count, and rejected
+  public keys in a dropped connection count once per connection instead of once per
+  key (sshd logs rejected offers from the third key on). Password failures and
+  invalid users still count individually.
+- Package revision 2 adds `LEARN_ADMINS=on` (default, also on upgrade): a successful
+  login to this server by root, the settings owner, or a member of the `sudo`,
+  `admin` or `wheel` group whitelists that source for `LEARN_TIMEOUT`, without
+  typing usernames. `LOGIN_USERS` still adds other accounts.
 - Replace `SSH_SLOW_MODE` (off/observe/enforce) with one `SSH_SLOW_PROTECTION=on/off`
   switch, placed directly below `JAIL_PER_PORT` and on by default. `on` detects,
   logs and bans; there is no observe-only mode. Upgrades convert `enforce` to `on`

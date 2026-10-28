@@ -133,6 +133,25 @@ class ConfigUpgradeTests(unittest.TestCase):
                 self.assertIn('instructions', keys)
                 self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
 
+    def test_admin_learning_is_added_above_login_users_and_shipped_comment_refreshed(self):
+        self.assertEqual(data.settings(TEMPLATE)['LEARN_ADMINS'], 'on')
+        original = ('PROTECTED_PORTS="22001"\nBAN_TIMEOUT=6h\n\n'
+                    + ''.join(line + '\n' for line in data.REFRESHED_COMMENTS['LOGIN_USERS'])
+                    + 'LOGIN_USERS="alice"\nMAX_LEARNED=500\n')
+        updated, keys = data.merge_defaults(original, TEMPLATE)
+        lines = updated.splitlines()
+        self.assertEqual(data.settings(updated)['LEARN_ADMINS'], 'on')
+        self.assertEqual(data.settings(updated)['LOGIN_USERS'], 'alice')
+        self.assertLess(lines.index('LEARN_ADMINS=on'), lines.index('LOGIN_USERS="alice"'))
+        self.assertLess(lines.index('BAN_TIMEOUT=6h'), lines.index('LEARN_ADMINS=on'))
+        for line in data.REFRESHED_COMMENTS['LOGIN_USERS']:
+            self.assertNotIn(line, lines)
+        self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
+        custom = 'PROTECTED_PORTS="22001"\n# my admins\nLOGIN_USERS="alice"\n'
+        kept = data.merge_defaults(custom, TEMPLATE)[0].splitlines()
+        self.assertEqual(kept.index('# my admins') + 1, kept.index('LOGIN_USERS="alice"'))
+        self.assertLess(kept.index('LEARN_ADMINS=on'), kept.index('# my admins'))
+
     def test_upgrade_message_explains_how_to_enable_off_switch(self):
         self.path.write_text('PROTECTED_PORTS="22001"\nJAIL_PER_PORT=off\nSSH_SLOW_MODE=observe\n')
         output = io.StringIO()

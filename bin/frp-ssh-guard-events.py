@@ -40,6 +40,7 @@ KEYS = lists.KEYS + ('PROTECT_SERVER_SSH', 'SSH_AUTH_FAILURES', 'SSH_INVALID_USE
 # Event kinds written to the activity log. Failed logins stay in the private store.
 LOGGED = ('ban', 'manual-ban', 'strike-ban', 'release', 'settings-applied', 'new-source-login', 'subnet-cluster')
 SUCCESS = re.compile(r'^Accepted (password|publickey|keyboard-interactive(?:/pam)?) for (\S+) from ')
+METHOD = re.compile(r'^(?:Failed|Accepted) (\S+) for ')
 MAX_ROWS = 200000
 
 
@@ -125,6 +126,9 @@ class Store:
             CREATE TABLE IF NOT EXISTS samples (stamp REAL, start REAL, packets INTEGER, gap INTEGER);
             PRAGMA user_version=1;
         ''')
+        # v0.0.7-2: remember the method so rejected keys count once per connection.
+        if 'method' not in {row[1] for row in self.db.execute('PRAGMA table_info(failures)')}:
+            self.db.execute("ALTER TABLE failures ADD COLUMN method TEXT DEFAULT ''")
         self.now = time.time() if now is None else now
         if self.get('coverage_start') is None:
             self.set('coverage_start', self.now)
@@ -174,7 +178,8 @@ class Store:
                     if now - data.duration(config['SSH_AUTH_WINDOW']) <= stamp <= now + 5:
                         identity = 'legacy-' + hashlib.sha256(f'{ip}|{stamp}|{index}'.encode()).hexdigest()
                         # Migration contributes to short detection only. Long coverage starts now.
-                        self.db.execute('INSERT OR IGNORE INTO failures VALUES (?,?,?,?,?,1)', (identity, stamp, ip, str(conn), int(bool(invalid))))
+                        self.db.execute('INSERT OR IGNORE INTO failures(id,stamp,ip,conn,invalid,short_on) VALUES (?,?,?,?,?,1)',
+                                        (identity, stamp, ip, str(conn), int(bool(invalid))))
             for cursor in old.get('seen', []):
                 self.db.execute('INSERT OR IGNORE INTO seen VALUES (?,?)', (digest(cursor), now))
             if old.get('cursor'):
@@ -199,7 +204,12 @@ class Store:
         window = max(data.duration(config['SSH_AUTH_WINDOW']), data.duration(config['SSH_SLOW_WINDOW']))
         if stamp < max(now - window, self.get('coverage_start', now)) or stamp > now + 5:
             return None
+        # One sshd process logs every outcome of a connection; with the client
+        # port it identifies that connection.
+        conn = record.get('_BOOT_ID', '') + ':' + conn
         if kind == 'accepted':
+            # Keys or typos rejected before this login succeeded were not attacks.
+            self.db.execute('DELETE FROM failures WHERE ip=? AND conn=?', (ip, conn))
             self.db.execute('UPDATE failures SET short_on=0 WHERE ip=?', (ip,))
             method = SUCCESS.match(record['MESSAGE'])
             if not trusted:
@@ -209,12 +219,19 @@ class Store:
         if config['PROTECT_SERVER_SSH'] != 'on':
             return None
         # All invalid-user records from a connection describe one invalid-user
-        # attempt; normal authentication failures remain individually countable.
-        conn = record.get('_BOOT_ID', '') + ':' + conn
+        # attempt. A client offering several keys is one attempt too: sshd logs
+        # rejected keys from the third offer on. Password failures count singly.
         if kind == 'invalid' and self.db.execute('SELECT 1 FROM failures WHERE ip=? AND conn=? AND invalid=1 AND stamp>=?',
                                                 (ip, conn, now - window)).fetchone():
             return None
-        self.db.execute('INSERT INTO failures VALUES (?,?,?,?,?,1)', (identity, stamp, ip, conn, int(kind == 'invalid')))
+        found = METHOD.match(record.get('MESSAGE', ''))
+        method = found[1] if found else ''
+        if kind == 'failed' and method == 'publickey' and self.db.execute(
+                "SELECT 1 FROM failures WHERE ip=? AND conn=? AND method='publickey' AND stamp>=?",
+                (ip, conn, now - window)).fetchone():
+            return None
+        self.db.execute('INSERT INTO failures(id,stamp,ip,conn,invalid,short_on,method) VALUES (?,?,?,?,?,1,?)',
+                        (identity, stamp, ip, conn, int(kind == 'invalid'), method))
         self.emit(identity, stamp, 'auth-failure', ip, '22')
         fast = self.db.execute('SELECT count(*),coalesce(sum(invalid),0) FROM failures WHERE ip=? AND short_on=1 AND stamp>=?',
                                (ip, now - data.duration(config['SSH_AUTH_WINDOW']))).fetchone()
@@ -388,7 +405,18 @@ def applied(config):
                      'server-ssh=' + config['PROTECT_SERVER_SSH'],
                      'jail=' + ('per-port' if config['JAIL_PER_PORT'] == 'on' else 'shared'),
                      'slow-protection=' + config['SSH_SLOW_PROTECTION'],
-                     'learning=' + ('on' if config['LOGIN_USERS'] else 'off')])
+                     'learning=' + ('+'.join(name for name, on in (('admins', config['LEARN_ADMINS'] == 'on'),
+                                                                   ('LOGIN_USERS', bool(config['LOGIN_USERS']))) if on)
+                                    or 'off')])
+
+
+def describe_learning(config):
+    parts = []
+    if config['LEARN_ADMINS'] == 'on':
+        parts.append('administrators (root, settings owner, sudo/admin/wheel groups)')
+    if config['LOGIN_USERS']:
+        parts.append('LOGIN_USERS accounts')
+    return ('trusts sources of successful logins by ' + ' and '.join(parts)) if parts else 'off'
 
 
 def describe_slow(config):
@@ -454,10 +482,9 @@ def handle(record, reader='auth'):
             if result == 'ban':
                 enforce(store, config, event[1], now)
             store.db.commit()
-            if result == 'accepted' and config['LOGIN_USERS']:
+            if result == 'accepted' and lists.learning(config):
                 match = SUCCESS.match(record['MESSAGE'])
-                if match and subprocess.run(['grep', '-Ex', '--', config['LOGIN_USERS']], input=match[2] + '\n', text=True,
-                                            stdout=subprocess.DEVNULL).returncode == 0:
+                if match and lists.learnable(match[2], config):
                     expiry = int(event[3]) + data.duration(config['LEARN_TIMEOUT'])
                     if expiry > now:
                         try:
@@ -565,7 +592,7 @@ def main():
                                          str(Path(config['MANUAL_DIR']) / alerts.LOG_NAME)], capture_output=True, text=True, **kwargs)
                 print('Log file access as owner: ' + ('available' if result.returncode == 0 else 'unavailable or unsafe; system spool used'))
                 print('Pending system log spool: ' + ('yes' if (root() / 'alerts-spool.log').exists() else 'no'))
-                print('Whitelist learning: ' + ('configured; trusts successful password/key/PAM logins for matching users' if config['LOGIN_USERS'] else 'off'))
+                print('Whitelist learning: ' + describe_learning(config))
                 rows = data.records(lists.read(lists.state_directory() / 'whitelist.conf'), 'allow')
                 native = sum(1 for r in rows if (not r.expiry or r.expiry > time.time()) and (r.scope == '*' or any(int(t.split('-')[0]) <= 22 <= int(t.split('-')[-1]) for t in r.scope.split(','))))
                 print('Applied whitelist entries covering SSH: ' + str(native))

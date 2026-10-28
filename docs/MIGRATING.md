@@ -5,6 +5,17 @@ every v0.0.6 build. As in v0.0.6, an active guard is refreshed automatically dur
 installation: accepted policy is recompiled and the SSH monitors restart. Saved ban
 scopes and expiry, boot enablement and timer deadlines are kept; rate meters reset.
 
+## Package revision 0.0.7-2
+
+`0.0.7-2` replaces the first v0.0.7 package under the same download name; a normal
+`sudo apt install ./frp-ssh-guard_0.0.7.deb` upgrades `0.0.7-1`. It adds
+`LEARN_ADMINS=on` directly above `LOGIN_USERS` (also on upgrade) and refreshes the
+shipped `LOGIN_USERS` comment when unchanged. Administrators (root, the settings
+owner, `sudo`/`admin`/`wheel` members) are then whitelisted after a successful login
+to this server. Set `LEARN_ADMINS=off`, then check and reload, to keep learning
+limited to `LOGIN_USERS`. Failed-login counting changes as described in the
+changelog; existing counts are kept and age out normally.
+
 ## One slow brute-force switch
 
 `SSH_SLOW_MODE` (`off`, `observe`, `enforce`) is replaced by `SSH_SLOW_PROTECTION`

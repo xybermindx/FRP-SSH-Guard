@@ -427,6 +427,7 @@ else:
         self.fake('guard-test-command', '#!/bin/sh\nexit 0\n')
         self.env['GUARD_COMMAND'] = str(self.root / 'fakebin/guard-test-command')
         self.fake('fail2ban-client', '#!/bin/sh\nexit 1\n')
+        self.settings('PROTECTED_PORTS="22001"\nLEARN_ADMINS=off\n')  # accepted: learning off
         self.require_ok(self.run_guard('enable'))
         self.settings('PROTECTED_PORTS="22001"\nLOGIN_USERS="alice"\n')
         helper = ['bash', str(ROOT / 'bin/frp-ssh-guard-learn.sh')]

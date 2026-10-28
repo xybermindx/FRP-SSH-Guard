@@ -22,7 +22,7 @@ POLICY_KEYS = set('GUARD_TABLE PORT_MIN PORT_MAX EXCLUDE_PORTS EDIT_USER PROTECT
     'LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER PROTECT_SERVER_SSH JAIL_PER_PORT '
     'SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW '
     'SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW '
-    'LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW '
+    'LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW LEARN_ADMINS '
     # Obsolete names, still read so older files keep working; upgrades convert them.
     'SSH_SLOW_MODE ALERT_LOG_MAX_SIZE'.split())
 
@@ -81,7 +81,7 @@ HEADERS = {
         '#   sudo frp-ssh-guard allow 198.51.100.10 22001           one port',
         '#   sudo frp-ssh-guard unallow 198.51.100.10               remove its lines',
         '#',
-        '# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)',
+        '# Lines with source=learned come from administrator logins to this server',
         '# and expire at until=; keep that time. Delete any line to remove the trust',
         '# (a new trusted login may add it again).',
         '# Reopen this file before editing: saving an old copy removes newer learned entries.',
@@ -581,13 +581,20 @@ LEGACY_SLOW_COMMENTS = [
      '# Set enforce and check/reload to enable slow-probe bans.']]
 # Renamed settings keep their value and position; the old comment is replaced.
 RENAMED = {'ALERT_LOG_MAX_SIZE': 'LOG_MAX_SIZE'}
+# Comment text shipped above a setting; replaced by the current text when unchanged.
+REFRESHED_COMMENTS = {'LOGIN_USERS': [
+    "# Optional learning from successful logins to THIS SERVER's sshd, not tunneled SSH.",
+    '# Default empty = disabled. grep extended regex, e.g. "alice|bob".',
+    '# Matching source IPs bypass guard limits/blocks; also exempted from an existing',
+    '# fail2ban sshd jail. Enable only for trusted operator accounts.']}
 LEGACY_RENAMED_COMMENTS = {'ALERT_LOG_MAX_SIZE': [
     ['# Local alerts: newest complete record first, discard oldest records at the cap.',
      '# No rotated archives or remote notifications. Accepted settings change on reload.']]}
 SWITCH_KEYS = ('EXCLUDE_PORTS', 'PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'SSH_SLOW_PROTECTION')
 # Missing thresholds placed beside a related setting instead of at the end.
 INSERT_BEFORE = {'SSH_SLOW_TOTAL_CONNECTIONS': 'SSH_SLOW_FAILURES',
-                 'SSH_SLOW_PORT_CONNECTIONS': 'SSH_SLOW_FAILURES'}
+                 'SSH_SLOW_PORT_CONNECTIONS': 'SSH_SLOW_FAILURES',
+                 'LEARN_ADMINS': 'LOGIN_USERS'}
 
 
 def instructions(template):
@@ -657,6 +664,12 @@ def merge_defaults(original, template):
         changes.append('SSH_SLOW_MODE')
 
     described = template_comments(template)
+    for key, shipped in REFRESHED_COMMENTS.items():
+        for index in where(key):
+            first = known_comments(index, [shipped])
+            if first != index and key in described:
+                edit(first, index, described[key].lstrip('\r\n'))
+                changes.append('instructions')
     for old_key, new_key in RENAMED.items():
         positions = where(old_key)
         for index in positions:
@@ -711,8 +724,16 @@ def merge_defaults(original, template):
     if below_jail:
         edit(jail[-1] + 1, jail[-1] + 1, ''.join(below_jail))
     for target, texts in anchored.items():
+        # Insert above the comments that describe the related setting.
         position = where(target)[0]
-        edit(position, position, ''.join(texts))
+        while position > 0 and plain[position - 1].lstrip().startswith('#'):
+            position -= 1
+        text = ''.join(texts)
+        if position == 0 or not plain[position - 1].strip():
+            text = text.lstrip('\r\n')
+        if plain[position].lstrip().startswith('#'):
+            text += '\n'
+        edit(position, position, text)
 
     # Apply from the bottom up. At one position, replace the existing line first,
     # then insert; earlier insertions stay above later ones.
@@ -734,7 +755,7 @@ def merge_defaults(original, template):
             or any(key not in result for key in present if key not in obsolete)
             or any(key in result for key in obsolete)):
         raise ValueError('Settings merge would change an existing value; configuration retained.')
-    return updated, changes
+    return updated, list(dict.fromkeys(changes))
 
 
 def append_defaults(path, template):

@@ -172,6 +172,12 @@ lock. A private versioned SQLite database deduplicates cursor hashes, stores
 short/long failure windows and timestamped observations, tracks ban generations,
 and checkpoints packet counters. No usernames or raw journal messages persist.
 Successful login classification happens before any whitelist addition.
+Failures are keyed by boot, sshd process and client port, which identify one
+connection. A later success on that connection deletes its failures (rejected key
+offers and typos). Rejected public keys count once per connection; passwords count
+individually. `LEARN_ADMINS` resolves administrators when a login succeeds: root,
+the registered settings owner, and members of the `sudo`, `admin` or `wheel` groups
+via the system group database; `LOGIN_USERS` adds accounts by regex.
 
 The timer and direct authentication enforcement share ban accounting; the strike
 manager combines earlier rotated ban logs with the new database. Initial/restored

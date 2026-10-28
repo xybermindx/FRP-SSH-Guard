@@ -177,8 +177,9 @@ sudo frp-ssh-guard whitelist
 sudo frp-ssh-guard blocklist
 ```
 
-自动学习需将 `LOGIN_USERS="alice|bob"` 改成自己的可信本机账户，然后执行 `check` 和 `reload`。
-这里的名字仅为虚构示例。仅开启 22 端口防护不会启用学习。学习的 `[all]` 条目覆盖所有受保护端口，
+管理员学习默认开启（`LEARN_ADMINS=on`）：root、设置所有者或 `sudo`、`admin`、`wheel`
+组成员成功登录本机后，来源会以 `source=learned` 加入 `[all]`。若还要信任其他账户，设置
+`LOGIN_USERS="alice|bob"`（虚构示例名），然后执行 `check` 和 `reload`。FRP 后端主机的登录无法学习信任。学习的 `[all]` 条目覆盖所有受保护端口，
 `[22001]` 白名单不覆盖 22。其他防火墙（包括 Fail2ban）规则仍独立生效。
 
 ### 封禁时长
@@ -219,8 +220,8 @@ sudo frp-ssh-guard blocklist
 check/reload 可按新上限裁剪；status 和 report 显示上限。这些文件属于本地私密部署数据，请勿提交或分享。家目录不可用时使用
 相同上限的私密系统暂存文件，恢复访问后合并。
 
-学习仍需配置 `LOGIN_USERS` 才启用。匹配账户的密码、公钥及 PAM 成功登录均可
-在完成来源分类后学习信任。信任针对已观察到的来源 IP，不会自动跟随动态地址；
+管理员学习默认开启（`LEARN_ADMINS`），`LOGIN_USERS` 可添加其他账户。密码、公钥及 PAM
+成功登录均可在完成来源分类后学习信任。信任针对已观察到的来源 IP，不会自动跟随动态地址；
 被盗账户的成功登录也可能建立信任，请保留恢复访问方式。本工具不修改 sshd
 认证设置或 Fail2ban 的防火墙规则。
 

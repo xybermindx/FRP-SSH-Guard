@@ -1,5 +1,18 @@
 # v0.0.7 validation
 
+## Administrator counting and learning: package 0.0.7-2
+
+Checked on 2026-10-28 on the development host. No firewall was changed.
+
+- Local `make test`: 134 cases, 133 passing and the privileged namespace case
+  skipped locally (CI runs it). New regressions: rejected keys inside a successful
+  login are removed, dropped connections count once each while the fifth still
+  bans, password failures count singly, the failure table gains its method column
+  on existing state, administrators are recognized (root, settings owner,
+  sudo/wheel members, LOGIN_USERS), and upgrades place `LEARN_ADMINS` above
+  `LOGIN_USERS` and refresh only the shipped comment.
+- Not run: real-traffic VM checks for these changes.
+
 ## Slow protection switch, activity log and instructions: package 0.0.7-1
 
 Checked on 2026-10-27 on the development host only. No firewall was changed.

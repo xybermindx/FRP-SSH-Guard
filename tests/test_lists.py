@@ -104,6 +104,36 @@ class ListTests(unittest.TestCase):
                                '[22,22001]\n198.51.100.9 source=learned until=2030-01-01T00:00:00Z\n', 'allow')
         self.assertEqual(data.redundant_elements(learned, 'allow'), {2: {'22'}})
 
+    def test_administrators_are_learned_without_configured_usernames(self):
+        import types
+        config = dict(LEARN_ADMINS='on', LOGIN_USERS='', CONFIG_BASE='/nonexistent')
+        accounts = {'opsadmin': 1001, 'deploy': 1002, 'owner': 1003}
+        groups = {'sudo': 27, 'wheel': 10}
+        memberships = {'opsadmin': [1001, 27], 'deploy': [1002], 'owner': [1003]}
+        def getpwnam(name):
+            if name not in accounts:
+                raise KeyError(name)
+            return types.SimpleNamespace(pw_gid=accounts[name])
+        def getgrnam(name):
+            if name not in groups:
+                raise KeyError(name)
+            return types.SimpleNamespace(gr_gid=groups[name])
+        with mock.patch.object(lists.pwd, 'getpwnam', side_effect=getpwnam), \
+             mock.patch.object(lists.grp, 'getgrnam', side_effect=getgrnam), \
+             mock.patch.object(lists.os, 'getgrouplist', side_effect=lambda user, gid: memberships[user]), \
+             mock.patch.object(lists.data, 'location', return_value={'user': 'owner'}):
+            self.assertTrue(lists.learning(config))
+            self.assertTrue(lists.learnable('root', config))
+            self.assertTrue(lists.learnable('opsadmin', config))   # sudo member
+            self.assertTrue(lists.learnable('owner', config))      # owns the settings folder
+            self.assertFalse(lists.learnable('deploy', config))
+            self.assertFalse(lists.learnable('nobody-here', config))
+            self.assertTrue(lists.learnable('deploy', {**config, 'LOGIN_USERS': 'deploy|ci'}))
+            off = {**config, 'LEARN_ADMINS': 'off'}
+            self.assertFalse(lists.learning(off))
+            self.assertFalse(lists.learnable('root', off))
+            self.assertTrue(lists.learnable('deploy', {**off, 'LOGIN_USERS': 'deploy'}))
+
     def test_invalid_sections_metadata_and_automatic_permanent_entries_fail(self):
         for text in ('[0]\n', '[65536]\n', '[22] junk\n', '[22-21]\n',
                      '198.51.100.1 source=runtime\n', '198.51.100.1 source=unknown\n',

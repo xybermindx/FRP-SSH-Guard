@@ -172,7 +172,7 @@ validate_policy() {
         GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT MAX_LEARNED LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER \
         PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW \
         SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW \
-        SSH_SLOW_MODE LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW; do
+        SSH_SLOW_MODE LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW LEARN_ADMINS; do
         args+=("$key=${!key}")
     done
     python3 "$LIB_DIR/frp-ssh-guard-validate.py" "${args[@]}" || exit 1
@@ -1072,7 +1072,10 @@ case "$action" in
         printf 'Boot startup: '; systemctl is-enabled "$SERVICE" 2>/dev/null || true
         printf 'Service state: '; systemctl is-active "$SERVICE" 2>/dev/null || true
         printf 'Settings: %s\nLists: %s\n' "$GUARD_CONF" "$MANUAL_DIR"
-        if [[ -n "$LOGIN_USERS" ]]; then echo 'Whitelist learning: enabled for configured LOGIN_USERS'; else echo 'Whitelist learning: disabled (set LOGIN_USERS, then check and reload)'; fi
+        if [[ "$LEARN_ADMINS" == on && -n "$LOGIN_USERS" ]]; then echo 'Whitelist learning: administrators and LOGIN_USERS accounts'
+        elif [[ "$LEARN_ADMINS" == on ]]; then echo 'Whitelist learning: administrators (root, settings owner, sudo/admin/wheel groups)'
+        elif [[ -n "$LOGIN_USERS" ]]; then echo 'Whitelist learning: LOGIN_USERS accounts only'
+        else echo 'Whitelist learning: off (set LEARN_ADMINS=on, then check and reload)'; fi
         printf 'Server SSH protection: %s\nPer-port jails: %s\n' "$PROTECT_SERVER_SSH" "$JAIL_PER_PORT"
         if [[ -f "$APPLIED_CONF" ]]; then
             printf 'Accepted ports: %s\n' "$PROTECTED_PORTS"

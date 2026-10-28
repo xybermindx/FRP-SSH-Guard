@@ -25,17 +25,14 @@ lists, auth = module('lists'), module('auth')
 SUCCESS = re.compile(r'^Accepted (?:password|publickey|keyboard-interactive(?:/pam)?) for (\S+) from ')
 
 
-def accepted(record, users):
+def accepted(record, config):
     event = auth.parse_event(record)
-    if not users or not event or event[0] != 'accepted':
+    if not lists.learning(config) or not event or event[0] != 'accepted':
         return None
     match = SUCCESS.match(record['MESSAGE'])
     if not match:
         return None
-    # Preserve the documented POSIX extended-regex interpretation of LOGIN_USERS.
-    matched = subprocess.run(['grep', '-Ex', '--', users], input=match[1] + '\n',
-                             text=True, stdout=subprocess.DEVNULL).returncode == 0
-    return (event[1], event[3]) if matched else None
+    return (event[1], event[3]) if lists.learnable(match[1], config) else None
 
 
 def learn(record):
@@ -46,7 +43,7 @@ def learn(record):
     with open(lock_path, 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         config = lists.policy()
-        success = accepted(record, config['LOGIN_USERS'])
+        success = accepted(record, config)
         if not success:
             return False
         ip, stamp = success
@@ -73,12 +70,12 @@ def main():
     events = module('events')
     current = events.policy()
     if current['OBSERVABILITY_VERSION'] == '1':
-        if not current['LOGIN_USERS']:
+        if not lists.learning(current):
             return 0
         return events.follow('learn')
     config = lists.policy()
-    if not config['LOGIN_USERS']:
-        print('Auto-learning disabled: set LOGIN_USERS, then check and reload.')
+    if not lists.learning(config):
+        print('Auto-learning disabled: set LEARN_ADMINS=on or LOGIN_USERS, then check and reload.')
         return 0
     path = lists.state_directory() / 'learn-cursor.json'
     state = json.loads(lists.read(path) or '{}')

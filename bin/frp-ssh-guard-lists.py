@@ -4,12 +4,14 @@
 Callers hold the guard runtime lock. Home writes run as the registered owner.
 The root cache allows boot and operation while that home is unavailable.
 """
+import grp
 import hashlib
 import importlib.util
 import ipaddress
 import json
 import os
 from pathlib import Path
+import pwd
 import subprocess
 import sys
 import time
@@ -19,7 +21,9 @@ SPEC = importlib.util.spec_from_file_location('guard_inputs', LIB / 'frp-ssh-gua
 data = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(data)
 KEYS = ('GUARD_TABLE', 'MANUAL_DIR', 'CONFIG_BASE', 'LEARN_TIMEOUT', 'STRIKE_MAX',
-        'LOGIN_USERS', 'MAX_LEARNED', 'PROTECTED_PORTS', 'JAIL_PER_PORT', 'BAN_TIMEOUT', 'STRIKE_LADDER')
+        'LOGIN_USERS', 'MAX_LEARNED', 'PROTECTED_PORTS', 'JAIL_PER_PORT', 'BAN_TIMEOUT', 'STRIKE_LADDER',
+        'LEARN_ADMINS')
+ADMIN_GROUPS = ('sudo', 'admin', 'wheel')
 
 
 def policy():
@@ -28,6 +32,43 @@ def policy():
         'guard-lists', str(LIB / 'frp-ssh-guard-config.sh'), *KEYS],
         check=True, capture_output=True, text=True)
     return dict(zip(KEYS, result.stdout.split('\0')[:-1]))
+
+
+def learning(config):
+    return config.get('LEARN_ADMINS') == 'on' or bool(config.get('LOGIN_USERS'))
+
+
+def learnable(user, config):
+    """Whether a successful local login by this account teaches trust for its source.
+
+    LEARN_ADMINS needs no configuration: root, the owner of the settings folder
+    and members of the sudo, admin or wheel groups are administrators.
+    LOGIN_USERS adds accounts by POSIX extended regex.
+    """
+    if config.get('LOGIN_USERS') and subprocess.run(['grep', '-Ex', '--', config['LOGIN_USERS']], input=user + '\n',
+                                                    text=True, stdout=subprocess.DEVNULL).returncode == 0:
+        return True
+    if config.get('LEARN_ADMINS') != 'on':
+        return False
+    if user == 'root':
+        return True
+    try:
+        owner = data.location(config['CONFIG_BASE'])
+    except (OSError, ValueError, KeyError):
+        owner = None
+    if owner and owner.get('user') == user:
+        return True
+    try:
+        account = pwd.getpwnam(user)
+    except KeyError:
+        return False
+    admins = set()
+    for name in ADMIN_GROUPS:
+        try:
+            admins.add(grp.getgrnam(name).gr_gid)
+        except KeyError:
+            pass
+    return bool(admins & set(os.getgrouplist(user, account.pw_gid)))
 
 
 def state_directory():

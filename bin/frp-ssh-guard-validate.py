@@ -30,7 +30,7 @@ def validate(values):
         fail('LOG_MAX_SIZE', 'expected 1KiB to 100MiB')
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', values['GUARD_TABLE']):
         fail('GUARD_TABLE', 'expected a simple nftables identifier')
-    for key in ('PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'SSH_SLOW_PROTECTION'):
+    for key in ('PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'SSH_SLOW_PROTECTION', 'LEARN_ADMINS'):
         if values[key] not in ('on', 'off'):
             fail(key, 'expected on or off')
     try:

@@ -17,7 +17,7 @@ spec.loader.exec_module(build)
 
 class PackageVersionTests(unittest.TestCase):
     def test_debian_upgrade_order(self):
-        versions = ['0.0.4', '0.0.5', '0.0.5-1', '0.0.5-2', '0.0.5-10', '0.0.6-1', '0.0.6-4', '0.0.7-1']
+        versions = ['0.0.4', '0.0.5', '0.0.5-1', '0.0.5-2', '0.0.5-10', '0.0.6-1', '0.0.6-4', '0.0.7-1', '0.0.7-2']
         for older, newer in zip(versions, versions[1:]):
             with self.subTest(older=older, newer=newer):
                 subprocess.run(['dpkg', '--compare-versions', newer, 'gt', older], check=True)

@@ -20,7 +20,7 @@
 #   sudo frp-ssh-guard allow 198.51.100.10 22001           one port
 #   sudo frp-ssh-guard unallow 198.51.100.10               remove its lines
 #
-# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)
+# Lines with source=learned come from administrator logins to this server
 # and expire at until=; keep that time. Delete any line to remove the trust
 # (a new trusted login may add it again).
 # Reopen this file before editing: saving an old copy removes newer learned entries.
