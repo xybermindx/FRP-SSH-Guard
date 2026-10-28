@@ -261,8 +261,8 @@ def sync(config=None, addition=None, remove=None, migrate_only=False):
         tombstones.pop(key(row), None)
     changes, deleted = {}, []
     for kind in texts:
-        resolved = data.resolve_tiers(data.records(texts[kind], kind), config.get('BAN_TIMEOUT', '6h'),
-                                      config.get('STRIKE_LADDER', '2:1d 3:3d 4:7d 5:28d'),
+        resolved = data.resolve_tiers(data.records(texts[kind], kind), config.get('BAN_TIMEOUT', '12h'),
+                                      config.get('STRIKE_LADDER', '2:3d 3:7d 4:30d 5:90d'),
                                       config['STRIKE_MAX'], now)
         normalized = data.render_list(texts[kind], resolved, kind)
         previous = state.get('exported', {}).get(kind, {}) if online[kind] and not migrate_only else {}

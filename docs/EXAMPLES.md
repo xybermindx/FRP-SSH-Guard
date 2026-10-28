@@ -203,18 +203,18 @@ rules, including Fail2ban, remain independent.
 [all]
 198.51.100.19                             # no time written: forever
 198.51.100.20 forever                     # forever, written out
-198.51.100.21 tier=1                      # BAN_TIMEOUT (6 hours by default)
+198.51.100.21 tier=1                      # BAN_TIMEOUT (12 hours by default)
 198.51.100.22 until=2030-01-31T00:00:00Z  # until this UTC time
 [22]
-203.0.113.20 tier=2                       # 1 day
+203.0.113.20 tier=2                       # 3 days
 [22001]
-203.0.113.21 tier=5                       # 28 days
+203.0.113.21 tier=5                       # 90 days
 ```
 
 In `blocklist.conf`, an entry without a time and `forever` are both permanent.
 Plain durations such as `7d` are rejected in the file (use `tier=`, `until=` or
-`block IP --for 7d`); the error names the line. Default tiers 1–5 are 6 hours,
-1 day, 3 days, 7 days and 28 days. Tier 1 uses `BAN_TIMEOUT`; tiers 2–5 use the
+`block IP --for 7d`); the error names the line. Default tiers 1–5 are 12 hours,
+3 days, 7 days, 30 days and 90 days. Tier 1 uses `BAN_TIMEOUT`; tiers 2–5 use the
 matching `STRIKE_LADDER` threshold, capped by `STRIKE_MAX`. A tier absent from a
 custom ladder is rejected. These are manual duration choices, independent of
 automatic strike counts. First apply saves `until=`; repeated apply, upgrades and

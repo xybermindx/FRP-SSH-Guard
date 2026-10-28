@@ -16,9 +16,9 @@
 #   198.51.100.0/24                  a whole subnet, forever
 #   2001:db8::10                     IPv6 works the same way
 # Timed blocks use tier= or until= (plain times such as 7d are rejected here):
-#   203.0.113.12 tier=1              BAN_TIMEOUT (default 6 hours)
-#   203.0.113.13 tier=2              1 day (tier=3: 3 days, tier=4: 7 days)
-#   203.0.113.14 tier=5              28 days (tiers 2-5 follow STRIKE_LADDER)
+#   203.0.113.12 tier=1              BAN_TIMEOUT (default 12 hours)
+#   203.0.113.13 tier=2              3 days (tier=3: 7 days, tier=4: 30 days)
+#   203.0.113.14 tier=5              90 days (tiers 2-5 follow STRIKE_LADDER)
 #   203.0.113.15 until=2030-01-31T00:00:00Z   until this UTC date and time
 # The first apply adds until= to a tier line; delete until= to restart its period.
 #

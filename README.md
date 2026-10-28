@@ -135,7 +135,7 @@ has been tested. See [validation results](docs/VALIDATION.md).
 | SSH brute-force tools that repeatedly reconnect | Limits connections; optional local sshd monitoring also counts authentication failures on this server. |
 | Repeated local SSH invalid-user attempts | With port-22 protection on: ban after 3 distinct invalid-user connections or 5 failures within 10 minutes by default. |
 | Distributed connection bursts | The shared per-port limit drops excess new attempts; legitimate traffic can also be affected. |
-| Repeated observed bans | Strike escalation can impose longer bans; sampling can miss short or repeated events. |
+| Repeated observed bans | Each repeat moves one step up: 12 hours, 3 days, 7 days, 30 days, then 90 days again for every further offense within 90 days of release. A clean 90 days after a ban starts over. Sampling can miss short or repeated events. |
 | Known unwanted IPs/networks | Manual blocks drop matching traffic to guarded ports, subject to whitelist and established-connection precedence. |
 | Slow attempts that stay under the per-minute limits | With `SSH_SLOW_PROTECTION=on` (default): banned after more than 300 new connections per source across forwarded ports in 24 hours (100 on one port with per-port jails), or 20 failed logins on local port 22. Counts refill gradually, so they are approximate. |
 | Password guesses inside a forwarded SSH connection | Not visible; forwarded authentication outcomes are unavailable, so only connection counts apply. |
@@ -253,7 +253,7 @@ PER_IP_RATE=2
 PER_IP_BURST=40
 GLOBAL_RATE=30
 GLOBAL_BURST=20
-BAN_TIMEOUT=6h
+BAN_TIMEOUT=12h
 LEARN_ADMINS=on
 LOGIN_USERS=""
 ```
@@ -357,13 +357,13 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | Report distinct automatic sources per /24 or /64 and jail scope; never block a subnet automatically. |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | New SYN rate/minute and burst per source and port. |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | Shared new SYN rate/minute and burst per port, across sources and IP families. |
-| `BAN_TIMEOUT` | `6h` | Temporary source-ban duration. |
+| `BAN_TIMEOUT` | `12h` | Temporary source-ban duration (first offense). |
 | `LEARN_ADMINS` | `on` | Whitelist the source of a successful local login by root, the settings owner or a `sudo`/`admin`/`wheel` member for `LEARN_TIMEOUT`. Anyone sharing that public IP is trusted too. |
 | `LOGIN_USERS` | Empty | Extra accounts that teach trust, as an extended regex, e.g. `alice|bob`. |
 | `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | Learned-source cap and time since the last trusted login. |
-| `STRIKE_WINDOW` | `90d` | History window for observed ban events. |
-| `STRIKE_LADDER` | `2:1d 3:3d 4:7d 5:28d` | Increasing strike thresholds and ban durations; empty disables escalation. |
-| `STRIKE_MAX` | `28d` | Maximum escalation duration; saved deadlines are not renewed on restore. |
+| `STRIKE_WINDOW` | `90d` | Repeat-offender memory: a ban within this time after the previous ban **ended** moves one step up the ladder (the top step repeats); a clean window starts over at `BAN_TIMEOUT`. |
+| `STRIKE_LADDER` | `2:3d 3:7d 4:30d 5:90d` | Increasing strike thresholds and ban durations; empty disables escalation. |
+| `STRIKE_MAX` | `90d` | Maximum escalation duration; saved deadlines are not renewed on restore. |
 | `PORT_MIN`, `PORT_MAX` | `1`, `65535` | Inclusive validation bounds. |
 | `EDIT_USER` | `root` | Trusted local account owning command-managed lists. |
 | `GUARD_TABLE` | `frp_ssh_persistent_guard` | Dedicated nftables table; disable before changing its name. |
@@ -403,7 +403,7 @@ permanent**, and `IP forever` means the same:
 203.0.113.10                              # no time written: blocked forever
 203.0.113.11 forever                      # the same, written out
 198.51.100.0/24                           # a whole subnet, forever
-203.0.113.12 tier=2                       # 1 day with the default ladder
+203.0.113.12 tier=2                       # 3 days with the default ladder
 203.0.113.15 until=2030-01-31T00:00:00Z   # until this UTC time
 [22001]
 203.0.113.20                              # forever, only on port 22001
@@ -411,7 +411,7 @@ permanent**, and `IP forever` means the same:
 
 Plain times such as `7d` are rejected in the file; use `tier=`/`until=`, or
 `sudo frp-ssh-guard block IP --for 7d`. In the blocklist, `IP tier=1`
-through `IP tier=5` select configured durations (defaults: 6h, 1d, 3d, 7d, 28d).
+through `IP tier=5` select configured durations (defaults: 12h, 3d, 7d, 30d, 90d).
 Automatic rows include `source=learned`, `source=runtime` or `source=strike` and
 an absolute UTC `until=` expiry. Runtime includes automatic detection and the
 `ban` command. Deleting an automatic row removes that ban/trust entry; a new
@@ -649,8 +649,8 @@ escalations, `unban`/`release`, accepted settings, first logins from new sources
 and suspected subnet clusters. For example:
 
 ```text
-2026-10-27T09:15:02.000000Z ban source=203.0.113.7 ports=all reason=slow-connections-all-ports limit=300/24h until=2026-10-27T15:15:02Z id=…
-2026-10-27T08:02:41.000000Z ban source=198.51.100.9 ports=22 reason=failed-logins limit=5/10m until=2026-10-27T14:02:41Z id=…
+2026-10-27T09:15:02.000000Z ban source=203.0.113.7 ports=all reason=slow-connections-all-ports limit=300/24h until=2026-10-27T21:15:02Z id=…
+2026-10-27T08:02:41.000000Z ban source=198.51.100.9 ports=22 reason=failed-logins limit=5/10m until=2026-10-27T20:02:41Z id=…
 ```
 
 Reasons are `connection-rate`, `slow-connections`, `slow-connections-all-ports`,

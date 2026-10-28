@@ -7,6 +7,13 @@ One on/off switch for slow brute-force protection, now covering forwarded ports,
 
 ## Changes
 
+- Package revision `0.0.7-3`: new default ban durations. First offense 12 hours,
+  then 3 days, 7 days, 30 days and 90 days (`STRIKE_MAX=90d`). Existing settings
+  keep their own values; see the migration notes to adopt the new ones.
+- Package revision `0.0.7-3`: repeat offenders keep their step. A ban within 90 days
+  after the previous ban *ended* moves one step up, and a source released from a
+  90-day jail that offends again gets another 90 days instead of 12 hours. A clean
+  90 days after a ban starts over; `unban`/`release` forgives.
 - Package revision `0.0.7-2`: administrators on unstable networks are no longer
   banned by their own key retries. Keys rejected inside a login that then succeeds
   do not count; rejected keys in a dropped connection count once per connection.
@@ -41,9 +48,9 @@ sha256sum --ignore-missing -c SHA256SUMS
 sudo apt install ./frp-ssh-guard_0.0.7.deb
 ```
 
-An active guard is refreshed automatically. Debian version `0.0.7-2` replaces
-the first v0.0.7 package (`0.0.7-1`) under the same download name; download both
-files again and APT upgrades the earlier build. Upgrades never start bans you did
+An active guard is refreshed automatically. Debian version `0.0.7-3` replaces
+the earlier v0.0.7 packages (`0.0.7-1`, `0.0.7-2`) under the same download name;
+download both files again and APT upgrades the earlier build. Upgrades never start bans you did
 not choose: `SSH_SLOW_MODE=enforce` becomes `on` (which now also covers forwarded
 ports), while `observe`, `off` or a missing value become `off`. To enable it later,
 whitelist administrators who use many forwarded machines, set

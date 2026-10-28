@@ -180,7 +180,11 @@ the registered settings owner, and members of the `sudo`, `admin` or `wheel` gro
 via the system group database; `LOGIN_USERS` adds accounts by regex.
 
 The timer and direct authentication enforcement share ban accounting; the strike
-manager combines earlier rotated ban logs with the new database. Initial/restored
+manager combines earlier rotated ban logs with the new database. It walks each
+source's bans in order: a ban within `STRIKE_WINDOW` after the previous ban ended
+moves one ladder step up (the top step repeats), otherwise the step resets. Steps
+persist in `lists/strike-levels.json`, so a chain outlives pruned history;
+`unban`/`release` forgiveness drops it. Initial/restored
 bans and explicit CLI temporary bans are excluded from automatic campaign counts.
 Database tables are bounded by time and a 200,000-row limit; reports expose capacity
 loss. SQLite retains reusable free pages rather than vacuuming during protection.

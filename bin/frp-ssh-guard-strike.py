@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # frp-ssh-guard-strike.py -- repeat-offender ("strike") manager.
-# Counts how many times each IP has been auto-banned within STRIKE_WINDOW and
-# escalates repeat offenders into the nft 'hardban' set (kept at the cap), and
-# persists them so the guard restores them on reload/reboot.
+# Each automatic ban moves a source one step up STRIKE_LADDER when it happens
+# within STRIKE_WINDOW after the source's previous ban ENDED; a source at the top
+# stays there. A clean STRIKE_WINDOW after a ban starts over at BAN_TIMEOUT.
+# Escalated bans go into the nft 'hardban' sets and hardban.conf, so the guard
+# restores them on reload/reboot. Levels persist in strike-levels.json.
 import os, re, subprocess, datetime, time, glob, gzip, fcntl, ipaddress
 from pathlib import Path
 
@@ -23,7 +25,8 @@ NFT      = "/usr/sbin/nft" if os.path.exists("/usr/sbin/nft") else "nft"
 _lock = open(os.environ.get("GUARD_LOCK_FILE", "/run/frp-ssh-guard.lock"), "a")
 fcntl.flock(_lock, fcntl.LOCK_EX)
 config_lib = Path(__file__).with_name("frp-ssh-guard-config.sh")
-keys = ["STRIKE_WINDOW", "STRIKE_MAX", "STRIKE_LADDER", "GUARD_TABLE", "EDIT_USER", "JAIL_PER_PORT", "MANUAL_DIR"]
+keys = ["STRIKE_WINDOW", "STRIKE_MAX", "STRIKE_LADDER", "GUARD_TABLE", "EDIT_USER", "JAIL_PER_PORT", "MANUAL_DIR",
+        "BAN_TIMEOUT"]
 loaded = subprocess.run(
     ["bash", "-ec", '. "$1"; load_guard_config runtime; shift; for key; do printf "%s\\0" "${!key}"; done',
      "guard-config", str(config_lib), *keys], check=True, capture_output=True, text=True)
@@ -77,8 +80,8 @@ if os.path.exists(EXCUSED):
                 excused[parts[0]] = float(parts[1])
             except ValueError:
                 pass
-counts, last = {}, {}
-# Rotation must not discard offenses still inside STRIKE_WINDOW.
+offenses = {}
+# Rotated logs hold offenses from before the private event store existed.
 for log_path in sorted(glob.glob(LOG + '*')):
     if not os.path.isfile(log_path):
         continue
@@ -106,9 +109,7 @@ for log_path in sorted(glob.glob(LOG + '*')):
                 continue
             if ep < excused.get(ip, 0):   # forgiven at release time
                 continue
-            if now - ep <= window:
-                counts[key] = counts.get(key, 0) + 1
-                last[key] = max(last.get(key, 0), ep)
+            offenses.setdefault(key, []).append(ep)
 
 # New monitors record each automatic ban once in the private event store.
 # The old log remains readable for pre-upgrade strikes and their deadlines.
@@ -117,12 +118,43 @@ from contextlib import closing
 observation_path = Path(GUARD_DIR) / 'observations/events.sqlite3'
 if observation_path.is_file():
     with closing(sqlite3.connect(observation_path.as_uri() + '?mode=ro', uri=True)) as observations:
-        for ep, ip, scope in observations.execute("SELECT stamp,ip,scope FROM events WHERE kind='ban' AND stamp>=?", (now - window,)):
+        for ep, ip, scope in observations.execute("SELECT stamp,ip,scope FROM events WHERE kind='ban'"):
             if ep < excused.get(ip, 0):
                 continue
             key = ip if scope == '*' else ip + ' ' + scope
-            counts[key] = counts.get(key, 0) + 1
-            last[key] = max(last.get(key, 0), ep)
+            offenses.setdefault(key, []).append(ep)
+
+# Walk each source's offenses in order. Persisted levels let a chain outlive the
+# event history: a source released from a 90-day ban that offends again within
+# STRIKE_WINDOW gets the top step again instead of starting over.
+import json
+base = parse_dur(cfg["BAN_TIMEOUT"])
+
+
+def step(level):
+    d = dur_for(level)
+    return min(parse_dur(d), parse_dur(cfg['STRIKE_MAX'])) if d else None
+
+
+levels_path = Path(LIST_DIR) / 'strike-levels.json'
+try:
+    levels = {k: [int(v[0]), float(v[1]), float(v[2])] for k, v in json.loads(levels_path.read_text()).items()}
+except (OSError, ValueError, TypeError, IndexError, AttributeError):
+    levels = {}  # rebuilt from the available history
+levels = {k: v for k, v in levels.items() if excused.get(k.split()[0], 0) <= v[1]}  # unban/release forgives
+for key, times in offenses.items():
+    level, seen, end = levels.get(key, (0, 0.0, 0.0))
+    newest = seen
+    for ep in sorted(times):
+        if ep <= seen:
+            continue  # processed by an earlier run
+        level = level + 1 if level and ep <= end + window else 1
+        end = ep + (step(level) or base)
+        newest = ep
+    levels[key] = [level, newest, end]
+levels = {k: v for k, v in levels.items() if v[2] + window >= now}  # a clean window forgets the chain
+counts = {k: v[0] for k, v in levels.items()}
+last = {k: v[1] for k, v in levels.items()}
 
 # strikes view
 os.makedirs(os.path.dirname(STRIKES), exist_ok=True)
@@ -165,18 +197,13 @@ def exempt(key):
                     return True
     return False
 
-# target hardbans
+# target hardbans: escalated steps whose ban is still running
 target = {}
-for ip, c in counts.items():
-    if exempt(ip):
+for ip, (level, seen, end) in levels.items():
+    if exempt(ip) or not step(level):
         continue
-    d = dur_for(c)
-    if d:
-        d = str(min(parse_dur(d), parse_dur(cfg['STRIKE_MAX']))) + 's'
-    if d:
-        expiry = int(last[ip]) + parse_dur(d)
-        if expiry > now:
-            target[ip] = expiry
+    if int(end) > now:
+        target[ip] = int(end)
 
 cur = set()
 legacy_hardban = os.path.join(LIST_DIR, 'hardguard.conf')
@@ -216,6 +243,7 @@ for ip, expiry in sorted(target.items()):
     fields = ip.split()
     rows.append(_inputs.format_entry(fields[0], fields[1] if len(fields) > 1 else '*', expiry, 'strike'))
 _inputs.atomic_write(HARDBAN, '\n'.join(rows) + ('\n' if rows else ''))
+_inputs.atomic_write(levels_path, json.dumps(levels, sort_keys=True) + '\n', 0o640)
 
 try:
     import shutil

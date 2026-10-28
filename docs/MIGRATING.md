@@ -5,6 +5,28 @@ every v0.0.6 build. As in v0.0.6, an active guard is refreshed automatically dur
 installation: accepted policy is recompiled and the SSH monitors restart. Saved ban
 scopes and expiry, boot enablement and timer deadlines are kept; rate meters reset.
 
+## Package revision 0.0.7-3: ban durations and repeat offenders
+
+New installations ban for 12 hours on a first offense, then 3 days, 7 days,
+30 days and 90 days. Upgrades never change values already in your settings file,
+so an existing server keeps its durations. To adopt the new ones, set:
+
+```ini
+BAN_TIMEOUT=12h
+STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"
+STRIKE_MAX=90d
+```
+
+then run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`. Current bans
+keep their end time. Repeat-offender bans are recalculated from the latest offense
+with the new ladder at the next strike-timer run, so some may become longer.
+
+The meaning of `STRIKE_WINDOW` changes for every installation: offenses are now
+remembered for that long after a ban **ends**, and a source at the top step stays
+there while it keeps re-offending. On the first strike-timer run after upgrading,
+each source's step is rebuilt from the ban history still available, so some
+current repeat-offender bans can become longer.
+
 ## Package revision 0.0.7-2
 
 `0.0.7-2` replaces the first v0.0.7 package under the same download name; a normal

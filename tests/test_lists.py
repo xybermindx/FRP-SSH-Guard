@@ -63,6 +63,37 @@ class ListTests(unittest.TestCase):
         self.assertIn('blocked FOREVER', '\n'.join(data.HEADERS['block']))
         self.assertNotIn('tier=', '\n'.join(data.HEADERS['allow']))
 
+    def test_default_ban_durations_and_every_shipped_header_refresh(self):
+        values = data.settings((ROOT / 'etc/settings.conf.example').read_text())
+        rows = data.records(''.join(f'198.51.100.{tier} tier={tier}\n' for tier in range(1, 6)))
+        resolved = data.resolve_tiers(rows, values['BAN_TIMEOUT'], values['STRIKE_LADDER'], values['STRIKE_MAX'], now=0)
+        self.assertEqual([row.expiry for row in resolved],
+                         [12 * 3600, 3 * 86400, 7 * 86400, 30 * 86400, 90 * 86400])
+        for kind in ('block', 'allow'):
+            for previous in data.PREVIOUS_HEADERS[kind]:
+                with self.subTest(kind=kind, lines=len(previous)):
+                    self.assertNotEqual(previous, data.HEADERS[kind])
+                    old = '\n'.join(previous) + '\n\n[all]\n198.51.100.1\n'
+                    self.assertTrue(data.render_list(old, data.records(old, kind), kind)
+                                    .startswith('\n'.join(data.HEADERS[kind]) + '\n'))
+
+    def test_each_successful_login_renews_the_learned_whitelist_period(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('etc', 'lists', 'home'):
+                (root / name).mkdir()
+            cfg = dict(CONFIG_BASE=str(root / 'etc'), MANUAL_DIR=str(root / 'home'), GUARD_TABLE='test_guard',
+                       LEARN_TIMEOUT='90d', STRIKE_MAX='90d', MAX_LEARNED='500', JAIL_PER_PORT='off')
+            def learn(expiry):
+                lists.sync(cfg, addition=('allow', data.Row('198.51.100.30', '*', expiry, 'learned')))
+                return [r.expiry for r in data.records((root / 'home/whitelist.conf').read_text(), 'allow')]
+            with mock.patch.dict(os.environ, {'GUARD_LIST_DIR': str(root / 'lists')}), \
+                 mock.patch.object(lists.time, 'time', return_value=1000), \
+                 mock.patch.object(lists, 'snapshot', return_value=[]):
+                self.assertEqual(learn(1000 + 90 * 86400), [1000 + 90 * 86400])
+                self.assertEqual(learn(1000 + 120 * 86400), [1000 + 120 * 86400])  # a later login renews
+                self.assertEqual(learn(1000 + 100 * 86400), [1000 + 120 * 86400])  # an older replay never shortens
+
     def test_list_errors_name_the_problem(self):
         for text, message in (('203.0.113.10 7d', 'no time means forever'),
                               ('203.0.113.10 for=7d', 'not a supported option'),

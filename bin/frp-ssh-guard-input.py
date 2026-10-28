@@ -49,9 +49,9 @@ HEADERS = {
         '#   198.51.100.0/24                  a whole subnet, forever',
         '#   2001:db8::10                     IPv6 works the same way',
         '# Timed blocks use tier= or until= (plain times such as 7d are rejected here):',
-        '#   203.0.113.12 tier=1              BAN_TIMEOUT (default 6 hours)',
-        '#   203.0.113.13 tier=2              1 day (tier=3: 3 days, tier=4: 7 days)',
-        '#   203.0.113.14 tier=5              28 days (tiers 2-5 follow STRIKE_LADDER)',
+        '#   203.0.113.12 tier=1              BAN_TIMEOUT (default 12 hours)',
+        '#   203.0.113.13 tier=2              3 days (tier=3: 7 days, tier=4: 30 days)',
+        '#   203.0.113.14 tier=5              90 days (tiers 2-5 follow STRIKE_LADDER)',
         '#   203.0.113.15 until=2030-01-31T00:00:00Z   until this UTC date and time',
         '# The first apply adds until= to a tier line; delete until= to restart its period.',
         '#',
@@ -104,6 +104,29 @@ _OLD_TAIL = ['# Delete an entry to remove it; a new login/attack may add it agai
 LEGACY_HEADERS = {
     'block': _OLD_COMMON + ['# source=runtime/strike identifies automatic bans; keep their expiry.'] + _OLD_TAIL,
     'allow': _OLD_COMMON + ['# source=learned identifies learned trust; keep its expiry.'] + _OLD_TAIL,
+}
+
+
+def _shipped(kind, *changes):
+    # A previous release's header: the current one with some lines as they were then.
+    lines = list(HEADERS[kind])
+    for current, previous in changes:
+        lines[lines.index(current)] = previous
+    return lines
+
+
+# Every header an earlier release generated, oldest first; only these are refreshed.
+PREVIOUS_HEADERS = {
+    'block': [LEGACY_HEADERS['block'], _shipped('block',  # v0.0.7-1 and -2: old default durations
+        ('#   203.0.113.12 tier=1              BAN_TIMEOUT (default 12 hours)',
+         '#   203.0.113.12 tier=1              BAN_TIMEOUT (default 6 hours)'),
+        ('#   203.0.113.13 tier=2              3 days (tier=3: 7 days, tier=4: 30 days)',
+         '#   203.0.113.13 tier=2              1 day (tier=3: 3 days, tier=4: 7 days)'),
+        ('#   203.0.113.14 tier=5              90 days (tiers 2-5 follow STRIKE_LADDER)',
+         '#   203.0.113.14 tier=5              28 days (tiers 2-5 follow STRIKE_LADDER)'))],
+    'allow': [LEGACY_HEADERS['allow'], _shipped('allow',  # v0.0.7-1, before administrator learning
+        ('# Lines with source=learned come from administrator logins to this server',
+         '# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)'))],
 }
 
 
@@ -354,10 +377,10 @@ def resolve_tiers(rows, base, ladder, cap, now=None):
 def refresh_header(original, kind):
     """Replace only the exact instructions an earlier release generated."""
     lines = original.splitlines()
-    old = LEGACY_HEADERS[kind]
-    if lines[:len(old)] != old:
-        return original
-    return '\n'.join(HEADERS[kind] + lines[len(old):]) + '\n'
+    for old in PREVIOUS_HEADERS[kind]:
+        if lines[:len(old)] == old:
+            return '\n'.join(HEADERS[kind] + lines[len(old):]) + '\n'
+    return original
 
 
 def render_list(original, rows, kind):
@@ -582,11 +605,28 @@ LEGACY_SLOW_COMMENTS = [
 # Renamed settings keep their value and position; the old comment is replaced.
 RENAMED = {'ALERT_LOG_MAX_SIZE': 'LOG_MAX_SIZE'}
 # Comment text shipped above a setting; replaced by the current text when unchanged.
-REFRESHED_COMMENTS = {'LOGIN_USERS': [
-    "# Optional learning from successful logins to THIS SERVER's sshd, not tunneled SSH.",
-    '# Default empty = disabled. grep extended regex, e.g. "alice|bob".',
-    '# Matching source IPs bypass guard limits/blocks; also exempted from an existing',
-    '# fail2ban sshd jail. Enable only for trusted operator accounts.']}
+_BAN_COMMENT = ['# Base source ban when the per-source or local authentication limit is exceeded.',
+                '# Scope is all protected ports unless JAIL_PER_PORT=on.',
+                '# Positive integer + s/m/h/d/w (seconds/minutes/hours/days/weeks). Default 6 hours.']
+REFRESHED_COMMENTS = {
+    'LOGIN_USERS': [[
+        "# Optional learning from successful logins to THIS SERVER's sshd, not tunneled SSH.",
+        '# Default empty = disabled. grep extended regex, e.g. "alice|bob".',
+        '# Matching source IPs bypass guard limits/blocks; also exempted from an existing',
+        '# fail2ban sshd jail. Enable only for trusted operator accounts.']],
+    'BAN_TIMEOUT': [_BAN_COMMENT + [  # v0.0.7
+        '# For a PERMANENT block, write the address in blocklist.conf with no time, or run',
+        '# sudo frp-ssh-guard block 203.0.113.10 (see blocklist.conf for more examples).'], _BAN_COMMENT],
+    'STRIKE_WINDOW': [[
+        '# Repeat-offender history window; positive integer + s/m/h/d/w. Default 90 days.',
+        '# Bans are sampled every minute: short bans and repeated events may be missed.']],
+    'STRIKE_LADDER': [[
+        '# Increasing "strike-count:duration" pairs, counts >=2. Empty disables escalation.',
+        '# Default: 2 offenses=1 day, 3=3 days, 4=7 days, 5 or more=28 days.']],
+    'STRIKE_MAX': [[
+        '# Maximum strike duration from the latest offense. Default 28 days.',
+        '# The strike helper caps ladder durations at this value.']],
+}
 LEGACY_RENAMED_COMMENTS = {'ALERT_LOG_MAX_SIZE': [
     ['# Local alerts: newest complete record first, discard oldest records at the cap.',
      '# No rotated archives or remote notifications. Accepted settings change on reload.']]}
@@ -666,7 +706,7 @@ def merge_defaults(original, template):
     described = template_comments(template)
     for key, shipped in REFRESHED_COMMENTS.items():
         for index in where(key):
-            first = known_comments(index, [shipped])
+            first = known_comments(index, shipped)
             if first != index and key in described:
                 edit(first, index, described[key].lstrip('\r\n'))
                 changes.append('instructions')

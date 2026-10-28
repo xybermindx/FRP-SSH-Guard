@@ -2,6 +2,17 @@
 
 ## 0.0.7
 
+- Package revision 3 sets new default ban durations: first offense 12 hours (`BAN_TIMEOUT=12h`), then
+  3 days, 7 days, 30 days and 90 days for the 2nd to 5th offense within
+  `STRIKE_WINDOW` (`STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"`, `STRIKE_MAX=90d`).
+  Blocklist tiers 1–5 follow the same values. Existing settings files keep their
+  own values; the list headers shipped in v0.0.7 are refreshed with the new text.
+- Package revision 3: repeat offenders keep their ladder step. An automatic ban within `STRIKE_WINDOW`
+  after the previous ban *ended* moves one step up, and a source released from the
+  top step that offends again gets the top duration again (90 days) instead of
+  starting over at 12 hours. A clean `STRIKE_WINDOW` after a ban starts over.
+  Steps persist across pruned history; `unban`/`release` forgives them. Shipped
+  comments for the ban and strike settings are refreshed on upgrade.
 - Package revision 2 stops banning administrators on unstable networks. Keys or
   typos rejected inside a login that then succeeds no longer count, and rejected
   public keys in a dropped connection count once per connection instead of once per

@@ -120,7 +120,7 @@ flowchart LR
 | 不断重新连接的 SSH 暴力破解工具 | 限制连接尝试；可选的本机 sshd 监控还会统计认证失败。 |
 | 重复尝试本机不存在的用户名 | 启用 22 端口防护后，默认 10 分钟内 3 个不同连接的无效用户尝试或 5 次认证失败触发封禁。 |
 | 分布式连接突发 | 每端口共享上限丢弃过量新连接；正常用户也可能受影响。 |
-| 多次被观察到的封禁 | 累犯策略可以延长封禁；采样可能漏掉短期或重复事件。 |
+| 多次被观察到的封禁 | 每次再犯升一级：12 小时、3 天、7 天、30 天，之后只要在解封后 90 天内再犯，每次都再封 90 天。封禁结束后 90 天无违规则从头开始。采样可能漏掉短期或重复事件。 |
 | 已知不需要的 IP 或网段 | 手动黑名单丢弃匹配流量，但白名单和已建立连接的优先规则仍然适用。 |
 | 低于每分钟阈值的慢速尝试 | `SSH_SLOW_PROTECTION=on`（默认）时：同一来源 24 小时内在所有转发端口合计超过 300 次新连接（按端口独立封禁时为单端口 100 次），或本机 22 端口 20 次失败登录，即被封禁。计数随时间逐步恢复，因此为近似值。 |
 | 转发 SSH 连接内部猜密码 | 无法看到；无法读取转发 SSH 的认证结果，只能统计连接次数。 |
@@ -229,7 +229,7 @@ PER_IP_RATE=2
 PER_IP_BURST=40
 GLOBAL_RATE=30
 GLOBAL_BURST=20
-BAN_TIMEOUT=6h
+BAN_TIMEOUT=12h
 LEARN_ADMINS=on
 LOGIN_USERS=""
 ```
@@ -321,13 +321,13 @@ sudo frp-ssh-guard status
 | `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | 按 /24 或 /64 及 jail 范围统计不同自动封禁来源，仅报告，不自动封禁子网。 |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | 每来源、每端口的新 SYN 每分钟速率及突发额度。 |
 | `GLOBAL_RATE`, `GLOBAL_BURST` | `30`, `20` | 每端口共享的新 SYN 每分钟速率及突发额度，跨来源和 IP 协议族共享。 |
-| `BAN_TIMEOUT` | `6h` | 临时封禁来源的时长。 |
+| `BAN_TIMEOUT` | `12h` | 临时封禁来源的时长（首次违规）。 |
 | `LEARN_ADMINS` | `on` | root、设置所有者或 `sudo`/`admin`/`wheel` 组成员在本机成功登录后，将来源加入白名单，有效期 `LEARN_TIMEOUT`。共用该公网 IP 的其他人也会被信任。 |
 | `LOGIN_USERS` | 空 | 额外可学习信任的账户，扩展正则表达式，例如 `alice|bob`。 |
 | `MAX_LEARNED`, `LEARN_TIMEOUT` | `500`, `90d` | 学习来源数量上限，以及距上次可信登录的有效时长。 |
-| `STRIKE_WINDOW` | `90d` | 观察到的封禁事件的历史统计窗口。 |
-| `STRIKE_LADDER` | `2:1d 3:3d 4:7d 5:28d` | 递增的违规次数及封禁时长；空字符串禁用升级。 |
-| `STRIKE_MAX` | `28d` | 升级封禁时长上限；恢复时不延长原到期时间。 |
+| `STRIKE_WINDOW` | `90d` | 累犯记忆：上一次封禁**结束**后此时间内再次被封禁，则在阶梯上升一级（最高级保持）；期间无违规则从 `BAN_TIMEOUT` 重新开始。 |
+| `STRIKE_LADDER` | `2:3d 3:7d 4:30d 5:90d` | 递增的违规次数及封禁时长；空字符串禁用升级。 |
+| `STRIKE_MAX` | `90d` | 升级封禁时长上限；恢复时不延长原到期时间。 |
 | `PORT_MIN`, `PORT_MAX` | `1`, `65535` | 端口校验的上下界，包含边界。 |
 | `EDIT_USER` | `root` | 拥有命令管理名单的可信本机账户。 |
 | `GUARD_TABLE` | `frp_ssh_persistent_guard` | 专用 nftables 表名；修改前先停用防护。 |
@@ -363,7 +363,7 @@ sudo frp-ssh-guard status
 203.0.113.10                              # 不写时间：永久封禁
 203.0.113.11 forever                      # 同上，显式写出
 198.51.100.0/24                           # 整个子网，永久
-203.0.113.12 tier=2                       # 默认阶梯下为 1 天
+203.0.113.12 tier=2                       # 默认阶梯下为 3 天
 203.0.113.15 until=2030-01-31T00:00:00Z   # 到此 UTC 时间为止
 [22001]
 203.0.113.20                              # 永久，仅限 22001 端口
@@ -371,7 +371,7 @@ sudo frp-ssh-guard status
 
 文件中不接受 `7d` 这类直接时长；请使用 `tier=`/`until=`，或
 `sudo frp-ssh-guard block IP --for 7d`。黑名单中的 `IP tier=1` 到
-`IP tier=5` 选择已配置时长（默认 6h、1d、3d、7d、28d）。自动条目带有 `source=learned`、`source=runtime`
+`IP tier=5` 选择已配置时长（默认 12h、3d、7d、30d、90d）。自动条目带有 `source=learned`、`source=runtime`
 或 `source=strike`，以及绝对 UTC `until=` 到期时间。runtime 包括自动检测和 `ban` 命令。
 删除自动行可移除对应信任/封禁；新的攻击或可信登录仍可重新添加。`unban` 还会豁免累犯历史。
 
@@ -583,8 +583,8 @@ frps 服务器无从得知经隧道的登录是否成功，因此转发端口只
 首次登录以及疑似子网群集。例如：
 
 ```text
-2026-10-27T09:15:02.000000Z ban source=203.0.113.7 ports=all reason=slow-connections-all-ports limit=300/24h until=2026-10-27T15:15:02Z id=…
-2026-10-27T08:02:41.000000Z ban source=198.51.100.9 ports=22 reason=failed-logins limit=5/10m until=2026-10-27T14:02:41Z id=…
+2026-10-27T09:15:02.000000Z ban source=203.0.113.7 ports=all reason=slow-connections-all-ports limit=300/24h until=2026-10-27T21:15:02Z id=…
+2026-10-27T08:02:41.000000Z ban source=198.51.100.9 ports=22 reason=failed-logins limit=5/10m until=2026-10-27T20:02:41Z id=…
 ```
 
 原因包括 `connection-rate`、`slow-connections`、`slow-connections-all-ports`、

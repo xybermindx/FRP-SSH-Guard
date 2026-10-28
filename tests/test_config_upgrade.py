@@ -136,7 +136,7 @@ class ConfigUpgradeTests(unittest.TestCase):
     def test_admin_learning_is_added_above_login_users_and_shipped_comment_refreshed(self):
         self.assertEqual(data.settings(TEMPLATE)['LEARN_ADMINS'], 'on')
         original = ('PROTECTED_PORTS="22001"\nBAN_TIMEOUT=6h\n\n'
-                    + ''.join(line + '\n' for line in data.REFRESHED_COMMENTS['LOGIN_USERS'])
+                    + ''.join(line + '\n' for line in data.REFRESHED_COMMENTS['LOGIN_USERS'][0])
                     + 'LOGIN_USERS="alice"\nMAX_LEARNED=500\n')
         updated, keys = data.merge_defaults(original, TEMPLATE)
         lines = updated.splitlines()
@@ -144,13 +144,30 @@ class ConfigUpgradeTests(unittest.TestCase):
         self.assertEqual(data.settings(updated)['LOGIN_USERS'], 'alice')
         self.assertLess(lines.index('LEARN_ADMINS=on'), lines.index('LOGIN_USERS="alice"'))
         self.assertLess(lines.index('BAN_TIMEOUT=6h'), lines.index('LEARN_ADMINS=on'))
-        for line in data.REFRESHED_COMMENTS['LOGIN_USERS']:
+        for line in data.REFRESHED_COMMENTS['LOGIN_USERS'][0]:
             self.assertNotIn(line, lines)
         self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
         custom = 'PROTECTED_PORTS="22001"\n# my admins\nLOGIN_USERS="alice"\n'
         kept = data.merge_defaults(custom, TEMPLATE)[0].splitlines()
         self.assertEqual(kept.index('# my admins') + 1, kept.index('LOGIN_USERS="alice"'))
         self.assertLess(kept.index('LEARN_ADMINS=on'), kept.index('# my admins'))
+
+    def test_shipped_ban_and_strike_comments_refresh_but_values_stay(self):
+        old = subprocess.run(['git', 'show', '13d2e8e:etc/settings.conf.example'], cwd=ROOT,
+                             capture_output=True, text=True)
+        if old.returncode:
+            self.skipTest('needs the v0.0.6 template from git history')
+        updated, keys = data.merge_defaults(old.stdout, TEMPLATE)
+        values = data.settings(updated)
+        for key, value in (('BAN_TIMEOUT', '6h'), ('STRIKE_LADDER', '2:1d 3:3d 4:7d 5:28d'), ('STRIKE_MAX', '28d')):
+            self.assertEqual(values[key], value)  # an upgrade never changes chosen durations
+        for blocks in (data.REFRESHED_COMMENTS[k] for k in ('BAN_TIMEOUT', 'STRIKE_WINDOW', 'STRIKE_LADDER', 'STRIKE_MAX')):
+            for line in blocks[-1]:
+                if line not in TEMPLATE.splitlines():
+                    self.assertNotIn(line, updated.splitlines())
+        self.assertIn('# source\'s previous ban ENDED moves one step up STRIKE_LADDER, and a source at the',
+                      updated.splitlines())
+        self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
 
     def test_upgrade_message_explains_how_to_enable_off_switch(self):
         self.path.write_text('PROTECTED_PORTS="22001"\nJAIL_PER_PORT=off\nSSH_SLOW_MODE=observe\n')

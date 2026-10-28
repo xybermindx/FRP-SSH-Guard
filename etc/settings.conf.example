@@ -101,10 +101,10 @@ GLOBAL_BURST=20
 
 # Base source ban when the per-source or local authentication limit is exceeded.
 # Scope is all protected ports unless JAIL_PER_PORT=on.
-# Positive integer + s/m/h/d/w (seconds/minutes/hours/days/weeks). Default 6 hours.
+# Positive integer + s/m/h/d/w (seconds/minutes/hours/days/weeks). Default 12 hours.
 # For a PERMANENT block, write the address in blocklist.conf with no time, or run
 # sudo frp-ssh-guard block 203.0.113.10 (see blocklist.conf for more examples).
-BAN_TIMEOUT=6h
+BAN_TIMEOUT=12h
 
 # LEARN_ADMINS: trust administrators automatically (on/off). Default on.
 # When root, the account that owns this settings folder, or a member of the
@@ -126,15 +126,19 @@ MAX_LEARNED=500
 # Trusted successful logins refresh this expiry; apply/reload/reboot do not.
 LEARN_TIMEOUT=90d
 
-# Repeat-offender history window; positive integer + s/m/h/d/w. Default 90 days.
+# Repeat offenders: an automatic ban that comes within STRIKE_WINDOW after the
+# source's previous ban ENDED moves one step up STRIKE_LADDER, and a source at the
+# top step keeps getting the top duration. Staying clean for STRIKE_WINDOW after
+# a ban ends starts over at BAN_TIMEOUT. Positive integer + s/m/h/d/w. Default 90 days.
 # Bans are sampled every minute: short bans and repeated events may be missed.
 STRIKE_WINDOW=90d
-# Increasing "strike-count:duration" pairs, counts >=2. Empty disables escalation.
-# Default: 2 offenses=1 day, 3=3 days, 4=7 days, 5 or more=28 days.
-STRIKE_LADDER="2:1d 3:3d 4:7d 5:28d"
-# Maximum strike duration from the latest offense. Default 28 days.
+# Increasing "step:duration" pairs, steps >=2. Empty disables escalation.
+# Default: 1st ban=BAN_TIMEOUT (12 hours), 2nd=3 days, 3rd=7 days, 4th=30 days,
+# 5th or more=90 days. Durations count from the latest offense.
+STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"
+# Maximum strike duration from the latest offense. Default 90 days.
 # The strike helper caps ladder durations at this value.
-STRIKE_MAX=28d
+STRIKE_MAX=90d
 
 # Advanced settings (usually leave unchanged).
 # Allowed protected-port bounds, inclusive, integers 1–65535. Defaults cover all TCP.

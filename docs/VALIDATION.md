@@ -1,5 +1,18 @@
 # v0.0.7 validation
 
+## Ban durations and repeat-offender steps: package 0.0.7-3
+
+Checked on 2026-10-28 on the development host. No firewall was changed.
+
+- Local `make test`: 138 cases, 137 passing and the privileged namespace case
+  skipped locally (CI runs it). New regressions: shipped defaults resolve to
+  12h/3d/7d/30d/90d; a source released from a 90-day jail that re-offends gets
+  90 days again, also after its old history is pruned; a clean window resets;
+  release forgives the step; every previously shipped list header refreshes;
+  upgrading the real v0.0.6 template keeps chosen durations while refreshing
+  shipped comments; a newer administrator login renews the learned period.
+- Not run: real-traffic VM checks for these changes.
+
 ## Administrator counting and learning: package 0.0.7-2
 
 Checked on 2026-10-28 on the development host. No firewall was changed.

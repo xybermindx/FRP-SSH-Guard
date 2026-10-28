@@ -32,7 +32,7 @@ PER_IP_RATE=2          # sustained new connections/min per source IP before a ba
 PER_IP_BURST=40        # quick burst tolerated (opening many terminals at once)
 GLOBAL_RATE=30         # shared per-port ceiling/min (distributed floods)
 GLOBAL_BURST=20
-BAN_TIMEOUT=6h         # base ban for one offense (across guarded ports)
+BAN_TIMEOUT=12h        # base ban for one offense (across guarded ports)
 
 # --- auto-learn whitelist ---
 LOGIN_USERS=""   # opt in: local sshd accounts whose successful login trusts the source IP
@@ -43,5 +43,5 @@ LEARN_TIMEOUT=90d      # rolling lifetime of a learned entry
 
 # --- strike (repeat-offender) escalation: kept at the cap while active ---
 STRIKE_WINDOW=90d      # offenses within this window count as strikes (decay)
-STRIKE_MAX=28d         # maximum ban (28d = 4 weeks)
-STRIKE_LADDER="2:1d 3:3d 4:7d 5:28d"
+STRIKE_MAX=90d         # maximum ban (90 days)
+STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"

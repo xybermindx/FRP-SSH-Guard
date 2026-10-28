@@ -24,6 +24,13 @@ LIBRARY = (SCRIPT.split('action=${1:-help}')[0].replace(
            .split('# ---------- main dispatch ----------', 1)[0])
 
 
+def data_module():
+    spec = importlib.util.spec_from_file_location('strike_inputs', ROOT / 'bin/frp-ssh-guard-input.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class GuardTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -94,14 +101,14 @@ cat "$GUARD_DIR/rules.nft"
         self.assertEqual(shared.returncode, 0, shared.stderr)
         self.assertIn('tcp dport 22001 ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 '
                       'update @slow4 { ip saddr limit rate over 300/day burst 300 packets } '
-                      'add @slowhit4 { ip saddr } add @ban4 { ip saddr timeout 6h } counter drop comment "22001 slow v4"',
+                      'add @slowhit4 { ip saddr } add @ban4 { ip saddr timeout 12h } counter drop comment "22001 slow v4"',
                       shared.stdout)
         self.assertIn('set slow6 { type ipv6_addr; flags dynamic,timeout; timeout 24h; size 65536; }', shared.stdout)
         # Global drops are not counted: the slow rule comes after the shared ceiling.
         self.assertLess(shared.stdout.index('"22001 global"'), shared.stdout.index('"22001 slow v4"'))
         per_port = self.rules('22001\n', config='SSH_SLOW_PROTECTION=on\nJAIL_PER_PORT=on\nSSH_SLOW_WINDOW=12h\n')
         self.assertIn('update @slow4 { ip saddr . tcp dport limit rate over 200/day burst 100 packets } '
-                      'add @slowhit4 { ip saddr . tcp dport } add @ban4 { ip saddr . tcp dport timeout 6h }', per_port.stdout)
+                      'add @slowhit4 { ip saddr . tcp dport } add @ban4 { ip saddr . tcp dport timeout 12h }', per_port.stdout)
         weekly = self.rules('22001\n', config='SSH_SLOW_PROTECTION=on\nSSH_SLOW_WINDOW=3d\n')
         self.assertIn('limit rate over 700/week burst 300 packets', weekly.stdout)
         native = self.rules('22001\n', config='SSH_SLOW_PROTECTION=on\nPROTECT_SERVER_SSH=on\n')
@@ -234,6 +241,46 @@ cat "$GUARD_DIR/rules.nft"
             writes = [call.args[0][-1] for call in run.call_args_list if 'element' in call.args[0]]
             self.assertTrue(writes)
             self.assertTrue(all((' . ' in value) == (mode == 'on') for value in writes))
+
+    def run_strikes(self, offenses, excused=''):
+        import sqlite3
+        (self.root / 'etc/guard.conf').write_text('')  # shipped defaults: 12h, 3d, 7d, 30d, 90d
+        (self.root / 'observations').mkdir(exist_ok=True)
+        database = self.root / 'observations/events.sqlite3'
+        database.unlink(missing_ok=True)
+        with contextlib.closing(sqlite3.connect(database)) as db:
+            db.execute('CREATE TABLE events (stamp INTEGER, ip TEXT, scope TEXT, kind TEXT)')
+            db.executemany("INSERT INTO events VALUES (?, '198.51.100.40', '*', 'ban')", [(t,) for t in offenses])
+            db.commit()
+        (self.root / 'lists/excused.tsv').write_text(excused)
+        real_run = subprocess.run
+        def run_command(args, **kwargs):
+            return real_run(args, **kwargs) if args[0] == 'bash' else subprocess.CompletedProcess(args, 0)
+        with mock.patch.dict(os.environ, self.env, clear=True), \
+             mock.patch('subprocess.run', side_effect=run_command), \
+             mock.patch('shutil.chown'), contextlib.redirect_stdout(io.StringIO()):
+            runpy.run_path(str(ROOT / 'bin/frp-ssh-guard-strike.py'))
+        rows = data_module().records((self.root / 'lists/hardban.conf').read_text())
+        return {row.ip: row.expiry for row in rows}
+
+    def test_offender_released_from_top_jail_gets_the_top_jail_again(self):
+        day, now = 86400, int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        # Five offenses, each after the previous ban ended; the fifth earned 90 days,
+        # which ended 60 days ago. A new offense now keeps the top step.
+        chain = [now - 200 * day, now - 199 * day, now - 195 * day, now - 187 * day, now - 150 * day]
+        self.assertEqual(self.run_strikes(chain), {})  # the 90-day jail is over
+        expiry = self.run_strikes(chain + [now - 3600])['198.51.100.40']
+        self.assertAlmostEqual(expiry, now - 3600 + 90 * day, delta=5)
+        # The remembered step survives pruned history.
+        self.assertAlmostEqual(self.run_strikes([now - 3600])['198.51.100.40'], expiry, delta=5)
+        # A clean STRIKE_WINDOW after the release starts over at BAN_TIMEOUT (no strike ban).
+        (self.root / 'lists/strike-levels.json').unlink()
+        old_chain = [t - 150 * day for t in chain]
+        self.assertEqual(self.run_strikes(old_chain + [now - 3600]), {})
+        # unban/release forgives the remembered step.
+        self.run_strikes(chain + [now - 3600])
+        forgiven = f'198.51.100.40\t{now - 1800}\n'
+        self.assertEqual(self.run_strikes([now - 60], excused=forgiven), {})
 
     def test_help_without_privileges(self):
         result = subprocess.run(['bash', str(ROOT / 'bin/frp-ssh-guard-persistent.sh'), '--help'],
