@@ -126,7 +126,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS samples (stamp REAL, start REAL, packets INTEGER, gap INTEGER);
             PRAGMA user_version=1;
         ''')
-        # v0.0.7-2: remember the method so rejected keys count once per connection.
+        # Since v0.0.7: remember the method so rejected keys count once per connection.
         if 'method' not in {row[1] for row in self.db.execute('PRAGMA table_info(failures)')}:
             self.db.execute("ALTER TABLE failures ADD COLUMN method TEXT DEFAULT ''")
         self.now = time.time() if now is None else now

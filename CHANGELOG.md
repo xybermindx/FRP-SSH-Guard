@@ -2,7 +2,7 @@
 
 ## 0.0.7
 
-- Package revision 4 fixes busy blocklists that repeated the same port header (for example `[22]`)
+- Fix busy blocklists that repeated the same port header (for example `[22]`)
   many times, because new automatic bans were appended under a fresh header whenever
   the last section belonged to another port. Each port now has one section; new
   entries join it, and automatic bans follow the manual lines, sorted by address,
@@ -10,23 +10,23 @@
   headers are merged at the next update; comments and manual lines stay in place.
   The header explains `runtime`, `strike` and which `until=` applies.
 
-- Package revision 3 sets new default ban durations: first offense 12 hours (`BAN_TIMEOUT=12h`), then
+- New default ban durations: first offense 12 hours (`BAN_TIMEOUT=12h`), then
   3 days, 7 days, 30 days and 90 days for the 2nd to 5th offense within
   `STRIKE_WINDOW` (`STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"`, `STRIKE_MAX=90d`).
   Blocklist tiers 1–5 follow the same values. Existing settings files keep their
   own values; the list headers shipped in v0.0.7 are refreshed with the new text.
-- Package revision 3: repeat offenders keep their ladder step. An automatic ban within `STRIKE_WINDOW`
+- Repeat offenders keep their ladder step. An automatic ban within `STRIKE_WINDOW`
   after the previous ban *ended* moves one step up, and a source released from the
   top step that offends again gets the top duration again (90 days) instead of
   starting over at 12 hours. A clean `STRIKE_WINDOW` after a ban starts over.
   Steps persist across pruned history; `unban`/`release` forgives them. Shipped
   comments for the ban and strike settings are refreshed on upgrade.
-- Package revision 2 stops banning administrators on unstable networks. Keys or
+- Stop banning administrators on unstable networks. Keys or
   typos rejected inside a login that then succeeds no longer count, and rejected
   public keys in a dropped connection count once per connection instead of once per
   key (sshd logs rejected offers from the third key on). Password failures and
   invalid users still count individually.
-- Package revision 2 adds `LEARN_ADMINS=on` (default, also on upgrade): a successful
+- Add `LEARN_ADMINS=on` (default, also on upgrade): a successful
   login to this server by root, the settings owner, or a member of the `sudo`,
   `admin` or `wheel` group whitelists that source for `LEARN_TIMEOUT`, without
   typing usernames. `LOGIN_USERS` still adds other accounts.
@@ -60,12 +60,12 @@
 
 ## 0.0.6
 
-- Package revision 4 makes jail mode switches affect new bans only. Existing
+- Jail mode switches affect new bans only. Existing
   shared/per-port bans retain their original scopes and absolute expiry.
   Keep strike history keyed by the recorded scope, so later timer runs cannot
   broaden old per-port offenses or discard shared history after a mode switch.
   Manual block scopes and whitelist exceptions remain unchanged.
-- Package revision 3 defaults fresh settings to slow SSH enforcement (20 failures / 24h)
+- Default fresh settings to slow SSH enforcement (20 failures / 24h)
   when optional local SSH protection is enabled. Existing choices are preserved;
   older settings without a slow mode keep observation behavior. Jail scope, ban
   durations and opt-in whitelist learning remain unchanged.
@@ -73,7 +73,7 @@
 - Bounded newest-first local alerts, owner-safe writes, offline-home spool, and report-only subnet clusters.
 - Timestamped reports, persistent sampled packet deltas, and read-only doctor diagnostics.
 - Direct authentication ban history avoids double-counting sampled bans and strikes.
-- Package revision 2 automatically refreshes an active guard after installation:
+- Automatically refresh an active guard after installation:
   atomically recompile accepted firewall policy and restart SSH monitors. No manual
   reload is needed. Preserve custom settings, pending edits, saved ban scope and
   absolute expiry, boot enablement and timer schedules. Rate meters reset.

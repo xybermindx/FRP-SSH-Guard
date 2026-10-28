@@ -217,7 +217,7 @@ invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
 customized values, even when another administrator installs the package.
 
-Starting with package `0.0.5-2`, installation also adds missing settings and their
+Since v0.0.5, installation also adds missing settings and their
 comments from the current template. Missing `PROTECT_SERVER_SSH=off` and
 `JAIL_PER_PORT=off` switches are inserted immediately below `PROTECTED_PORTS` and
 `EXCLUDE_PORTS`, before other settings. Existing assignments and comments stay
@@ -515,7 +515,7 @@ Operational limits:
 | Listener is not FRPS | Select the public forwarded ports on the correct host/network namespace. |
 | Settings have no effect | Run `check`, then `reload`; inspect pending edits in `status`. |
 | A legitimate heavy user is banned by slow protection | Add the address to `whitelist.conf` (any port section) and release it with `unban`; whitelisted sources are never counted. |
-| An administrator is banned after unstable connection attempts | From another network or the console: `sudo frp-ssh-guard release IP`, then `allow IP`. Since `0.0.7-2`, keys rejected inside a successful login are not counted and rejected keys in a dropped connection count once; one successful login with `LEARN_ADMINS=on` whitelists the address. |
+| An administrator is banned after unstable connection attempts | From another network or the console: `sudo frp-ssh-guard release IP`, then `allow IP`. Since v0.0.7, keys rejected inside a successful login are not counted and rejected keys in a dropped connection count once; one successful login with `LEARN_ADMINS=on` whitelists the address. |
 | Guard inactive | Run `enable`; `reload` requires an active service. |
 | Invalid configuration | Correct the named setting; `--help` works even with broken edits. |
 | Rules active but helper/startup failed | Inspect the named systemd unit's journal; fix the cause and retry `reload`/`enable`. |
@@ -548,13 +548,13 @@ timer schedules. Custom systemd timer settings belong in `/etc/systemd/system/`
 drop-ins, not package-owned `/usr/lib` units. Fail2ban jail configuration is untouched.
 On the first upgrade from v0.0.4, its old removal hook can recalculate a custom
 `OnActiveSec` deadline; see [migration details](docs/MIGRATING.md).
-Starting with package revision `0.0.6-2`, an active installation automatically
+Since v0.0.6, an active installation automatically
 recompiles the accepted firewall policy and restarts its long-running Python
 monitors. The new code takes effect during `apt install`; no manual reload or
 reboot is needed. Live bans are saved and restored with their original scope and
 expiry. Rate meters reset; main-service enablement and timer deadlines are retained.
 Pending settings edits are not applied. Local SSH protection remains opt-in.
-Package revision `0.0.7-2` turns on administrator learning (`LEARN_ADMINS=on`),
+Version 0.0.7 turns on administrator learning (`LEARN_ADMINS=on`),
 also for upgraded installations: it only adds trust and never adds bans.
 
 Version 0.0.7 replaces `SSH_SLOW_MODE` with the `SSH_SLOW_PROTECTION=on/off`
@@ -662,7 +662,7 @@ are deleted; there are no archives.
 
 ## Local observations in v0.0.6
 
-Upgrading an active guard to package revision `0.0.6-2` starts the updated monitors
+Upgrading an active guard to v0.0.6 or later starts the updated monitors
 automatically. Use `enable` for first activation. Installation merges missing
 settings while retaining custom values, accepted policy choices, pending edits,
 saved ban expiries and timer deadlines. No extra activation command is needed

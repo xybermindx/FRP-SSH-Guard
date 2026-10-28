@@ -111,7 +111,7 @@ managed so upgrades cannot mask existing legacy configurations; it is preserved
 on remove. Purge erases system state but intentionally retains user home files.
 Updated examples ship under `/usr/share/doc`.
 
-Starting with package revision 0.0.6-2, postinst refreshes an active guard through
+Since v0.0.6, postinst refreshes an active guard through
 the internal `_upgrade` action. Under the lifecycle/runtime locks it snapshots
 live lists, compiles and validates accepted policy, atomically replaces the nftables
 table, and restarts SSH readers after releasing the runtime lock. It preserves

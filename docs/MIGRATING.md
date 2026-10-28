@@ -5,7 +5,7 @@ every v0.0.6 build. As in v0.0.6, an active guard is refreshed automatically dur
 installation: accepted policy is recompiled and the SSH monitors restart. Saved ban
 scopes and expiry, boot enablement and timer deadlines are kept; rate meters reset.
 
-## Package revision 0.0.7-3: ban durations and repeat offenders
+## Ban durations and repeat offenders
 
 New installations ban for 12 hours on a first offense, then 3 days, 7 days,
 30 days and 90 days. Upgrades never change values already in your settings file,
@@ -27,10 +27,10 @@ there while it keeps re-offending. On the first strike-timer run after upgrading
 each source's step is rebuilt from the ban history still available, so some
 current repeat-offender bans can become longer.
 
-## Package revision 0.0.7-2
+## Administrator learning
 
-`0.0.7-2` replaces the first v0.0.7 package under the same download name; a normal
-`sudo apt install ./frp-ssh-guard_0.0.7.deb` upgrades `0.0.7-1`. It adds
+If you installed v0.0.7 before, download it again; a normal
+`sudo apt install ./frp-ssh-guard_0.0.7.deb` upgrades the earlier download. It adds
 `LEARN_ADMINS=on` directly above `LOGIN_USERS` (also on upgrade) and refreshes the
 shipped `LOGIN_USERS` comment when unchanged. Administrators (root, the settings
 owner, `sudo`/`admin`/`wheel` members) are then whitelisted after a successful login
@@ -89,7 +89,7 @@ The converted file means the same as the accepted policy, so the next
 # Migration to 0.0.6
 
 Install `frp-ssh-guard_0.0.6.deb` with `sudo apt install ./frp-ssh-guard_0.0.6.deb`.
-Package revision `0.0.6-3` upgrades v0.0.5 and earlier v0.0.6 builds.
+It upgrades v0.0.5 and earlier v0.0.6 downloads.
 For an active guard, installation automatically recompiles its accepted policy
 and restarts the long-running SSH monitors. No manual reload is needed.
 Missing commented settings are merged without changing custom values. Pending
@@ -167,7 +167,7 @@ persisted strike bans restore. Package upgrades themselves do not rebuild it.
 
 ## Adding new settings to an existing file
 
-Package `0.0.5-2` merges missing commented defaults during installation. Missing
+Since v0.0.5, installation merges missing commented defaults. Missing
 `PROTECT_SERVER_SSH=off` and `JAIL_PER_PORT=off` are inserted directly below the
 port selection/exclusion lines; other missing defaults go at the end. Existing
 assignments, comments, owner and permissions are retained. Explicit `on` values,

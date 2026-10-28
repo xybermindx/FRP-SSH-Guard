@@ -7,24 +7,6 @@ One on/off switch for slow brute-force protection, now covering forwarded ports,
 
 ## Changes
 
-- Package revision `0.0.7-4`: one section per port in `blocklist.conf` and
-  `whitelist.conf`. Busy lists no longer repeat headers such as `[22]`; automatic
-  bans follow the manual lines, sorted by address, with an address's `runtime` and
-  `strike` lines together. Existing files are tidied at their next update.
-- Package revision `0.0.7-3`: new default ban durations. First offense 12 hours,
-  then 3 days, 7 days, 30 days and 90 days (`STRIKE_MAX=90d`). Existing settings
-  keep their own values; see the migration notes to adopt the new ones.
-- Package revision `0.0.7-3`: repeat offenders keep their step. A ban within 90 days
-  after the previous ban *ended* moves one step up, and a source released from a
-  90-day jail that offends again gets another 90 days instead of 12 hours. A clean
-  90 days after a ban starts over; `unban`/`release` forgives.
-- Package revision `0.0.7-2`: administrators on unstable networks are no longer
-  banned by their own key retries. Keys rejected inside a login that then succeeds
-  do not count; rejected keys in a dropped connection count once per connection.
-- Package revision `0.0.7-2`: `LEARN_ADMINS=on` learns administrator addresses
-  automatically from successful logins to this server (root, the settings owner,
-  and `sudo`/`admin`/`wheel` members), with no usernames to type in. It is also
-  enabled on upgrade; it only adds trust and never adds bans.
 - `SSH_SLOW_PROTECTION=on/off` replaces `SSH_SLOW_MODE`. It sits directly below
   `JAIL_PER_PORT` and is on for new installations. `on` detects, logs and bans;
   `off` does none of these.
@@ -32,12 +14,29 @@ One on/off switch for slow brute-force protection, now covering forwarded ports,
   connections are counted: more than 300 per source across all forwarded ports in
   24 hours with shared jails (banned on all ports), or 100 on one port with per-port
   jails (banned on that port). Port 22 keeps 20 failed logins in 24 hours.
+- Administrators are learned automatically: `LEARN_ADMINS=on` whitelists the source
+  of a successful login to this server by root, the settings owner, or a member of
+  `sudo`, `admin` or `wheel`, with no usernames to type in. Each new login renews
+  the 90-day period. It is also enabled on upgrade; it only adds trust.
 - Sources in `whitelist.conf` under any port are known administrators and are never
-  counted. Learned administrator addresses (`LOGIN_USERS`) count as whitelisted.
+  counted by slow protection.
+- Administrators on unstable networks are no longer banned by their own key retries.
+  Keys rejected inside a login that then succeeds do not count; rejected keys in a
+  dropped connection count once per connection.
+- New default ban durations: 12 hours for a first offense, then 3 days, 7 days,
+  30 days and 90 days. Existing settings keep their own values; see the migration
+  notes to adopt the new ones.
+- Repeat offenders keep their step. A ban within 90 days after the previous ban
+  *ended* moves one step up, and a source released from a 90-day jail that offends
+  again gets another 90 days. A clean 90 days after a ban starts over;
+  `unban`/`release` forgives.
 - `~/.frp-ssh-guard/frp-ssh-guard.log` replaces `alerts.log`. It records every ban
   with its reason, limit and end time, plus manual bans, strike escalations, releases
   and accepted settings; newest first, capped by `LOG_MAX_SIZE` (formerly
   `ALERT_LOG_MAX_SIZE`).
+- One section per port in `blocklist.conf` and `whitelist.conf`. Busy lists no
+  longer repeat headers such as `[22]`; automatic bans follow the manual lines,
+  sorted by address, with an address's `runtime` and `strike` lines together.
 - `settings.conf` explains when and how changes take effect. `blocklist.conf`
   explains that an entry without a time is permanent and gives examples.
 - Fix: a list holding a subnet plus an address inside it (same ports) no longer
@@ -52,12 +51,11 @@ sha256sum --ignore-missing -c SHA256SUMS
 sudo apt install ./frp-ssh-guard_0.0.7.deb
 ```
 
-An active guard is refreshed automatically. Debian version `0.0.7-4` replaces
-the earlier v0.0.7 packages (`0.0.7-1` to `0.0.7-3`) under the same download name;
-download both files again and APT upgrades the earlier build. Upgrades never start bans you did
-not choose: `SSH_SLOW_MODE=enforce` becomes `on` (which now also covers forwarded
-ports), while `observe`, `off` or a missing value become `off`. To enable it later,
-whitelist administrators who use many forwarded machines, set
+An active guard is refreshed automatically. If you downloaded v0.0.7 before,
+download both files again; APT upgrades the earlier download. Upgrades never start
+bans you did not choose: `SSH_SLOW_MODE=enforce` becomes `on` (which now also covers
+forwarded ports), while `observe`, `off` or a missing value become `off`. To enable
+it later, whitelist administrators who use many forwarded machines, set
 `SSH_SLOW_PROTECTION=on`, then run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`.
 The settings file is converted in place with a private backup, so `status` shows
 pending edits until the next check and reload. See the

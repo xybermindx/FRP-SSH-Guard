@@ -144,9 +144,9 @@ _BLOCK_DURATIONS = (
 # Every header an earlier release generated, oldest first; only these are refreshed.
 PREVIOUS_HEADERS = {
     'block': [LEGACY_HEADERS['block'],
-              _shipped('block', _BLOCK_DURATIONS, _BLOCK_AUTOMATIC),  # v0.0.7-1 and -2
-              _shipped('block', _BLOCK_AUTOMATIC)],                   # v0.0.7-3
-    'allow': [LEGACY_HEADERS['allow'], _shipped('allow',  # v0.0.7-1, before administrator learning
+              _shipped('block', _BLOCK_DURATIONS, _BLOCK_AUTOMATIC),  # first v0.0.7 builds
+              _shipped('block', _BLOCK_AUTOMATIC)],                   # later v0.0.7 build
+    'allow': [LEGACY_HEADERS['allow'], _shipped('allow',  # first v0.0.7 build, before administrator learning
         (['# Lines with source=learned come from administrator logins to this server'],
          ['# Lines with source=learned come from trusted logins to this server (LOGIN_USERS)']))],
 }

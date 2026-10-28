@@ -113,7 +113,9 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 - `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.
 
-`VERSION` and `PACKAGE_REVISION` produce the Debian version, currently `0.0.7-4`.
+`VERSION` and `PACKAGE_REVISION` produce the internal Debian version (`VERSION-PACKAGE_REVISION`).
+Keep that revision out of public text: the README, release notes, changelog and guides
+name only the application version, such as `v0.0.7`.
 APT compares this metadata, not the filename. Revision `1` sorts after the older
 bare `0.0.5`, and increasing revisions allow ordinary `sudo apt install ./FILE.deb`
 upgrades. A new application version sorts after revisions of the previous one.
