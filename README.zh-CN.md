@@ -4,7 +4,7 @@
 
 ![FRP-SSH-Guard — 公网边缘的 SSH 防护](docs/images/guard-cover.svg)
 
-**[下载 v0.0.7 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.7/frp-ssh-guard_0.0.7.deb)** · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7)
+**[下载 v0.0.8 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb)**（预发布版）· [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8) · 稳定版：[v0.0.7](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
 FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
@@ -15,9 +15,9 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 > **约 10 天观测：** 已丢弃 **4,255,592** 个恶意数据包（**99.97%**），
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，最近 24 小时后端登录失败 **0** 次。
 
-**版本 0.0.7 · MIT 开源许可 · Bash 与 Python**
+**版本 0.0.8（预发布版）· MIT 开源许可 · Bash 与 Python**
 
-[v0.0.7 更新说明](docs/RELEASE-v0.0.7.md) ·
+[v0.0.8 更新说明](docs/RELEASE-v0.0.8.md) ·
 [配置及命令示例](docs/EXAMPLES.zh-CN.md) ·
 [升级说明](docs/MIGRATING.md)（英文）
 
@@ -72,6 +72,9 @@ FRP 可以通过公网服务器暴露内网服务，转发的 SSH 端口也可�
 - 按来源 IP、目标端口限制新连接速率，并临时封禁来源。
 - 慢速暴力破解防护：对转发端口做长窗口连接数限制，对本机 22 端口做长窗口失败登录限制。
   白名单来源从不计数。
+- 转发端口的不停歇来源规则：持续连接却从未完成登录、经常在各端口间轮换的来源，几小时内即被封禁。
+- 已知用户：转发连接保持打开或传回真实输出后，其来源被识别为该端口的用户，
+  网络不稳定时的频繁重连从不计数。
 - 可选保护本机 22 端口，并检测本机 sshd 认证失败。
 - 默认所有受保护端口共享 IP 封禁，也可切换为每端口独立封禁。
 - 对每个端口设置共享速率上限，缓解分布式连接突发。
@@ -123,6 +126,8 @@ flowchart LR
 | 多次被观察到的封禁 | 每次再犯升一级：12 小时、3 天、7 天、30 天，之后只要在解封后 90 天内再犯，每次都再封 90 天。封禁结束后 90 天无违规则从头开始。采样可能漏掉短期或重复事件。 |
 | 已知不需要的 IP 或网段 | 手动黑名单丢弃匹配流量，但白名单和已建立连接的优先规则仍然适用。 |
 | 低于每分钟阈值的慢速尝试 | `SSH_SLOW_PROTECTION=on`（默认）时：同一来源 24 小时内在所有转发端口合计超过 300 次新连接（按端口独立封禁时为单端口 100 次），或本机 22 端口 20 次失败登录，即被封禁。计数随时间逐步恢复，因此为近似值。 |
+| 全天候在转发端口间轮换的慢速探测 | `SSH_SLOW_BEHAVIOR=on`（默认）时：在没有 2 小时停顿的情况下，来源 2 小时内触及 4 个端口、6 小时内触及 3 个端口，或 12 小时内 50 次连接，即在所有端口被封禁。已完成登录的来源不参与判断。 |
+| 网络不稳定、频繁重连的用户 | 只要该来源在该端口有一次连接保持 3 分钟或收到 32 KiB，此后不再计数；重传的 SYN 从不算作新连接。每分钟限制仍然适用。 |
 | 转发 SSH 连接内部猜密码 | 无法看到；无法读取转发 SSH 的认证结果，只能统计连接次数。 |
 | 应用漏洞利用或被盗凭据 | 不提供应用层识别或阻止能力。 |
 | 占满带宽的 DDoS | 不保证服务可用；主机过滤无法恢复已经被占满的上游链路。 |
@@ -130,21 +135,22 @@ flowchart LR
 
 **实际效果取决于流量、配置和部署方式。** 上述观测仅对应单个部署环境。
 本项目不宣称通用防御成功率、吞吐性能或外部安全审计结果。
-统计对象是新 SYN 包（包括重传），不是精确的会话数量或登录次数。
+统计对象是新连接，不是精确的会话数量或登录次数。重传的 SYN（源端口和序列号相同）
+在每项按来源的限制中只计一次；每端口共享限制仍统计每个数据包。
 
 ## 下载发布版本
 
-请从 **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7)** 下载。Debian `.deb` 文件作为发布附件提供，
-不会显示在 GitHub 的 **Packages** 栏目中。v0.0.7 发布版本包含：
+请从 **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)** 下载。Debian `.deb` 文件作为发布附件提供，
+不会显示在 GitHub 的 **Packages** 栏目中。v0.0.8 发布版本包含：
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_0.0.7.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.7/frp-ssh-guard_0.0.7.deb) | 安装到目标 Debian/Ubuntu 主机。 |
-| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.7/SHA256SUMS) | 校验下载的 Debian 软件包。 |
+| [frp-ssh-guard_0.0.8.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb) | 安装到目标 Debian/Ubuntu 主机。 |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/SHA256SUMS) | 校验下载的 Debian 软件包。 |
 
 完整源码保留在仓库中。GitHub 会根据发布标签自动提供
-[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.7.zip)
-和 [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.7.tar.gz)，
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.8.zip)
+和 [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.8.tar.gz)，
 包含运行代码、构建脚本、打包文件、文档及测试。无需再上传重复的源码附件。
 `SHA256SUMS` 仅校验 `.deb` 文件。
 
@@ -179,7 +185,7 @@ sudo ss -lntp 'sport = :22001'
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.7.deb
+sudo apt install ./frp-ssh-guard_0.0.8.deb
 ```
 
 确认 `.deb` 显示 `OK`。**升级已运行的守卫会自动应用新版规则和监控，无需手动 reload。**
@@ -192,7 +198,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 安装会自动创建该目录，并迁移现有设置和手动名单。
-普通的 `sudo apt install ./frp-ssh-guard_0.0.7.deb` 使用调用 sudo 的用户的家目录；
+普通的 `sudo apt install ./frp-ssh-guard_0.0.8.deb` 使用调用 sudo 的用户的家目录；
 直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
 后续升级保留已选用户及其自定义值，即使换一位管理员安装也不会更换位置。
 
@@ -208,10 +214,10 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 也不会应用尚未确认的自定义修改。补齐默认项后，状态可能显示存在待应用修改。
 准备启用本机 SSH 防护时，将 `PROTECT_SERVER_SSH=on`，然后明确执行 `check`、`reload`。
 若文件不可访问或格式无效，会保留原文件并提示；修复后可用
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.7.deb` 重试。
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.8.deb` 重试。
 
 首次迁移前可用
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.7.deb`
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.8.deb`
 指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
 不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
 `sudo frp-ssh-guard config-home USERNAME` 重试。
@@ -317,6 +323,10 @@ sudo frp-ssh-guard status
 | `SSH_SLOW_PROTECTION` | `on` | 慢速暴力破解开关，位于 `JAIL_PER_PORT` 下方。`on` 检测、记录并封禁；`off` 全部不做。转发端口统计新连接；启用本机 SSH 防护时，22 端口统计失败登录。白名单中任意端口的来源从不计数。 |
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | 本机认证失败阈值、不同连接的无效用户阈值、统计窗口。 |
 | `SSH_SLOW_TOTAL_CONNECTIONS`, `SSH_SLOW_PORT_CONNECTIONS`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `300`, `100`, `20`, `24h` | 慢速限制：同一来源在所有转发端口合计（共享封禁）或单个转发端口（按端口封禁）的新连接数、22 端口失败登录数，以及共用的统计窗口。 |
+| `SSH_SLOW_BEHAVIOR` | `on`（升级后同样为 `on`） | 转发端口的不停歇来源规则；仅在 `SSH_SLOW_PROTECTION=on` 时生效。见[不停歇来源与已知用户](#不停歇来源与已知用户v008)。 |
+| `SSH_BEHAVIOR_PAUSE`, `SSH_BEHAVIOR_RULES` | `2h`, `4p:2h 3p:6h 50c:12h` | 让来源的连续记录重新开始的停顿时长（30m–12h），以及规则：`Np:T` 为最近 T 内 N 个端口，`Nc:T` 为最近 T 内 N 次连接（T 为 15m–7d）。 |
+| `LEARN_USERS` | `on` | 已知用户：某转发端口上有一次连接证明已登录后，不再统计该来源在此端口的连接。 |
+| `LEARN_SESSION_AGE`, `LEARN_SESSION_BYTES` | `3m`, `32KiB` | 证明已登录的条件：连接保持这么久（应大于后端的 `LoginGraceTime`），或发送给客户端的数据超过此值。 |
 | `LOG_MAX_SIZE` | `10MiB` | 活动日志大小；最新在前，超限删除最旧完整行；允许 1KiB–100MiB，不保留档案。原名 `ALERT_LOG_MAX_SIZE`。 |
 | `SUBNET_REPORT_MIN_SOURCES`, `SUBNET_REPORT_WINDOW` | `5`, `24h` | 按 /24 或 /64 及 jail 范围统计不同自动封禁来源，仅报告，不自动封禁子网。 |
 | `PER_IP_RATE`, `PER_IP_BURST` | `2`, `40` | 每来源、每端口的新 SYN 每分钟速率及突发额度。 |
@@ -466,6 +476,7 @@ sudo journalctl -u frp-ssh-guard.service -u frp-ssh-guard-learn.service --since 
 | 监听进程不是 FRPS | 确认主机、网络命名空间及公网转发端口。 |
 | 配置没有生效 | 先 `check` 再 `reload`，通过 `status` 查看待应用修改。 |
 | 正常的高频用户被慢速防护封禁 | 将该地址加入 `whitelist.conf`（任意端口分节），再用 `unban` 解除；白名单来源从不计数。 |
+| 监控、备份或 CI 因 `reason=restless-…` 被封禁 | 这类程序全天连接，会话短且输出少。将其地址加入白名单，再执行 `unban`。`sudo frp-ssh-guard report` 会在封禁前列出最接近规则的连续记录。 |
 | 管理员连接不稳定、多次尝试后被封禁 | 从其他网络或控制台执行 `sudo frp-ssh-guard release IP`，再执行 `allow IP`。自 v0.0.7 起，成功登录内被拒绝的密钥不计数，掉线连接中被拒绝的密钥每个连接只计一次；`LEARN_ADMINS=on` 时成功登录一次即将该地址加入白名单。 |
 | 防护未运行 | 执行 `enable`；`reload` 要求服务处于活动状态。 |
 | 配置无效 | 修正错误信息指出的参数；配置损坏时仍可使用 `--help`。 |
@@ -488,7 +499,7 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
 切换到当前版本，并保留现有设置。
 
-下载 **v0.0.7**，执行 `sudo apt install ./frp-ssh-guard_0.0.7.deb` 即可升级较早构建，
+下载 **v0.0.8**，执行 `sudo apt install ./frp-ssh-guard_0.0.8.deb` 即可升级较早构建，
 并保留原有设置。`frp-ssh-guard --version` 显示发布版本；
 `dpkg-query -W frp-ssh-guard` 还会显示 APT 用来识别更新构建的内部软件包修订号。
 
@@ -502,10 +513,12 @@ Python 监控进程。新版代码在 `apt install` 过程中生效，无需手�
 当前封禁会先保存，再按原作用范围和到期时间恢复。速率计数重置；主服务开机启用状态
 和定时任务截止时间保留。尚未确认的设置修改不会被应用。本机 SSH 防护仍需管理员主动开启。
 v0.0.7 起默认开启管理员学习（`LEARN_ADMINS=on`），升级的安装也同样开启：
-它只增加信任，不会增加封禁。
+它只增加信任，不会增加封禁。0.0.8 版新增不停歇来源规则（`SSH_SLOW_BEHAVIOR=on`）和已知用户
+（`LEARN_USERS=on`），升级后同样开启；在 `SSH_SLOW_PROTECTION=on` 的主机上，同一次自动刷新即会应用它们。
+见[不停歇来源与已知用户](#不停歇来源与已知用户v008)。
 
 0.0.7 版用位于 `JAIL_PER_PORT` 下方的 `SSH_SLOW_PROTECTION=on/off` 开关取代
-`SSH_SLOW_MODE`。升级不会启用您未选择的封禁：`enforce` 变为 `on`（现在也覆盖转发端口），
+`SSH_SLOW_MODE`。转换会保留您的选择：`enforce` 变为 `on`（现在也覆盖转发端口），
 `observe`、`off` 或缺失则变为 `off`，安装程序会提示如何开启。`ALERT_LOG_MAX_SIZE`
 更名为 `LOG_MAX_SIZE` 并保留原值，`alerts.log` 合并到 `frp-ssh-guard.log`。由于设置文件
 有变化，`status` 会显示待应用修改，直到下一次 `check` 和 `reload`。
@@ -588,9 +601,59 @@ frps 服务器无从得知经隧道的登录是否成功，因此转发端口只
 ```
 
 原因包括 `connection-rate`、`slow-connections`、`slow-connections-all-ports`、
-`failed-logins`、`invalid-users` 和 `slow-failed-logins`。内核封禁约每分钟采样一次。
+`failed-logins`、`invalid-users`、`slow-failed-logins`、`restless-ports` 和
+`restless-connections`。`known-user` 行记录新识别的转发端口用户。内核封禁约每分钟采样一次。
 失败登录本身保存在私有存储中，可通过 `report` 查看。达到 `LOG_MAX_SIZE`（默认 10MiB）
 时删除最旧的完整行，不留档。
+
+## 不停歇来源与已知用户（v0.0.8）
+
+有些机器人低于上述所有限制：每个端口每天只有几十次连接，常常在所有转发 SSH 端口间轮换，
+而且从不停歇。frps 服务器看不到隧道内的登录，真实用户也会访问多台机器，
+因此单纯降低限制会封禁正常用户。以下三个信号可以区分两者：
+
+1. **真实会话。** 未登录的连接会在 `LoginGraceTime`（默认 2 分钟）后被 sshd 关闭，
+   一次失败登录只交换几 KiB 数据。frps 在本机结束每个客户端连接，因此防护程序能看到
+   连接保持多久、传回多少数据。连接保持 `LEARN_SESSION_AGE`（3m）或传回超过
+   `LEARN_SESSION_BYTES`（32KiB）即证明已登录。该来源成为**该端口的已知用户**，
+   有效期 `LEARN_TIMEOUT`（90 天，之后的会话会续期），此后该端口不再统计它的连接。
+2. **停顿。** 其他连接都会计数。来源的*连续记录*是这些连接中间没有出现
+   `SSH_BEHAVIOR_PAUSE`（2h）停顿的一段；出现停顿则重新开始。机器人每次登录都失败，
+   因此一直处于连续记录中；用户会完成登录，因此无论重连多频繁都会离开连续记录。
+3. **扩散。** 连续记录触及了多少个转发端口。
+
+`SSH_SLOW_BEHAVIOR=on` 时，若来源的连续记录已持续至少 T，且最近 T 内满足任一条件，
+即封禁 `BAN_TIMEOUT`（`SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"`；证据越强，所需时间越短）：
+
+| 最近 T 内，且没有 2 小时停顿 | T | 共享封禁时 | 按端口封禁时 |
+| --- | --- | --- | --- |
+| 4 个或更多转发端口 | 2 小时 | 所有端口 | 所有端口：轮换是来源本身的行为 |
+| 3 个转发端口 | 6 小时 | 所有端口 | 所有端口 |
+| 50 次或更多新连接 | 12 小时 | 所有端口（来源合计） | 仅自身达到 50 次的端口 |
+
+重复封禁按 `STRIKE_LADDER` 逐级延长。白名单来源、从本机登录中学习到的管理员，
+以及已知用户从不参与判断。示例：
+
+| 谁 | 结果 |
+| --- | --- |
+| 在 5 个端口间轮换、每 10 分钟连接一次的机器人 | 约 2 小时后在所有端口被封禁 |
+| 单个端口每天约 160 次连接的机器人 | 约 12 小时后被封禁 |
+| 每天几次、每次在 10 分钟内检查六台机器的用户 | 每次检查后都有停顿：从不封禁 |
+| Wi-Fi 不稳定、全天每 5 分钟重连一次的笔记本 | 第一次带 shell 的会话使其成为已知用户：不计数，不封禁 |
+| 单端口每小时一次、会话短且输出少的任务 | 12 小时内 12 次连接：从不封禁 |
+| 全天每 30 分钟检查 4 台机器的健康检查 | 满足 `4p:2h`；请将此类自动化加入白名单 |
+
+网络丢包不会增加封禁。重传的 SYN 源端口和序列号相同，在每项按来源的限制中只计一次。
+已知来源掉线后重连不计数。每次重连都更换地址的来源不会积累连续记录。
+每分钟限制仍对所有来源生效；短于一分钟采样间隔的会话无法被看到。
+
+`sudo frp-ssh-guard report` 列出已知用户数量和最接近规则的连续记录；`status` 显示数量。
+`forget IP` 移除已知用户。
+
+升级时会加入 `SSH_SLOW_BEHAVIOR=on` 和 `LEARN_USERS=on`。`apt install` 期间对运行中防护的自动刷新
+会立即应用它们，无需 reload。在 `SSH_SLOW_PROTECTION=on` 的主机上，规则随即开始判断来源，
+因此请在升级前将监控及其他全天运行的自动化加入白名单。要关闭这些规则，设置
+`SSH_SLOW_BEHAVIOR=off`，然后执行 `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`。
 
 ## v0.0.6 本地观察记录
 

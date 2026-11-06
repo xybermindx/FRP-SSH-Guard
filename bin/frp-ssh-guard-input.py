@@ -23,6 +23,7 @@ POLICY_KEYS = set('GUARD_TABLE PORT_MIN PORT_MAX EXCLUDE_PORTS EDIT_USER PROTECT
     'SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW '
     'SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW '
     'LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW LEARN_ADMINS '
+    'SSH_SLOW_BEHAVIOR SSH_BEHAVIOR_PAUSE SSH_BEHAVIOR_RULES LEARN_USERS LEARN_SESSION_AGE LEARN_SESSION_BYTES '
     # Obsolete names, still read so older files keep working; upgrades convert them.
     'SSH_SLOW_MODE ALERT_LOG_MAX_SIZE'.split())
 
@@ -710,7 +711,13 @@ SWITCH_KEYS = ('EXCLUDE_PORTS', 'PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'SSH_SLOW
 # Missing thresholds placed beside a related setting instead of at the end.
 INSERT_BEFORE = {'SSH_SLOW_TOTAL_CONNECTIONS': 'SSH_SLOW_FAILURES',
                  'SSH_SLOW_PORT_CONNECTIONS': 'SSH_SLOW_FAILURES',
-                 'LEARN_ADMINS': 'LOGIN_USERS'}
+                 'LEARN_ADMINS': 'LOGIN_USERS',
+                 # Behavior rules follow the slow thresholds and
+                 # session learning follows the learned-address timeout.
+                 'SSH_SLOW_BEHAVIOR': 'LOG_MAX_SIZE', 'SSH_BEHAVIOR_PAUSE': 'LOG_MAX_SIZE',
+                 'SSH_BEHAVIOR_RULES': 'LOG_MAX_SIZE',
+                 'LEARN_USERS': 'STRIKE_WINDOW', 'LEARN_SESSION_AGE': 'STRIKE_WINDOW',
+                 'LEARN_SESSION_BYTES': 'STRIKE_WINDOW'}
 
 
 def instructions(template):
@@ -820,7 +827,7 @@ def merge_defaults(original, template):
             text = ''.join(comments) + text
             if key in SWITCH_KEYS:
                 switches.append((key, text))
-            elif INSERT_BEFORE.get(key) in present:
+            elif INSERT_BEFORE.get(key) in present and where(INSERT_BEFORE[key]):
                 anchored.setdefault(INSERT_BEFORE[key], []).append(text)
             else:
                 additions.append(text)
@@ -932,6 +939,10 @@ def append_defaults(path, template):
     if 'SSH_SLOW_PROTECTION' in keys and switch == 'off':
         print('Slow brute-force protection stays off for this older configuration. To enable it, set '
               'SSH_SLOW_PROTECTION=on, then run: sudo frp-ssh-guard check && sudo frp-ssh-guard reload')
+    if 'SSH_SLOW_BEHAVIOR' in keys and settings(updated).get('SSH_SLOW_PROTECTION') == 'on':
+        print('New restless-source rules for forwarded ports are on (SSH_SLOW_BEHAVIOR=on). Whitelist monitoring '
+              'and other round-the-clock automation; to turn the rules off, set SSH_SLOW_BEHAVIOR=off, then run: '
+              'sudo frp-ssh-guard check && sudo frp-ssh-guard reload')
     return keys
 
 

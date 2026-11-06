@@ -27,6 +27,36 @@ addresses inside them dropped, because nftables interval sets reject overlaps.
 List-only updates refill the trusted sets; `unban` also clears the meters. Native
 port 22 is excluded and keeps its journal-based failed-login threshold.
 
+Every per-source meter (per-minute, slow and behavior counting) first looks up
+`synseen4`/`synseen6`, keyed by address, source port, destination port and TCP
+sequence number (2-minute timeout). One rule after all lookups adds the SYN, so a
+resent SYN is counted once; a new connection reusing a source port has a new
+sequence number. The shared per-port limit still counts every packet, and a full
+set fails open to the older counting.
+
+`known4`/`known6` hold source/port pairs with a proven login; the slow and behavior
+rules skip them. The minute sampler fills them: frps terminates each client TCP
+connection, so `ss -tinp` lists frps sockets on forwarded ports with their bytes
+acknowledged. A socket seen open for `LEARN_SESSION_AGE`, or with more than
+`LEARN_SESSION_BYTES` sent, outlived sshd's pre-login limit, so its pair is known
+for `LEARN_TIMEOUT`. The database is authoritative; each sample adds missing pairs
+(a reload empties the set), replaces renewed ones and deletes forgotten ones.
+
+With `SSH_SLOW_BEHAVIOR=on`, a rule per forwarded port updates a counter in
+`count4`/`count6` (address/port, 26-hour timeout) for untrusted, unknown first SYNs.
+The sampler takes per-minute differences (a lower value or a new table generation
+restarts a counter) into 15-minute activity slots. A source's streak ends after a
+`SSH_BEHAVIOR_PAUSE` without new connections. A rule `Np:T` or `Nc:T` matches once
+the streak lasted T and the last T held N ports or N connections. Port rules ban
+the address on all ports: in shared mode through `ban4/6`, in per-port mode through
+the address-keyed `wideban4/6` with its own all-port drop rule. Connection rules
+count the source total in shared mode and each port alone in per-port mode, where
+they ban that address/port pair. Sources with any known pair are not judged.
+Bans skip addresses a live, saved, manual or strike block already covers, and are
+recorded like authentication bans, so strikes, subnet reports and the activity log
+follow. In per-port mode the strike manager inserts address-wide escalations into
+`saved_ban4/6`. Older tables without these sets are left alone until refreshed.
+
 ## Editable and accepted configuration
 
 `settings.conf` contains literal assignments parsed by an allowlisted data parser.

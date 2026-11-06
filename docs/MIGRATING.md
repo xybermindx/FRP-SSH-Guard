@@ -1,3 +1,27 @@
+# Migration to 0.0.8
+
+Install with `sudo apt install ./frp-ssh-guard_0.0.8.deb`; it upgrades every v0.0.7
+build and older releases as v0.0.7 does. An active guard is refreshed automatically
+during installation, as before: accepted policy is recompiled, the SSH monitors
+restart, and saved ban scopes, expiry, boot enablement and timer deadlines are kept.
+
+## Restless sources and known users
+
+Upgrades add `SSH_SLOW_BEHAVIOR=on`, with its pause and rules, below the slow
+thresholds. They also add `LEARN_USERS=on`, `LEARN_SESSION_AGE=3m` and
+`LEARN_SESSION_BYTES=32KiB` below `LEARN_TIMEOUT`. An accepted policy without these
+keys gets the same values. The automatic refresh of an active guard applies them at
+once, as it applies other upgrades; no reload is needed. Resent SYNs now count once
+in every per-source limit, which only lowers counts.
+
+The behavior rules act only where `SSH_SLOW_PROTECTION=on`; there they start judging
+sources with the refresh. Before upgrading such a host, whitelist monitoring probes,
+backups, CI and git automation that connect around the clock with short, quiet
+sessions. Known users start being learned at the same time, from each new session.
+`sudo frp-ssh-guard report` lists the streaks closest to a rule. To turn the rules
+off, set `SSH_SLOW_BEHAVIOR=off`, then run
+`sudo frp-ssh-guard check && sudo frp-ssh-guard reload`.
+
 # Migration to 0.0.7
 
 Install with `sudo apt install ./frp-ssh-guard_0.0.7.deb`; it upgrades v0.0.5 and
@@ -42,8 +66,8 @@ changelog; existing counts are kept and age out normally.
 
 `SSH_SLOW_MODE` (`off`, `observe`, `enforce`) is replaced by `SSH_SLOW_PROTECTION`
 (`on`/`off`), placed directly below `JAIL_PER_PORT`. There is no observe-only mode:
-`on` detects, logs and bans; `off` does none of these. Upgrades never start bans you
-did not choose:
+`on` detects, logs and bans; `off` does none of these. The conversion keeps your
+choice:
 
 | Before | After the upgrade |
 | --- | --- |

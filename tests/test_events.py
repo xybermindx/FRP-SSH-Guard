@@ -345,9 +345,74 @@ class EventTests(unittest.TestCase):
                            ('SSH_SLOW_MODE', 'automatic'), ('SSH_SLOW_FAILURES', '0'),
                            ('SSH_SLOW_PORT_CONNECTIONS', '0'), ('SSH_SLOW_TOTAL_CONNECTIONS', '1000001'),
                            ('SSH_SLOW_WINDOW', 'forever'), ('SUBNET_REPORT_MIN_SOURCES', '-1'),
-                           ('LOG_MAX_SIZE', '0MiB'), ('LOG_MAX_SIZE', '101MiB')):
+                           ('LOG_MAX_SIZE', '0MiB'), ('LOG_MAX_SIZE', '101MiB'),
+                           ('SSH_SLOW_BEHAVIOR', 'yes'), ('LEARN_USERS', ''), ('SSH_BEHAVIOR_PAUSE', '29m'),
+                           ('SSH_BEHAVIOR_PAUSE', '13h'), ('SSH_BEHAVIOR_RULES', ''), ('SSH_BEHAVIOR_RULES', '1p:2h'),
+                           ('SSH_BEHAVIOR_RULES', '0c:2h'), ('SSH_BEHAVIOR_RULES', '4p:14m'),
+                           ('SSH_BEHAVIOR_RULES', '4p:8d'), ('SSH_BEHAVIOR_RULES', '4x:2h'),
+                           ('SSH_BEHAVIOR_RULES', '4p2h'), ('SSH_BEHAVIOR_RULES', '1000001c:2h'),
+                           ('LEARN_SESSION_AGE', '2m'), ('LEARN_SESSION_AGE', '2d'),
+                           ('LEARN_SESSION_BYTES', '7KiB'), ('LEARN_SESSION_BYTES', '101MiB'),
+                           ('LEARN_SESSION_BYTES', '32kb')):
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 validator.validate({**self.config, key: value})
+
+    def test_valid_behavior_settings_and_older_callers_pass_validation(self):
+        validator = events.module('validate')
+        for key, value in (('SSH_SLOW_BEHAVIOR', 'off'), ('SSH_BEHAVIOR_RULES', ''), ('SSH_BEHAVIOR_PAUSE', '30m'),
+                           ('SSH_BEHAVIOR_RULES', '2p:15m 1c:7d'), ('LEARN_SESSION_AGE', '1d'),
+                           ('LEARN_SESSION_BYTES', '100MiB')):
+            config = {**self.config, key: value}
+            if key == 'SSH_BEHAVIOR_RULES' and not value:
+                config['SSH_SLOW_BEHAVIOR'] = 'off'  # empty rules are fine while switched off
+            with self.subTest(key=key, value=value):
+                validator.validate(config)
+        older = {k: v for k, v in self.config.items() if 'BEHAVIOR' not in k and 'SESSION' not in k and k != 'LEARN_USERS'}
+        validator.validate(older)
+
+    def test_behavior_bans_are_logged_with_their_rule_and_all_port_bans_are_runtime_rows(self):
+        self.assertTrue(self.store.record_ban('203.0.113.70', '*', NOW + 43200, 'behavior', self.config, NOW,
+                                              'restless-ports', '4ports/2h,pause=2h'))
+        detail = self.store.db.execute("SELECT detail FROM events WHERE kind='ban'").fetchone()[0]
+        self.assertTrue(detail.startswith('reason=restless-ports limit=4ports/2h,pause=2h until='))
+        document = {'nftables': [{'set': {'name': 'wideban4', 'elem': [{'elem': {'val': '203.0.113.70', 'expires': 600}}]}},
+                                 {'set': {'name': 'wideban6', 'elem': [{'elem': {'val': '2001:db8::70', 'expires': 600}}]}}]}
+        rows = events.lists.kernel_rows(document, NOW)
+        self.assertEqual([(name, row.ip, row.scope, row.source) for name, row in rows],
+                         [('wideban4', '203.0.113.70', '*', 'runtime'), ('wideban6', '2001:db8::70', '*', 'runtime')])
+        # The next minute's sample sees the live all-port ban and does not log it twice.
+        events.sample(self.store, self.config, NOW + 30, {'nftables': [{'table': {'handle': 1}}]}, baseline=True)
+        events.sample(self.store, self.config, NOW + 60, {'nftables': [{'table': {'handle': 1}}] + document['nftables']})
+        self.assertEqual(self.count('ban'), 2)  # the IPv6 one was new to the store
+        self.assertIn('behavior=on', events.applied(self.config))
+        self.assertIn('Behavior rules: on (4p:2h 3p:6h 50c:12h', events.describe_slow(self.config))
+        self.assertIn('Known users: on', events.describe_slow(self.config))
+        self.assertIn('behavior=off', events.applied({**self.config, 'SSH_SLOW_PROTECTION': 'off'}))
+
+    def test_forgive_and_forget_clear_behavior_state(self):
+        behavior = events.behavior
+        self.store.db.execute('INSERT INTO streaks VALUES (?,?,?)', ('203.0.113.71', NOW, NOW))
+        self.store.db.execute('INSERT INTO activity VALUES (?,?,?,?)', ('203.0.113.71', 22001, NOW // 900, 3))
+        self.store.db.execute('INSERT INTO known VALUES (?,?,?)', ('203.0.113.71', 22001, NOW + 600))
+        with mock.patch.object(events.subprocess, 'run') as run:
+            behavior.forget(self.store, self.config, '203.0.113.71', run=run)
+        for table in ('streaks', 'activity', 'known'):
+            self.assertEqual(self.store.db.execute(f'SELECT count(*) FROM {table}').fetchone()[0], 0)
+        self.assertIn('{ 203.0.113.71 . 22001 }', run.call_args[0][0])
+
+    def test_state_from_older_releases_gains_behavior_tables(self):
+        import sqlite3
+        self.store.close()
+        path = self.root / 'state/events.sqlite3'
+        with sqlite3.connect(path) as db:
+            for table in ('counters', 'streaks', 'activity', 'sessions', 'known'):
+                db.execute(f'DROP TABLE {table}')
+        readonly = events.Store(self.root / 'state', readonly=True)
+        self.assertEqual(events.behavior.summary(readonly, self.config, NOW), [])  # report before the upgrade
+        readonly.close()
+        self.store = events.Store(self.root / 'state', now=NOW)
+        self.assertEqual(self.store.db.execute('PRAGMA user_version').fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM known').fetchone()[0], 0)
 
     def test_readonly_status_does_not_write_database(self):
         self.store.db.commit()

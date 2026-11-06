@@ -99,7 +99,9 @@ cat "$GUARD_DIR/rules.nft"
     def test_slow_protection_rules_follow_jail_mode_and_skip_native_ssh(self):
         shared = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\n')
         self.assertEqual(shared.returncode, 0, shared.stderr)
+        # Known users and resent SYNs are not counted.
         self.assertIn('tcp dport 22001 ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 '
+                      'ip saddr . tcp dport != @known4 ip saddr . tcp sport . tcp dport . tcp sequence != @synseen4 '
                       'update @slow4 { ip saddr limit rate over 300/day burst 300 packets } '
                       'add @slowhit4 { ip saddr } add @ban4 { ip saddr timeout 12h } counter drop comment "22001 slow v4"',
                       shared.stdout)
@@ -116,6 +118,93 @@ cat "$GUARD_DIR/rules.nft"
         self.assertNotIn('"22 slow v4"', native.stdout)  # port 22 counts failed logins instead
         off = self.rules('22001\n', config='SSH_SLOW_PROTECTION=off\n')
         self.assertNotIn(' slow v4', off.stdout)
+
+    def test_resent_syns_known_users_and_behavior_rules_in_both_jail_modes(self):
+        on = 'SSH_SLOW_PROTECTION=on\nSSH_SLOW_BEHAVIOR=on\n'
+        shared = self.rules('22001\n', config=on)
+        self.assertEqual(shared.returncode, 0, shared.stderr)
+        out = shared.stdout
+        for family, addr in (('4', 'ip'), ('6', 'ip6')):
+            key = f'{addr} saddr . tcp sport . tcp dport . tcp sequence'
+            self.assertIn(f'set synseen{family} {{ typeof {key}; flags dynamic,timeout; timeout 2m; size 65536; }}', out)
+            self.assertIn(f'set count{family} {{ type ipv{family}_addr . inet_service; flags dynamic,timeout; timeout 26h;', out)
+            self.assertIn(f'set known{family} {{ type ipv{family}_addr . inet_service; flags timeout; size 65536; }}', out)
+            # Every per-source meter only looks up; the single add follows them all.
+            self.assertIn(f'syn {key} != @synseen{family} update @rate{family} {{', out)
+            self.assertIn(f'{addr} saddr != @trusted{family} {addr} saddr . tcp dport != @known{family} {key} '
+                          f'!= @synseen{family} update @count{family} {{ {addr} saddr . tcp dport counter }} '
+                          f'comment "22001 observe v{family}"', out)
+            self.assertIn(f'add @synseen{family} {{ {key} }} comment "22001 first v{family}"', out)
+        order = ['"22001 per-IP v4"', '"22001 global"', '"22001 slow v4"', '"22001 observe v4"',
+                 '"22001 first v4"', '"22001 ok"']
+        self.assertEqual([out.index(name) for name in order], sorted(out.index(name) for name in order))
+        self.assertNotIn('wideban', out)  # shared jails ban addresses in ban4/ban6 already
+        per_port = self.rules('22001\n22003\n', config=on + 'JAIL_PER_PORT=on\nPROTECT_SERVER_SSH=on\n').stdout
+        self.assertIn('set wideban4 { type ipv4_addr; flags timeout; size 65536; }', per_port)
+        self.assertIn('tcp dport { 22001,22003,22 } ip  saddr @wideban4 counter drop comment "all-port ban v4"', per_port)
+        self.assertLess(per_port.index('"all-port ban v6"'), per_port.index('"22001 banned v4"'))
+        self.assertIn('"22003 observe v6"', per_port)
+        self.assertNotIn('"22 observe v4"', per_port)  # native SSH counts failed logins
+        self.assertIn('"22 first v4"', per_port)  # but its per-minute meter skips resends too
+        # On by default: a file or accepted policy without the switch counts too.
+        self.assertIn('"22001 observe v4"', self.rules('22001\n', config='SSH_SLOW_PROTECTION=on\n').stdout)
+        for config in ('SSH_SLOW_PROTECTION=on\nSSH_SLOW_BEHAVIOR=off\n',
+                       'SSH_SLOW_PROTECTION=off\nSSH_SLOW_BEHAVIOR=on\n'):
+            with self.subTest(config=config):
+                off = self.rules('22001\n', config=config).stdout
+                self.assertNotIn('observe v4', off)
+                self.assertNotIn('set count4', off)
+                self.assertIn('"22001 first v4"', off)
+                self.assertIn('set known4', off)
+
+    def test_accepted_policy_from_an_older_build_gets_behavior_rules_on_refresh(self):
+        # applied.conf written before these settings existed, as the package upgrade finds it.
+        (self.root / 'applied.conf').write_text("GUARD_TABLE=frp_ssh_persistent_guard\nPROTECTED_PORTS=22001:30:20\n"
+                                                "SSH_SLOW_PROTECTION=on\nJAIL_PER_PORT=on\nOBSERVABILITY_VERSION=1\n")
+        result = self.run_guard('''
+load_guard_config runtime
+printf '%s|' "$SSH_SLOW_BEHAVIOR" "$LEARN_USERS" "$SSH_BEHAVIOR_RULES" "$LEARN_SESSION_AGE"
+validate_policy
+NFTP=false; read_ban_conf; selected_ports > "$GUARD_DIR/ports"; read_ports "$GUARD_DIR/ports"
+read_allow; read_blocklist; read_learned; read_hardban
+compile_rules "$GUARD_DIR/rules.nft"
+write_accepted_config > "$GUARD_DIR/accepted"
+echo; grep -c 'observe v4' "$GUARD_DIR/rules.nft" || true
+grep -E '^(SSH_SLOW_BEHAVIOR|LEARN_USERS)=' "$GUARD_DIR/accepted"
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines[0], 'on|on|4p:2h 3p:6h 50c:12h|3m|')
+        self.assertEqual(lines[1], '1')  # the automatic package refresh counts at once
+        self.assertEqual(lines[2:], ['SSH_SLOW_BEHAVIOR=on', 'LEARN_USERS=on'])
+
+    def test_per_port_address_strikes_escalate_live_in_saved_sets(self):
+        import sqlite3
+        now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        (self.root / 'etc/guard.conf').write_text('JAIL_PER_PORT=on\nSTRIKE_LADDER="2:3d"\n')
+        (self.root / 'observations').mkdir()
+        with contextlib.closing(sqlite3.connect(self.root / 'observations/events.sqlite3')) as db:
+            db.execute('CREATE TABLE events (stamp INTEGER, ip TEXT, scope TEXT, kind TEXT)')
+            # Two all-port behavior bans: the second came after the first one ended.
+            db.executemany('INSERT INTO events VALUES (?,?,?,?)',
+                           [(now - 45000, '203.0.113.70', '*', 'ban'), (now - 60, '203.0.113.70', '*', 'ban')])
+            db.commit()
+        real_run = subprocess.run
+        def run_command(args, **kwargs):
+            return real_run(args, **kwargs) if args[0] == 'bash' else subprocess.CompletedProcess(args, 0)
+        with mock.patch.dict(os.environ, self.env, clear=True), \
+             mock.patch('subprocess.run', side_effect=run_command) as run, \
+             mock.patch('shutil.chown'), contextlib.redirect_stdout(io.StringIO()):
+            runpy.run_path(str(ROOT / 'bin/frp-ssh-guard-strike.py'))
+        self.assertIn('203.0.113.70 all source=strike until=', (self.root / 'lists/hardban.conf').read_text())
+        batches = [call.kwargs.get('input', '') for call in run.call_args_list if call.args[0][-2:] == ['-f', '-']]
+        self.assertEqual(len(batches), 1)
+        lines = batches[0].splitlines()
+        self.assertEqual(lines[1], 'delete element inet frp_ssh_persistent_guard saved_ban4 { 203.0.113.70 }')
+        seconds = int(lines[2].split('timeout ')[1].rstrip('s }'))
+        self.assertTrue(3 * 86400 - 120 <= seconds <= 3 * 86400)
+        self.assertFalse(any('hardban4' in str(call.args[0]) and '203.0.113.70 }' in str(call.args[0])
+                             for call in run.call_args_list))
 
     def test_any_whitelisted_source_is_trusted_without_overlaps(self):
         (self.root / 'lists/whitelist.conf').write_text(
@@ -298,15 +387,32 @@ cat "$GUARD_DIR/rules.nft"
             f'[22001-22003]\n198.51.100.78 source=runtime until={expiry}\n')
         (self.root / 'lists/whitelist.conf').write_text(
             f'[22,22001]\n198.51.100.77 source=learned until={expiry}\n[22003]\n198.51.100.0/24\n198.51.100.79\n')
-        initial = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\n')
-        replacement = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\nJAIL_PER_PORT=on\n', active=True)
+        initial = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\nSSH_SLOW_BEHAVIOR=on\n')
+        replacement = self.rules('22001\n22003\n', config='SSH_SLOW_PROTECTION=on\nSSH_SLOW_BEHAVIOR=on\n'
+                                 'JAIL_PER_PORT=on\n', active=True)
         self.assertIn('slow v4', initial.stdout)
+        self.assertIn('observe v4', initial.stdout)
+        self.assertIn('set wideban4', replacement.stdout)
         self.assertEqual(initial.returncode, 0, initial.stderr)
         self.assertEqual(replacement.returncode, 0, replacement.stderr)
         a, b = self.root / 'initial.nft', self.root / 'replacement.nft'
         a.write_text(initial.stdout); b.write_text(replacement.stdout)
+        # The element updates the sampler and strike manager make, on the live table.
+        table = 'inet frp_ssh_persistent_guard'
+        helpers = (f'add element {table} known4 {{ 198.51.100.77 . 22001 timeout 600s }}\n'
+                   f'delete element {table} known4 {{ 198.51.100.77 . 22001 }}\n'
+                   f'add element {table} known4 {{ 198.51.100.77 . 22001 timeout 900s }}\n'
+                   f'add element {table} wideban4 {{ 203.0.113.70 timeout 12h }}\n'
+                   f'add element {table} ban4 {{ 203.0.113.71 . 22003 timeout 12h }}\n'
+                   f'add element {table} saved_ban4 {{ 203.0.113.72 timeout 1s }}\n'
+                   f'delete element {table} saved_ban4 {{ 203.0.113.72 }}\n'
+                   f'add element {table} saved_ban4 {{ 203.0.113.72 timeout 259200s }}\n')
+        c = self.root / 'helpers.nft'
+        c.write_text(helpers)
         subprocess.run(['unshare', '--net', 'sh', '-ec',
-                        'nft -c -f "$1"; nft -f "$1"; nft -c -f "$2"; nft -f "$2"', 'sh', str(a), str(b)], check=True)
+                        'nft -c -f "$1"; nft -f "$1"; nft -c -f "$2"; nft -f "$2"; nft -f "$3"; '
+                        'nft -j list set inet frp_ssh_persistent_guard known4 | grep -q 198.51.100.77',
+                        'sh', str(a), str(b), str(c)], check=True)
 
 
 class SourceManifestTests(unittest.TestCase):

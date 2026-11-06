@@ -1,3 +1,44 @@
+# v0.0.8 validation
+
+## Restless sources, known users and resent SYNs (v0.0.8)
+
+Checked on 2026-11-06 on the development host with synthetic addresses only.
+No firewall was changed.
+
+- Local `make test`: 166 cases, 165 passing and the privileged namespace case
+  skipped locally (CI runs it). It now also loads the behavior, resend and
+  all-port rules plus the sampler's element updates into a real kernel. New
+  regressions:
+  - a 5-port rotation is banned on all ports at 2 hours in both jail modes
+    (`ban4`, or `wideban4` with per-port jails);
+  - 3 ports are banned at 6 hours;
+  - 160 connections a day on one port are banned at 12 hours: on all ports in
+    shared mode, that port in per-port mode;
+  - an hourly job, a user checking six machines a few times a day, and activity
+    broken by 2-hour pauses are never banned;
+  - a flaky-network user is never judged after one session with real output;
+  - a long session clears an unknown user's streak;
+  - known-user sets follow the database, renewals and `forget`;
+  - counter recreation and table generations work;
+  - covered sources are not banned twice;
+  - older tables are left alone;
+  - the previous settings template upgrades with `SSH_SLOW_BEHAVIOR=on` and
+    `LEARN_USERS=on`, and an older accepted policy compiles with behavior counting;
+  - per-port address-wide strikes escalate live in `saved_ban4`;
+  - observation state from older releases gains the new tables without a version
+    change.
+- Source and history passed the private privacy rules; the built package passed
+  the artifact scan.
+- Not run yet: `tests/vm-behavior.py` in a disposable VM. It covers the real APT
+  upgrade from the previous v0.0.7 build turning the rules on without a reload, the real `ss` session data, kernel
+  counters for a resent SYN, and real FRP bans in both jail modes. Until it passes,
+  the nftables `typeof` dedup set and element counters are covered by the
+  namespace syntax test only.
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-behavior.py OLD.deb NEW.deb FRP_DIR
+```
+
 # v0.0.7 validation
 
 ## One section per port in lists (v0.0.7)

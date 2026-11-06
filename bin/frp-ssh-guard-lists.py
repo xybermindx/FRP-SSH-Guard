@@ -99,8 +99,9 @@ def kernel_rows(document, now):
         name = obj.get('name', '')
         # Scoped learned sets are derived exclusively from the editable file;
         # reimporting split port keys would duplicate a multi-port section.
-        if name not in ('learned4', 'learned6',
-                        'ban4', 'ban6', 'hardban4', 'hardban6'):
+        # wideban: address-wide behavior bans in per-port mode (scope all ports).
+        if name not in ('learned4', 'learned6', 'ban4', 'ban6', 'wideban4', 'wideban6',
+                        'hardban4', 'hardban6'):
             continue
         source = 'learned' if name.startswith('learned') else ('strike' if name.startswith('hardban') else 'runtime')
         for element in obj.get('elem', []):

@@ -79,11 +79,11 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-Release tag `v0.0.7` provides `frp-ssh-guard_0.0.7.deb` and `SHA256SUMS`.
+Release tag `v0.0.8` provides `frp-ssh-guard_0.0.8.deb` and `SHA256SUMS`.
 The workflow requires the application tag, then independently checks Debian
 metadata against `VERSION` and `PACKAGE_REVISION`.
 It uses `docs/RELEASE-vVERSION.md` when present, otherwise `CHANGELOG.md`, for notes.
-Existing v0.0.4, v0.0.5 and v0.0.6 tags and assets remain unchanged.
+Existing v0.0.4 to v0.0.7 tags and assets remain unchanged.
 The filename omits the internal Debian revision and optional architecture suffix; Debian metadata remains
 `Architecture: all` because the package contains architecture-independent scripts.
 

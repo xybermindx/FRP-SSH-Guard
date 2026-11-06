@@ -178,6 +178,45 @@ class ConfigUpgradeTests(unittest.TestCase):
         self.assertIn('set SSH_SLOW_PROTECTION=on, then run: sudo frp-ssh-guard check && sudo frp-ssh-guard reload',
                       output.getvalue())
 
+    def test_behavior_rules_and_session_learning_are_added_on_during_upgrade(self):
+        fresh = data.settings(TEMPLATE)
+        self.assertEqual((fresh['SSH_SLOW_BEHAVIOR'], fresh['LEARN_USERS']), ('on', 'on'))
+        old = subprocess.run(['git', 'show', 'ee7b0be:etc/settings.conf.example'], cwd=ROOT,
+                             capture_output=True, text=True)
+        if old.returncode:
+            self.skipTest('needs the 0.0.7-4 template from git history')
+        original = old.stdout.replace('BAN_TIMEOUT=12h', 'BAN_TIMEOUT=5h')
+        updated, keys = data.merge_defaults(original, TEMPLATE)
+        values = data.settings(updated)
+        self.assertEqual(values['SSH_SLOW_BEHAVIOR'], 'on')  # on by default, also after upgrades
+        self.assertEqual(values['LEARN_USERS'], 'on')  # it only stops counting real users
+        self.assertEqual(values['BAN_TIMEOUT'], '5h')
+        for key in ('SSH_BEHAVIOR_PAUSE', 'SSH_BEHAVIOR_RULES', 'LEARN_SESSION_AGE', 'LEARN_SESSION_BYTES'):
+            self.assertEqual(values[key], fresh[key])
+        lines = updated.splitlines()
+        self.assertLess(lines.index('SSH_SLOW_WINDOW=24h'), lines.index('SSH_SLOW_BEHAVIOR=on'))
+        self.assertLess(lines.index('SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"'), lines.index('LOG_MAX_SIZE=10MiB'))
+        self.assertLess(lines.index('LEARN_TIMEOUT=90d'), lines.index('LEARN_USERS=on'))
+        self.assertLess(lines.index('LEARN_SESSION_BYTES=32KiB'), lines.index('STRIKE_WINDOW=90d'))
+        for line in original.splitlines():
+            self.assertIn(line, lines)
+        self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
+        # A file without the anchoring settings still gets every key, at the end.
+        bare, keys = data.merge_defaults('PROTECTED_PORTS="22001"\n', TEMPLATE)
+        self.assertEqual(data.settings(bare)['SSH_SLOW_BEHAVIOR'], 'on')
+        self.assertIn('LEARN_SESSION_AGE', keys)
+        self.path.write_text(original)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            data.append_defaults(self.path, TEMPLATE)
+        self.assertIn('are on (SSH_SLOW_BEHAVIOR=on). Whitelist monitoring', output.getvalue())
+        # Without slow protection the rules do nothing, so nothing is announced.
+        self.path.write_text('PROTECTED_PORTS="22001"\nSSH_SLOW_PROTECTION=off\n')
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            data.append_defaults(self.path, TEMPLATE)
+        self.assertNotIn('restless-source', output.getvalue())
+
     def test_invalid_input_and_unsafe_file_types_are_unchanged(self):
         for kind in ('invalid', 'symlink', 'hardlink', 'fifo', 'directory'):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:

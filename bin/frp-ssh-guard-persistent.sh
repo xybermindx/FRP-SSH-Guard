@@ -108,7 +108,8 @@ Lists & administration:
   allow IP [PORTS]       Add an IP/CIDR to the manual whitelist.
   unallow IP             Remove every whitelist line for an IP/CIDR (manual and learned).
   learned                List auto-learned whitelist entries.
-  remember IP / forget IP   Manually edit the auto-learned whitelist.
+  remember IP / forget IP   Manually edit the auto-learned whitelist (forget also
+                            drops known users of forwarded ports).
   report [WINDOW]        Summary: bans, learned, port-22 failures (default 24h).
 
 PORTS argument (optional) for allow/block makes the entry fine-grained:
@@ -172,7 +173,8 @@ validate_policy() {
         GLOBAL_RATE GLOBAL_BURST BAN_TIMEOUT MAX_LEARNED LEARN_TIMEOUT STRIKE_WINDOW STRIKE_MAX STRIKE_LADDER \
         PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW \
         SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW \
-        SSH_SLOW_MODE LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW LEARN_ADMINS; do
+        SSH_SLOW_MODE LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW LEARN_ADMINS \
+        SSH_SLOW_BEHAVIOR SSH_BEHAVIOR_PAUSE SSH_BEHAVIOR_RULES LEARN_USERS LEARN_SESSION_AGE LEARN_SESSION_BYTES; do
         args+=("$key=${!key}")
     done
     python3 "$LIB_DIR/frp-ssh-guard-validate.py" "${args[@]}" || exit 1
@@ -439,7 +441,15 @@ verify_listeners() {
 }
 
 compile_rules() {
-    local output=$1 spec port rate burst portset jail_type='' key4='ip saddr' key6='ip6 saddr' slow
+    local output=$1 spec port rate burst portset jail_type='' key4='ip saddr' key6='ip6 saddr' slow behavior=off
+    # A resent SYN (same source port AND same initial sequence number) is the same
+    # connection: per-source meters skip it once the first SYN passed them. A new
+    # connection reusing a source port has a new sequence number and still counts.
+    # The shared per-port limit counts every packet. Lookups precede the one add.
+    local first4='ip saddr . tcp sport . tcp dport . tcp sequence' first6='ip6 saddr . tcp sport . tcp dport . tcp sequence'
+    # Behavior rules count connections of sources without a real session (known)
+    # per source and port; the sampler turns the counters into streaks.
+    if [[ "$SSH_SLOW_PROTECTION" == on && "$SSH_SLOW_BEHAVIOR" == on ]]; then behavior=on; fi
     # Slow protection on custom ports counts new connections (logins are hidden by
     # the tunnel): per source across all custom ports in shared mode, or per source
     # and port in per-port mode. Its key and ban scope follow JAIL_PER_PORT.
@@ -485,6 +495,19 @@ compile_rules() {
         echo "    set slow6 { type ipv6_addr$jail_type; flags dynamic,timeout; timeout $SSH_SLOW_WINDOW; size 65536; }"
         echo "    set slowhit4 { type ipv4_addr$jail_type; flags dynamic,timeout; timeout 10m; size 65536; }"
         echo "    set slowhit6 { type ipv6_addr$jail_type; flags dynamic,timeout; timeout 10m; size 65536; }"
+        echo "    set synseen4 { typeof $first4; flags dynamic,timeout; timeout 2m; size 65536; }"
+        echo "    set synseen6 { typeof $first6; flags dynamic,timeout; timeout 2m; size 65536; }"
+        echo "    set known4 { type ipv4_addr . inet_service; flags timeout; size 65536; }"
+        echo "    set known6 { type ipv6_addr . inet_service; flags timeout; size 65536; }"
+        if [[ "$behavior" == on ]]; then
+            echo "    set count4 { type ipv4_addr . inet_service; flags dynamic,timeout; timeout 26h; size 65536; }"
+            echo "    set count6 { type ipv6_addr . inet_service; flags dynamic,timeout; timeout 26h; size 65536; }"
+        fi
+        if [[ "$JAIL_PER_PORT" == on ]]; then
+            # All-port bans in per-port mode (behavior rules for ports touched).
+            echo "    set wideban4 { type ipv4_addr; flags timeout; size 65536; }"
+            echo "    set wideban6 { type ipv6_addr; flags timeout; size 65536; }"
+        fi
         echo "    chain input {"
         echo "        type filter hook input priority -7; policy accept;"
         echo "        iifname \"lo\" return"
@@ -509,18 +532,31 @@ compile_rules() {
         echo "        ip6 saddr . tcp dport @block_pp6 counter drop comment \"block-port v6\""
         echo "        tcp dport { $portset } $key4 @hardban4 counter drop comment \"strike-ban v4\""
         echo "        tcp dport { $portset } $key6 @hardban6 counter drop comment \"strike-ban v6\""
+        if [[ "$JAIL_PER_PORT" == on ]]; then
+            echo "        tcp dport { $portset } ip  saddr @wideban4 counter drop comment \"all-port ban v4\""
+            echo "        tcp dport { $portset } ip6 saddr @wideban6 counter drop comment \"all-port ban v6\""
+        fi
         for spec in "${SPECS[@]}"; do
             IFS=: read -r port rate burst <<< "$spec"
             echo "        tcp dport $port $key4 @ban4 counter drop comment \"$port banned v4\""
             echo "        tcp dport $port $key6 @ban6 counter drop comment \"$port banned v6\""
-            echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn update @rate4 { ip saddr . tcp dport limit rate over ${PER_IP_RATE}/minute burst ${PER_IP_BURST} packets } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port per-IP v4\""
-            echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn update @rate6 { ip6 saddr . tcp dport limit rate over ${PER_IP_RATE}/minute burst ${PER_IP_BURST} packets } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port per-IP v6\""
+            echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn $first4 != @synseen4 update @rate4 { ip saddr . tcp dport limit rate over ${PER_IP_RATE}/minute burst ${PER_IP_BURST} packets } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port per-IP v4\""
+            echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn $first6 != @synseen6 update @rate6 { ip6 saddr . tcp dport limit rate over ${PER_IP_RATE}/minute burst ${PER_IP_BURST} packets } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port per-IP v6\""
             echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn limit rate over $rate/minute burst $burst packets counter drop comment \"$port global\""
             # Port 22 with local SSH protection uses failed logins from sshd instead.
             if [[ "$SSH_SLOW_PROTECTION" == on && ! ( "$port" == 22 && "$PROTECT_SERVER_SSH" == on ) ]]; then
-                echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 update @slow4 { $key4 limit rate over $slow } add @slowhit4 { $key4 } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v4\""
-                echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip6 saddr != @trusted6 update @slow6 { $key6 limit rate over $slow } add @slowhit6 { $key6 } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v6\""
+                # Known users (a real session on this port) are not counted.
+                echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 ip saddr . tcp dport != @known4 $first4 != @synseen4 update @slow4 { $key4 limit rate over $slow } add @slowhit4 { $key4 } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v4\""
+                echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip6 saddr != @trusted6 ip6 saddr . tcp dport != @known6 $first6 != @synseen6 update @slow6 { $key6 limit rate over $slow } add @slowhit6 { $key6 } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v6\""
+                if [[ "$behavior" == on ]]; then
+                    echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 ip saddr . tcp dport != @known4 $first4 != @synseen4 update @count4 { ip saddr . tcp dport counter } comment \"$port observe v4\""
+                    echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip6 saddr != @trusted6 ip6 saddr . tcp dport != @known6 $first6 != @synseen6 update @count6 { ip6 saddr . tcp dport counter } comment \"$port observe v6\""
+                fi
             fi
+            # After every lookup: later resends of this SYN are not counted again.
+            # A full set fails open: resends are then counted, as in older releases.
+            echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn add @synseen4 { $first4 } comment \"$port first v4\""
+            echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn add @synseen6 { $first6 } comment \"$port first v6\""
             echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn counter return comment \"$port ok\""
         done
         echo "    }"
@@ -729,7 +765,7 @@ cmd_banned() {
     table_active || die "Guard is not active."
     local set ip exp s
     printf '%-6s %-40s %s\n' "SET" "IP" "EXPIRES(s)"
-    for set in ban4 ban6 hardban4 hardban6 saved_ban4 saved_ban6 saved_ban_pp4 saved_ban_pp6; do
+    for set in ban4 ban6 wideban4 wideban6 hardban4 hardban6 saved_ban4 saved_ban6 saved_ban_pp4 saved_ban_pp6; do
         if command -v jq >/dev/null 2>&1; then
             "$NFTP" -j list set inet "$GUARD_TABLE" "$set" 2>/dev/null \
                 | jq -r --arg s "$set" '.nftables[]?.set?.elem[]? | [$s, (.elem.val | if type == "object" then (.concat | map(tostring) | join(" : ")) else . end), ((.elem.expires // 0)|tostring)] | @tsv' \
@@ -774,6 +810,16 @@ cmd_unban() {
         else
             "$NFTP" delete element inet "$GUARD_TABLE" "$set" "{ $ip }" 2>/dev/null || true
         fi
+    done
+    # Behavior counters are keyed by source and port in both jail modes.
+    for spec in ${PROTECTED_PORTS//,/ }; do
+        token=${spec%%:*}
+        for set in count4 count6; do
+            "$NFTP" delete element inet "$GUARD_TABLE" "$set" "{ $ip . $token }" 2>/dev/null || true
+        done
+    done
+    for set in wideban4 wideban6; do
+        "$NFTP" delete element inet "$GUARD_TABLE" "$set" "{ $ip }" 2>/dev/null || true
     done
     file_del_ip "$HARDBAN_FILE" "$ip" 2>/dev/null || true
     forgive "$ip"
@@ -877,7 +923,12 @@ cmd_unallow() {
 }
 
 cmd_remember() { python3 "$LIB_DIR/frp-ssh-guard-lists.py" remember "$1"; reload_live; }
-cmd_forget() { python3 "$LIB_DIR/frp-ssh-guard-lists.py" forget "$1"; reload_live; }
+cmd_forget() {
+    python3 "$LIB_DIR/frp-ssh-guard-lists.py" forget "$1"
+    # Also a known user of forwarded ports (LEARN_USERS) and its streak.
+    observe forget "$1"
+    reload_live
+}
 
 cmd_learned() {
     sync_lists
@@ -997,7 +1048,7 @@ case "$action" in
         if [[ "${GUARD_PACKAGED:-0}" != 1 ]]; then
             install -d -o root -g root -m 0755 "$BIN_DIR"
             [[ "$SOURCE_SCRIPT" == "$INSTALLED_SCRIPT" ]] || atomic_install "$SOURCE_SCRIPT" "$INSTALLED_SCRIPT" 0755
-            for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-events.py frp-ssh-guard-alerts.py; do
+            for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-events.py frp-ssh-guard-behavior.py frp-ssh-guard-alerts.py; do
                 [[ "$LIB_DIR/$helper" == "$BIN_DIR/$helper" ]] || atomic_install "$LIB_DIR/$helper" "$BIN_DIR/$helper" 0755
             done
             write_unit
@@ -1094,6 +1145,8 @@ case "$action" in
             echo "hardban (v4/v6): $(cnt hardban4)/$(cnt hardban6) [strikes]"
             echo "saved   (v4/v6): $(cnt saved_ban4)/$(cnt saved_ban6) [restored shared bans]"
             echo "saved per-port: $(cnt saved_ban_pp4)/$(cnt saved_ban_pp6)"
+            if [[ "$JAIL_PER_PORT" == on ]]; then echo "all-port (v4/v6): $(cnt wideban4)/$(cnt wideban6) [behavior bans]"; fi
+            echo "known   (v4/v6): $(cnt known4)/$(cnt known6)     [source/port pairs with a real session]"
             echo "strikes tracked: $(( $(wc -l < "$LIST_DIR/strikes.tsv" 2>/dev/null || echo 0) ))"
         else
             echo "No active guard table. If installed, use reload/install."

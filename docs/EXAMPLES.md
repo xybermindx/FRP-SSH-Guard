@@ -82,6 +82,36 @@ administrators who use many forwarded machines in `whitelist.conf` (any port
 section); listed addresses are never counted. Each ban, with its reason, appears in
 `~/.frp-ssh-guard/frp-ssh-guard.log`.
 
+### Restless sources and known users
+
+```ini
+SSH_SLOW_BEHAVIOR=on                       # off: no streaks and no behavior bans
+SSH_BEHAVIOR_PAUSE=2h                      # a pause this long starts a streak over
+SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"   # N ports (p) or N connections (c) within the last T
+LEARN_USERS=on                             # stop counting sources that completed a login
+LEARN_SESSION_AGE=3m                       # proof: connection still open after this long
+LEARN_SESSION_BYTES=32KiB                  # proof: more data than this sent to the client
+```
+
+A source that keeps connecting with no 2-hour pause, never completing a login, is
+banned when its last 2 hours touched 4 forwarded ports, its last 6 hours touched 3,
+or its last 12 hours held 50 connections. Port rules ban every port, also with
+`JAIL_PER_PORT=on`; the connection rule follows the jail mode. One connection that
+stays open 3 minutes or delivers 32 KiB makes that source a known user of the port,
+so a user on an unstable network can reconnect as often as needed.
+
+A stricter example for hosts without monitoring traffic: ban after 3 ports in 1
+hour or 30 connections in 6 hours.
+
+```ini
+SSH_BEHAVIOR_RULES="3p:1h 30c:6h"
+```
+
+Whitelist monitoring probes, backup jobs, CI and git automation first: they connect
+around the clock with short, quiet sessions. The rules are on by default, and a
+package upgrade turns them on during its automatic refresh. `sudo frp-ssh-guard
+report` lists known users and the streaks closest to a rule.
+
 ## Apply and verify settings
 
 For an already active guard:
@@ -142,7 +172,7 @@ released there too.
 ## Upgrade without reloading policy
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.7.deb
+sudo apt install ./frp-ssh-guard_0.0.8.deb
 dpkg-query -W frp-ssh-guard
 sudo frp-ssh-guard status
 ```

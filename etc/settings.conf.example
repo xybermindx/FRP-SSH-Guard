@@ -54,6 +54,7 @@ JAIL_PER_PORT=off
 #   (default 20) within SSH_SLOW_WINDOW: banned with the jail scope above.
 # Addresses in whitelist.conf (any port) are known administrators and are never
 # counted. Bans last BAN_TIMEOUT and are written to the activity log.
+# SSH_SLOW_BEHAVIOR (below) also catches slower bots that rotate across ports.
 # Off: no slow detection and no slow bans. The faster limits below still apply.
 SSH_SLOW_PROTECTION=on
 
@@ -74,6 +75,29 @@ SSH_SLOW_FAILURES=20
 # Window for all three: positive integer + s/m/h/d/w. Connection counts refill
 # gradually across the window, so they are approximate. Default 24 hours.
 SSH_SLOW_WINDOW=24h
+
+# SSH_SLOW_BEHAVIOR: restless-source rules for custom/FRP ports (on/off).
+# Default on, also after upgrades; acts only with SSH_SLOW_PROTECTION=on.
+# Catches bots that stay under the limits above by connecting slowly, often to
+# every port, around the clock. Only connections from sources WITHOUT a real
+# session on that port are counted (see LEARN_USERS); whitelisted and learned
+# sources are never counted; a resent SYN is the same connection.
+# A source's streak is its run of such connections with no pause of
+# SSH_BEHAVIOR_PAUSE; that pause starts the streak over. The source is banned for
+# BAN_TIMEOUT (repeat bans climb STRIKE_LADDER) when, with its streak at least T
+# long (no pause during the last T), the last T held:
+#   Np:T  N or more different custom ports: banned on ALL ports, also with
+#         JAIL_PER_PORT=on (rotating across ports is about the source), or
+#   Nc:T  N or more new connections: banned on all ports, or with JAIL_PER_PORT=on
+#         only on each port that reached N by itself.
+# Whitelist monitoring probes, scheduled jobs, CI/git automation and office NATs
+# that connect around the clock with only short sessions.
+SSH_SLOW_BEHAVIOR=on
+# Pause that starts a streak over: 30m to 12h. Default 2 hours.
+SSH_BEHAVIOR_PAUSE=2h
+# Rules separated by spaces; N ports 2-1000000, N connections 1-1000000, T 15m-7d.
+# Default: 4 ports for 2 hours, 3 ports for 6 hours, 50 connections for 12 hours.
+SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"
 
 # Activity log frp-ssh-guard.log, beside whitelist.conf and blocklist.conf:
 # one line per ban (with its reason and end time), manual ban, release, strike
@@ -125,6 +149,23 @@ MAX_LEARNED=500
 # Learned-address timeout: positive integer + s/m/h/d/w; default 90 days.
 # Trusted successful logins refresh this expiry; apply/reload/reboot do not.
 LEARN_TIMEOUT=90d
+
+# LEARN_USERS: recognize users of custom/FRP ports by their sessions (on/off).
+# Default on. Logins behind FRP are invisible, but a connection that stays open
+# for LEARN_SESSION_AGE, or that received more than LEARN_SESSION_BYTES, has
+# logged in. Its source becomes a known user of THAT port for LEARN_TIMEOUT,
+# renewed by later sessions: slow protection and SSH_SLOW_BEHAVIOR stop counting
+# it there, so frequent reconnects on an unstable network cost nothing. The
+# per-minute limits still apply. Known users are not written to whitelist.conf;
+# sudo frp-ssh-guard forget IP removes them. Checked about once a minute.
+LEARN_USERS=on
+# Connection age that proves a login: 3m to 1d. Default 3 minutes. sshd closes
+# connections that have not logged in after LoginGraceTime (2 minutes by
+# default); if a backend raises it, keep this value above it.
+LEARN_SESSION_AGE=3m
+# Data sent to the client that proves a login: 8KiB to 100MiB. Default 32KiB.
+# A failed login exchanges a few KiB; raise this for a long pre-login Banner.
+LEARN_SESSION_BYTES=32KiB
 
 # Repeat offenders: an automatic ban that comes within STRIKE_WINDOW after the
 # source's previous ban ENDED moves one step up STRIKE_LADDER, and a source at the

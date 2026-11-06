@@ -222,11 +222,37 @@ for ip, expiry in list(target.items()):
     identity = '|'.join((fields[0], fields[1] if len(fields) > 1 else '*', 'strike'))
     if expiry <= deleted.get(identity, 0) + 2:
         target.pop(ip)
+saved = {}
+if active and PER_PORT:
+    # Address-wide offenses in per-port mode (behavior bans for port spread)
+    # escalate in the address-keyed saved sets, which restores them on reload.
+    for family in ('4', '6'):
+        listing = subprocess.run([NFT, "-j", "list", "set", "inet", TABLE, "saved_ban" + family],
+                                 capture_output=True, text=True)
+        try:
+            for item in json.loads(listing.stdout or '{}').get('nftables', []) if listing.returncode == 0 else []:
+                for element in item.get('set', {}).get('elem', []):
+                    if isinstance(element, str):  # no timeout: never shorten it
+                        saved[str(ipaddress.ip_address(element))] = float('inf')
+                        continue
+                    elem = element.get('elem', {}) if isinstance(element, dict) else {}
+                    if isinstance(elem.get('val'), str):
+                        saved[str(ipaddress.ip_address(elem['val']))] = elem.get('expires', 0)
+        except (ValueError, AttributeError, TypeError):
+            pass
 if active:
     for ip, expiry in target.items():
         # Opposite-mode bans remain in the scope-independent saved sets/list.
         # Do not insert a scoped key into an address-only set, or vice versa.
         if (' ' in ip) != PER_PORT:
+            remaining = max(1, expiry - int(now))
+            if PER_PORT and saved.get(ip, 0) < remaining - 120:
+                fam = "saved_ban6" if ':' in ip else "saved_ban4"
+                # add does not extend an element: add (no-op), delete, add again.
+                batch = "add element inet %s %s { %s timeout 1s }\ndelete element inet %s %s { %s }\n" \
+                        "add element inet %s %s { %s timeout %ss }\n" % (TABLE, fam, ip, TABLE, fam, ip, TABLE, fam, ip, remaining)
+                subprocess.run([NFT, "-f", "-"], input=batch, text=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             continue
         fam = "hardban6" if ':' in ip else "hardban4"
         value = ip.replace(' ', ' . ') if PER_PORT else ip

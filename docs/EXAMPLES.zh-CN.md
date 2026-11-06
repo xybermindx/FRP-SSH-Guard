@@ -77,6 +77,32 @@ SSH_SLOW_WINDOW=24h
 请加入 `whitelist.conf`（任意端口分节）；名单中的地址从不计数。每次封禁及其原因
 都会写入 `~/.frp-ssh-guard/frp-ssh-guard.log`。
 
+### 不停歇来源与已知用户
+
+```ini
+SSH_SLOW_BEHAVIOR=on                       # off：不记录连续记录，也不做行为封禁
+SSH_BEHAVIOR_PAUSE=2h                      # 出现这么长的停顿，连续记录重新开始
+SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"   # 最近 T 内 N 个端口（p）或 N 次连接（c）
+LEARN_USERS=on                             # 不再统计已完成登录的来源
+LEARN_SESSION_AGE=3m                       # 证据：连接在这段时间后仍保持打开
+LEARN_SESSION_BYTES=32KiB                  # 证据：发送给客户端的数据超过此值
+```
+
+来源持续连接、中间没有 2 小时停顿、且从未完成登录时，如果最近 2 小时触及 4 个转发端口、
+最近 6 小时触及 3 个，或最近 12 小时有 50 次连接，即被封禁。端口规则封禁所有端口，
+`JAIL_PER_PORT=on` 时也一样；连接规则跟随封禁模式。只要有一次连接保持 3 分钟或传回 32 KiB，
+该来源即成为此端口的已知用户，因此网络不稳定的用户可以根据需要随时重连。
+
+没有监控流量的主机可使用更严格的示例：1 小时内 3 个端口或 6 小时内 30 次连接即封禁。
+
+```ini
+SSH_BEHAVIOR_RULES="3p:1h 30c:6h"
+```
+
+请先将监控探测、备份任务、CI 和 git 自动化加入白名单：它们全天连接，会话短且输出少。
+这些规则默认开启，软件包升级也会在自动刷新时开启它们。`sudo frp-ssh-guard report`
+会列出已知用户和最接近规则的连续记录。
+
 ## 应用并验证配置
 
 防护已经运行时执行：
@@ -132,7 +158,7 @@ Fail2ban 及其他防火墙相互独立；在那里被封禁的地址也需要�
 ## 升级时不重载策略
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.7.deb
+sudo apt install ./frp-ssh-guard_0.0.8.deb
 dpkg-query -W frp-ssh-guard
 sudo frp-ssh-guard status
 ```

@@ -30,15 +30,18 @@ def module(name):
     return result
 
 
-lists, alerts = module('lists'), module('alerts')
+lists, alerts, behavior = module('lists'), module('alerts'), module('behavior')
 data = lists.data
 KEYS = lists.KEYS + ('PROTECT_SERVER_SSH', 'SSH_AUTH_FAILURES', 'SSH_INVALID_USER_FAILURES',
     'SSH_AUTH_WINDOW', 'SSH_SLOW_PROTECTION', 'SSH_SLOW_TOTAL_CONNECTIONS', 'SSH_SLOW_PORT_CONNECTIONS',
     'SSH_SLOW_FAILURES', 'SSH_SLOW_WINDOW',
     'LOG_MAX_SIZE', 'SUBNET_REPORT_MIN_SOURCES', 'SUBNET_REPORT_WINDOW',
-    'OBSERVABILITY_VERSION', 'STRIKE_WINDOW', 'PER_IP_RATE', 'PER_IP_BURST')
+    'OBSERVABILITY_VERSION', 'STRIKE_WINDOW', 'PER_IP_RATE', 'PER_IP_BURST',
+    'SSH_SLOW_BEHAVIOR', 'SSH_BEHAVIOR_PAUSE', 'SSH_BEHAVIOR_RULES', 'LEARN_USERS', 'LEARN_SESSION_AGE',
+    'LEARN_SESSION_BYTES')
 # Event kinds written to the activity log. Failed logins stay in the private store.
-LOGGED = ('ban', 'manual-ban', 'strike-ban', 'release', 'settings-applied', 'new-source-login', 'subnet-cluster')
+LOGGED = ('ban', 'manual-ban', 'strike-ban', 'release', 'settings-applied', 'new-source-login', 'subnet-cluster',
+          'known-user')
 SUCCESS = re.compile(r'^Accepted (password|publickey|keyboard-interactive(?:/pam)?) for (\S+) from ')
 METHOD = re.compile(r'^(?:Failed|Accepted) (\S+) for ')
 MAX_ROWS = 200000
@@ -125,7 +128,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS bans (ip TEXT, scope TEXT, expiry REAL, origin TEXT, PRIMARY KEY(ip, scope));
             CREATE TABLE IF NOT EXISTS samples (stamp REAL, start REAL, packets INTEGER, gap INTEGER);
             PRAGMA user_version=1;
-        ''')
+        ''' + behavior.SCHEMA)  # behavior rules; older releases ignore these tables
         # Since v0.0.7: remember the method so rejected keys count once per connection.
         if 'method' not in {row[1] for row in self.db.execute('PRAGMA table_info(failures)')}:
             self.db.execute("ALTER TABLE failures ADD COLUMN method TEXT DEFAULT ''")
@@ -257,17 +260,18 @@ class Store:
                        'invalid-users' if fast_hit else 'slow-failed-logins' if slow_hit else None)
         return 'ban' if not trusted and (fast_hit or slow_hit) else None
 
-    def record_ban(self, ip, scope, expiry, origin, config, now, reason=None):
+    def record_ban(self, ip, scope, expiry, origin, config, now, reason=None, limit=None):
         prior = self.db.execute('SELECT expiry,origin FROM bans WHERE ip=? AND scope=?', (ip, scope)).fetchone()
         self.db.execute('INSERT OR REPLACE INTO bans VALUES (?,?,?,?)', (ip, scope, expiry, origin))
         # Auth enforcement has already verified that no live/restored jail
         # covers this source. A prior deadline can remain after an editable-list
         # deletion, so it must not suppress this newly applied authentication ban.
-        if origin not in ('auth', 'kernel') or origin == 'kernel' and prior and prior['expiry'] > now:
+        # Behavior bans, like auth bans, were checked against live jails first.
+        if origin not in ('auth', 'kernel', 'behavior') or origin == 'kernel' and prior and prior['expiry'] > now:
             return False
         identity = digest(f'ban|{ip}|{scope}|{now}')
         reason = reason or ('failed-logins' if origin == 'auth' else 'connection-rate')
-        limit = ban_limit(config, reason)
+        limit = limit or ban_limit(config, reason)
         self.emit(identity, now, 'ban', ip, scope, 'reason=' + reason + (' limit=' + limit if limit else '')
                   + ' until=' + until(expiry))
         address = ipaddress.ip_address(ip)
@@ -342,7 +346,7 @@ def sample(store, config, now, document=None, baseline=False):
     initialized = store.get('ban_baseline', False)
     rows = lists.kernel_rows(document, now)
     marks = set(slow_marks(document))
-    live = {(row.ip, row.scope): row.expiry for name, row in rows if name in ('ban4', 'ban6')}
+    live = {(row.ip, row.scope): row.expiry for name, row in rows if name in ('ban4', 'ban6', 'wideban4', 'wideban6')}
     for (ip, scope), expiry in live.items():
         # A slow-protection rule marks the same key when it adds the ban.
         reason = ('slow-connections-all-ports' if scope == '*' else 'slow-connections') if (ip, scope) in marks else None
@@ -357,6 +361,10 @@ def sample(store, config, now, document=None, baseline=False):
         if initialized and not baseline:
             store.emit(digest(key + '|' + str(expiry)), now, 'strike-ban', ip, scope,
                        'reason=repeat-offender until=' + until(expiry))
+    try:
+        behavior.observe(store, config, document, now, generation)
+    except (OSError, ValueError, subprocess.SubprocessError, sqlite3.Error):
+        print('Behavior rules skipped this minute; other protection continues.', file=sys.stderr, flush=True)
     store.set('ban_baseline', True)
     store.prune(config, now)
     store.db.commit()
@@ -405,6 +413,8 @@ def applied(config):
                      'server-ssh=' + config['PROTECT_SERVER_SSH'],
                      'jail=' + ('per-port' if config['JAIL_PER_PORT'] == 'on' else 'shared'),
                      'slow-protection=' + config['SSH_SLOW_PROTECTION'],
+                     'behavior=' + (config.get('SSH_SLOW_BEHAVIOR', 'on') if config['SSH_SLOW_PROTECTION'] == 'on' else 'off'),
+                     'known-users=' + config.get('LEARN_USERS', 'on'),
                      'learning=' + ('+'.join(name for name, on in (('admins', config['LEARN_ADMINS'] == 'on'),
                                                                    ('LOGIN_USERS', bool(config['LOGIN_USERS']))) if on)
                                     or 'off')])
@@ -429,8 +439,19 @@ def describe_slow(config):
         custom = 'over ' + config['SSH_SLOW_TOTAL_CONNECTIONS'] + ' new connections per source across ports/' + window
     native = (config['SSH_SLOW_FAILURES'] + ' failed logins/' + window if config['PROTECT_SERVER_SSH'] == 'on'
               else 'not protected')
-    return ('Slow SSH protection: on (custom ports: ' + custom + '; port 22: ' + native
+    text = ('Slow SSH protection: on (custom ports: ' + custom + '; port 22: ' + native
             + '; whitelisted sources are not counted)')
+    if config.get('SSH_SLOW_BEHAVIOR') == 'on':
+        text += ('\nBehavior rules: on (' + config['SSH_BEHAVIOR_RULES'] + ' on custom ports; a '
+                 + config['SSH_BEHAVIOR_PAUSE'] + ' pause starts a streak over; p bans all ports, c follows the jail mode)')
+    else:
+        text += '\nBehavior rules: off (set SSH_SLOW_BEHAVIOR=on, then check and reload)'
+    if config.get('LEARN_USERS') == 'on':
+        text += ('\nKnown users: on (a custom-port connection open ' + config['LEARN_SESSION_AGE'] + ' or receiving over '
+                 + config['LEARN_SESSION_BYTES'] + ' stops counting that source/port for ' + config['LEARN_TIMEOUT'] + ')')
+    else:
+        text += '\nKnown users: off'
+    return text
 
 
 def enforce(store, config, ip, now):
@@ -542,12 +563,16 @@ def show(config, store=None, window=None):
         print('Observation coverage: not activated; run check, then reload')
         return
     print('Observation coverage starts: ' + utc(store.get('coverage_start')))
+    lines = behavior.summary(store, config, time.time(), 10 if window else 0)
+    for line in lines:
+        print(line)
     if window:
         since, now = time.time() - data.duration(window), time.time()
         print('Report window: ' + utc(since) + ' to ' + utc(now))
         if since < store.get('coverage_start'):
             print('Partial coverage: requested window starts before observation activation.')
-        for kind in ('auth-failure', 'slow-threshold', 'new-source-login', 'ban', 'manual-ban', 'strike-ban', 'subnet-cluster'):
+        for kind in ('auth-failure', 'slow-threshold', 'new-source-login', 'ban', 'manual-ban', 'strike-ban',
+                     'subnet-cluster', 'known-user'):
             count = store.db.execute('SELECT count(*) FROM events WHERE kind=? AND stamp>=? AND stamp<=?', (kind, since, now)).fetchone()[0]
             print(kind + ': ' + str(count))
         rows = list(store.db.execute('SELECT * FROM samples WHERE stamp>=? AND stamp<=?', (since, now)))
@@ -630,9 +655,13 @@ def main():
             store.db.execute('DELETE FROM failures WHERE ip=?', (ip,))
             store.db.execute('DELETE FROM episodes WHERE key=? OR key LIKE ? OR key LIKE ?',
                              ('slow|' + ip, 'slowconn|' + ip + '|%', 'strike|' + ip + '|%'))
+            behavior.forgive(store, ip)
             # unban and release can both forgive; one line per minute is enough.
             store.emit(digest(f'release|{ip}|{int(now // 60)}'), now, 'release', ip, '*',
                        'reason=unban-command strikes=forgiven')
+            store.db.commit()
+        elif action == 'forget':
+            behavior.forget(store, config, str(ipaddress.ip_address(sys.argv[2])))
             store.db.commit()
         elif action in ('sample', 'checkpoint'):
             sample(store, config, now)

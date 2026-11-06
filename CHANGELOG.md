@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.0.8
+
+- Ban slow bots that stay under every limit by connecting a few dozen times a day
+  per port, often rotating across all forwarded ports, without ever completing a
+  login. With `SSH_SLOW_BEHAVIOR=on` (default, also on upgrade, where the automatic
+  refresh applies it), each untrusted, unknown source has a streak that a pause of
+  `SSH_BEHAVIOR_PAUSE` (2h) starts over. It is banned when its streak lasted T and the last T held
+  `SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"`: 4 ports in 2 hours, 3 ports in 6
+  hours, or 50 connections in 12 hours. Port rules ban all ports in both jail
+  modes. The connection rule follows `JAIL_PER_PORT`. Logged reasons are
+  `restless-ports` and `restless-connections`, and bans climb the strike ladder.
+- Add known users (`LEARN_USERS=on`, also on upgrade). A forwarded connection still
+  open after `LEARN_SESSION_AGE` (3m), or that delivered more than
+  `LEARN_SESSION_BYTES` (32KiB), proved a login. Its source/port pair is then no
+  longer counted by slow protection or the behavior rules for `LEARN_TIMEOUT`, so
+  users on unstable networks can reconnect freely. `forget IP` removes it, and
+  `known-user` log lines record new ones.
+- A resent SYN (same source port and sequence number) now counts once in the
+  per-minute, slow and behavior limits. Before, a lossy network counted each resend
+  as a new connection. The shared per-port limit still counts every packet.
+- In per-port mode, repeat offenses of all-port bans escalate at once in the
+  address-keyed saved sets instead of after the next reload. `status` shows known
+  users and all-port bans; `report` lists the streaks closest to a rule.
+
 ## 0.0.7
 
 - Fix busy blocklists that repeated the same port header (for example `[22]`)
