@@ -117,7 +117,7 @@ protect `22001` on the public server.
 Target environment:
 
 - Linux with systemd, nftables 1.0.6+, Python 3.9+, Bash 4.4+, jq, iproute2 (`ss`),
-  util-linux and kernel nftables support:
+  util-linux, diffutils and kernel nftables support:
 
   | Family | Versions | Package |
   | --- | --- | --- |

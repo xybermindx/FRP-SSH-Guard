@@ -23,7 +23,7 @@ behavior is unchanged from v0.0.8.
 - **RPM:** upgrades and reinstalls refresh an active guard automatically and never
   stop it. An erase stops protection and keeps settings and state.
 - **Preflight:** `./install.sh --preflight` (no root) checks systemd, nftables 1.0.6+,
-  Python 3.9+, Bash 4.4+, jq, `ss` and `flock`, and prints the install command for
+  Python 3.9+, Bash 4.4+, jq, `ss`, `flock` and `cmp`, and prints the install command for
   your package manager. `check` and `enable` refuse an unsupported system the same way.
 - **`doctor`** shows the distribution, architecture, kernel, nftables and Python
   versions, SELinux mode, and firewalld or `nftables.service` status.

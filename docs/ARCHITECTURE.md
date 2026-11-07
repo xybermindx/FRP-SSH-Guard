@@ -149,7 +149,7 @@ unpacking (`preinst`, `%pre`), and the systemd reload after removal (`postrm`,
 `%postun`). RPM has no purge, so an erase keeps state like `dpkg remove`.
 
 `bin/frp-ssh-guard-platform.sh` holds the requirements (systemd, nftables, Python,
-Bash, jq, `ss`, `flock`). `install.sh --preflight` and `check`/`enable` share it, and
+Bash, jq, `ss`, `flock`, `cmp`). `install.sh --preflight` and `check`/`enable` share it, and
 it prints the install command for the detected package manager. `doctor` reports the
 distribution, architecture, kernel, nftables and Python versions, SELinux mode, and
 whether firewalld or `nftables.service` is active.

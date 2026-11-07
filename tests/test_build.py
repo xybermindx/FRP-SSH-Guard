@@ -73,7 +73,7 @@ class RpmPackageTests(unittest.TestCase):
         _, spec = self.staged_spec()
         for line in ('Version:        0.0.9', 'Release:        1', 'BuildArch:      noarch', 'AutoReqProv:    no',
                      'Requires:       nftables >= ' + build.nftables_minimum(), 'Requires:       python3 >= 3.9',
-                     'Requires:       (iproute or iproute2)', 'Requires:       systemd', 'Recommends:     logrotate'):
+                     'Requires:       (iproute or iproute2)', 'Requires:       systemd', 'Requires:       diffutils', 'Recommends:     logrotate'):
             self.assertIn(line + '\n', spec)
         self.assertIn('nftables (>= ' + build.nftables_minimum() + ')', (ROOT / 'packaging/control').read_text())
         sections = {}

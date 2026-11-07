@@ -104,7 +104,7 @@ flowchart LR
 目标环境：
 
 - 使用 systemd 的 Linux，需要 nftables 1.0.6+、Python 3.9+、Bash 4.4+、jq、iproute2（`ss`）、
-  util-linux，且内核支持 nftables：
+  util-linux、diffutils，且内核支持 nftables：
 
   | 系列 | 版本 | 软件包 |
   | --- | --- | --- |

@@ -11,11 +11,11 @@ if command -v apt-get >/dev/null 2>&1; then
     apt-get update
     apt-get install -y nftables python3 iproute2 jq util-linux systemd
 elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y nftables python3 iproute jq util-linux systemd gawk
+    dnf install -y nftables python3 iproute jq util-linux systemd gawk diffutils
 elif command -v zypper >/dev/null 2>&1; then
-    zypper --non-interactive install nftables python3 iproute2 jq util-linux systemd gawk
+    zypper --non-interactive install nftables python3 iproute2 jq util-linux systemd gawk diffutils
 elif command -v pacman >/dev/null 2>&1; then
-    pacman -Sy --noconfirm --needed nftables python iproute2 jq util-linux systemd
+    pacman -Sy --noconfirm --needed nftables python iproute2 jq util-linux systemd diffutils
 else
     echo 'Unknown package manager.' >&2
     exit 1

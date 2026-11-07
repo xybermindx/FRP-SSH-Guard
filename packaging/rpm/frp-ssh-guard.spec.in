@@ -15,6 +15,7 @@ Requires:       (iproute or iproute2)
 Requires:       systemd
 Requires:       util-linux
 Requires:       coreutils
+Requires:       diffutils
 Requires:       grep
 Requires:       sed
 Requires:       gawk

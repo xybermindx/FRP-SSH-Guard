@@ -13,7 +13,7 @@ PLATFORM = ROOT / 'bin/frp-ssh-guard-platform.sh'
 SPEC = importlib.util.spec_from_file_location('platform_events', ROOT / 'bin/frp-ssh-guard-events.py')
 events = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(events)
-TOOLS = ('nft', 'python3', 'ss', 'jq', 'flock', 'systemctl', 'journalctl')
+TOOLS = ('nft', 'python3', 'ss', 'jq', 'flock', 'cmp', 'systemctl', 'journalctl')
 
 
 class PlatformTests(unittest.TestCase):

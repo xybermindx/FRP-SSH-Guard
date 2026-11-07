@@ -14,7 +14,7 @@ platform_problems() {
     if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
         printf 'bash %s is older than 4.4\n' "$BASH_VERSION"
     fi
-    for tool in nft python3 ss jq flock systemctl journalctl; do
+    for tool in nft python3 ss jq flock cmp systemctl journalctl; do
         command -v "$tool" >/dev/null 2>&1 || printf 'missing command: %s\n' "$tool"
     done
     [[ -d "${GUARD_SYSTEMD_RUNTIME:-/run/systemd/system}" ]] || printf 'systemd is not the running init system\n'
@@ -35,15 +35,15 @@ platform_problems() {
 # The install command for the dependencies on this system's package manager.
 package_hint() {
     if command -v apt-get >/dev/null 2>&1; then
-        echo 'sudo apt-get install nftables python3 iproute2 jq util-linux'
+        echo 'sudo apt-get install nftables python3 iproute2 jq util-linux diffutils'
     elif command -v dnf >/dev/null 2>&1; then
-        echo 'sudo dnf install nftables python3 iproute jq util-linux'
+        echo 'sudo dnf install nftables python3 iproute jq util-linux diffutils'
     elif command -v zypper >/dev/null 2>&1; then
-        echo 'sudo zypper install nftables python3 iproute2 jq util-linux'
+        echo 'sudo zypper install nftables python3 iproute2 jq util-linux diffutils'
     elif command -v pacman >/dev/null 2>&1; then
-        echo 'sudo pacman -S --needed nftables python iproute2 jq util-linux'
+        echo 'sudo pacman -S --needed nftables python iproute2 jq util-linux diffutils'
     else
-        echo 'Install nftables 1.0.6+, Python 3.9+, iproute2 (ss), jq and util-linux with your package manager.'
+        echo 'Install nftables 1.0.6+, Python 3.9+, iproute2 (ss), jq, util-linux and diffutils with your package manager.'
     fi
 }
 

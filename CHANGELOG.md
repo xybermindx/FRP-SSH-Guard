@@ -12,8 +12,8 @@
   The Debian maintainer scripts call it, with unchanged behavior.
 - `install.sh --preflight` checks a system without root, and `check`/`enable` refuse
   an unsupported system with the same checks: systemd, nftables 1.0.6+, Python 3.9+,
-  Bash 4.4+, jq, `ss`, `flock`. Both print the install command for apt, dnf, zypper
-  or pacman.
+  Bash 4.4+, jq, `ss`, `flock`, `cmp`. Both print the install command for apt, dnf,
+  zypper or pacman.
 - `doctor` shows the distribution, architecture, kernel, nftables and Python
   versions, SELinux mode, and whether firewalld or `nftables.service` is active.
 - Architectures: the packages run wherever a supported distribution ships the
