@@ -29,11 +29,18 @@ No firewall was changed.
     change.
 - Source and history passed the private privacy rules; the built package passed
   the artifact scan.
-- Not run yet: `tests/vm-behavior.py` in a disposable VM. It covers the real APT
-  upgrade from the previous v0.0.7 build turning the rules on without a reload, the real `ss` session data, kernel
-  counters for a resent SYN, and real FRP bans in both jail modes. Until it passes,
-  the nftables `typeof` dedup set and element counters are covered by the
-  namespace syntax test only.
+- Production use, which promoted the pre-release to the v0.0.8 release on
+  2026-11-07: an ordinary APT upgrade on two frps hosts refreshed both active guards
+  automatically. The guard, authentication and learning services stayed healthy and no
+  administrator was locked out. Known users were learned and behavior streaks formed
+  in the first hours. No behavior ban was due yet, because the 12-hour connection rule
+  needs a 12-hour streak.
+- Not run: `tests/vm-behavior.py` in a disposable VM. It covers the real APT
+  upgrade from the previous v0.0.7 build turning the rules on without a reload, real
+  `ss` session data, kernel counters for a resent SYN, and real FRP bans in both
+  jail modes. The nftables
+  `typeof` dedup set and element counters are covered by the namespace kernel test in
+  CI and by the production hosts.
 
 ```bash
 FRP_GUARD_DISPOSABLE=1 python3 tests/vm-behavior.py OLD.deb NEW.deb FRP_DIR

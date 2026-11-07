@@ -1,12 +1,9 @@
-# v0.0.8 (pre-release)
+# v0.0.8
 
 Bans slow bots that rotate across forwarded ports around the clock, while users who log in, including on unstable networks, are never judged.
 
 [English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.8/README.md) ·
 [Chinese guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.8/README.zh-CN.md)
-
-This is a pre-release for testing. The stable release remains
-[v0.0.7](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7).
 
 ## Changes
 
@@ -61,8 +58,10 @@ connect around the clock with short, quiet sessions. To turn the rules off, set
   rules and must be whitelisted.
 - Sources behind one shared NAT share one status.
 
-Unit tests and the kernel syntax test in CI cover this pre-release. The disposable
-VM test with real FRP traffic (`tests/vm-behavior.py`) has not been run yet.
+CI covers the unit tests, loading the rules into a real kernel, and Debian/Ubuntu
+package install, reinstall and removal. The release also runs in production on two
+frps hosts after an ordinary package upgrade. The disposable VM test with real FRP
+traffic (`tests/vm-behavior.py`) was not run.
 Validation status is recorded in
 [VALIDATION.md](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.8/docs/VALIDATION.md).
 

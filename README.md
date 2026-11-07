@@ -4,7 +4,7 @@
 
 ![FRP-SSH-Guard — SSH protection at the public edge](docs/images/guard-cover.svg)
 
-**[Download v0.0.8 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb)** (pre-release) · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8) · Stable: [v0.0.7](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7)
+**[Download v0.0.8 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
 FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
@@ -17,7 +17,7 @@ default to off; slow brute-force protection defaults to on.
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
 > failed logins in the latest 24-hour window.
 
-**Version 0.0.8 (pre-release) · MIT licensed · Bash and Python**
+**Version 0.0.8 · MIT licensed · Bash and Python**
 
 [What's new in v0.0.8](docs/RELEASE-v0.0.8.md) ·
 [Configuration and command examples](docs/EXAMPLES.md) ·

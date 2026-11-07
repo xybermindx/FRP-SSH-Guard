@@ -4,7 +4,7 @@
 
 ![FRP-SSH-Guard — 公网边缘的 SSH 防护](docs/images/guard-cover.svg)
 
-**[下载 v0.0.8 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb)**（预发布版）· [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8) · 稳定版：[v0.0.7](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.7)
+**[下载 v0.0.8 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb)** · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
 FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
@@ -15,7 +15,7 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 > **约 10 天观测：** 已丢弃 **4,255,592** 个恶意数据包（**99.97%**），
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，最近 24 小时后端登录失败 **0** 次。
 
-**版本 0.0.8（预发布版）· MIT 开源许可 · Bash 与 Python**
+**版本 0.0.8 · MIT 开源许可 · Bash 与 Python**
 
 [v0.0.8 更新说明](docs/RELEASE-v0.0.8.md) ·
 [配置及命令示例](docs/EXAMPLES.zh-CN.md) ·
