@@ -115,8 +115,8 @@ jobs:
       matrix:
         include:
           - { image: 'debian:12', platform: 'linux/arm/v7', arch: armhf }
-          - { image: 'debian:12', platform: 'linux/arm/v5', arch: armel }
-          - { image: 'debian:12', platform: 'linux/mips64le', arch: mips64el }
+          - { image: 'debian:13', platform: 'linux/arm/v5', arch: armel }
+          - { image: 'mips64le/debian:12', platform: 'linux/mips64le', arch: mips64el }
           - { image: 'debian:13', platform: 'linux/riscv64', arch: riscv64 }
     name: ${{ matrix.image }} ${{ matrix.arch }} (emulated)
     steps:

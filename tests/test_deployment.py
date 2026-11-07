@@ -24,7 +24,9 @@ class DeploymentTests(unittest.TestCase):
         self.env.update(GUARD_DIR=str(self.root), GUARD_LOCK_FILE=str(self.root / 'lock'),
                         GUARD_UNIT_FILE=str(self.root / 'unit'), GUARD_PACKAGED='1',
                         TMPDIR=str(self.root), TEST_ROOT=str(self.root),
-                        GUARD_TRIAL_PENDING=str(self.root / 'trial.pending'))
+                        GUARD_TRIAL_PENDING=str(self.root / 'trial.pending'),
+                        # A simulated systemd host: containers do not run systemd as init.
+                        GUARD_SYSTEMD_RUNTIME=str(self.root))
         self.env['PATH'] = str(self.root / 'fakebin') + ':' + self.env['PATH']
         (self.root / 'unit').write_text('# Managed by frp-ssh-guard-persistent.sh\n')
         self.fake('nft', '''#!/bin/bash
