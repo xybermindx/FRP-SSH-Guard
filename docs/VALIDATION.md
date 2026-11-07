@@ -1,3 +1,54 @@
+# v0.0.9 validation
+
+## Every systemd Linux family and FRP architecture (v0.0.9)
+
+Checked on 2026-11-07 in GitHub Actions and on the development host with synthetic
+addresses only. No production firewall was changed.
+
+- Local `make test`: 179 cases, 177 passing. The privileged namespace case and the
+  RPM build case are skipped locally; CI runs both. New regressions:
+  - the RPM spec, dependencies and scriptlets;
+  - an RPM file list identical to the `.deb` payload;
+  - the shared lifecycle steps;
+  - reading `.rpm` packages in the privacy scan (gzip and xz payloads; unknown
+    compression fails closed);
+  - preflight version checks and package-manager hints;
+  - the `doctor` platform lines.
+- CI in each distribution's own userland, inside privileged containers on the
+  runner's real kernel. Each ran the unit suite with the namespace rule test
+  (nothing skipped), the installer preflight, and the package lifecycle:
+
+  | Distribution | nftables | Python | Lifecycle |
+  | --- | --- | --- | --- |
+  | Debian 12 | 1.0.6 | 3.11 | deb: install, reinstall, remove, purge, legacy upgrade |
+  | Debian 13 | 1.1.3 | 3.13 | deb |
+  | Ubuntu 24.04 | 1.0.9 | 3.12 | deb |
+  | Fedora 42 | 1.1.1 | 3.13 | rpm: install, reinstall, erase, install again |
+  | Rocky Linux 9.8 | 1.0.9 | 3.9 | rpm |
+  | AlmaLinux 9.8 | 1.0.9 | 3.9 | rpm |
+  | openSUSE Tumbleweed | 1.1.7 | 3.13 | rpm |
+  | openSUSE Leap 16.0 | 1.1.3 | 3.13 | rpm |
+  | Arch Linux | 1.1.7 | 3.14 | `install.sh --preflight` |
+
+- A real arm64 kernel (`ubuntu-24.04-arm`): the same checks with Debian 12 (deb) and
+  Fedora 42 (rpm) arm64 userlands.
+- Emulated with QEMU: the deb lifecycle on Debian 12 armhf, Debian 13 armel, Debian
+  12 mips64el and Debian 13 riscv64.
+- The RPM builds reproducibly (two builds are identical), and the release
+  `SHA256SUMS` covering both packages is reproducible. Source, history and both
+  packages passed the private privacy rules.
+- Found and fixed during these runs: minimal Rocky, Alma and openSUSE images lack
+  `cmp`, which the guard uses for list snapshots. The rpm now requires diffutils, and
+  the preflight checks for `cmp`.
+- Not run:
+  - `tests/vm-rpm.py`, which covers SELinux enforcing, firewalld and real FRP
+    traffic in a VM;
+  - loong64, which has no stable Debian release yet.
+
+```bash
+FRP_GUARD_DISPOSABLE=1 python3 tests/vm-rpm.py NEW.rpm FRP_DIR
+```
+
 # v0.0.8 validation
 
 ## Restless sources, known users and resent SYNs (v0.0.8)
