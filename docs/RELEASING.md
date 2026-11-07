@@ -79,13 +79,15 @@ GitHub documents draft releases in its
 
 ## Public release layout
 
-Release tag `v0.0.8` provides `frp-ssh-guard_0.0.8.deb` and `SHA256SUMS`.
-The workflow requires the application tag, then independently checks Debian
-metadata against `VERSION` and `PACKAGE_REVISION`.
+Release tag `v0.0.9` provides `frp-ssh-guard_0.0.9.deb`,
+`frp-ssh-guard-0.0.9.noarch.rpm` and `SHA256SUMS`. The workflow requires the
+application tag, then independently checks the Debian and RPM metadata against
+`VERSION` and `PACKAGE_REVISION` (RPM Version and Release).
 It uses `docs/RELEASE-vVERSION.md` when present, otherwise `CHANGELOG.md`, for notes.
-Existing v0.0.4 to v0.0.7 tags and assets remain unchanged.
-The filename omits the internal Debian revision and optional architecture suffix; Debian metadata remains
-`Architecture: all` because the package contains architecture-independent scripts.
+Existing v0.0.4 to v0.0.8 tags and assets remain unchanged.
+Filenames omit the internal revision; package metadata remains `Architecture: all`
+(Debian) and `noarch` (RPM) because the packages contain architecture-independent
+scripts.
 
 GitHub supplies **Source code (zip)** and **Source code (tar.gz)** from the tag.
 Those automatic archives contain all tracked files; inspect the commit before
@@ -107,8 +109,12 @@ local hooks and private-rule setup. Never place the rules in an archive or commi
 ## Build details
 
 - `make deb`: architecture-independent Debian binary package only.
+- `python3 scripts/build.py rpm`: the noarch RPM only. This needs `rpmbuild`, from the
+  `rpm` package on Debian/Ubuntu build hosts.
 - `make dist`: complete development source in tar.gz and zip formats.
-- `make release`: tests, the Debian package, and a SHA256SUMS covering that package.
+- `make release`: tests, the Debian package, the RPM when `rpmbuild` is available, and
+  a SHA256SUMS covering both. CI sets `FRP_GUARD_REQUIRE_RPM=1`, so a missing
+  `rpmbuild` fails a release build instead of skipping the RPM.
 - `make bump-revision`: increment the tracked Debian revision for a changed distribution.
 - `python3 scripts/build.py version`: print the full Debian version without building.
 - `make clean`: remove generated `build/` and `dist/` directories.

@@ -8,6 +8,7 @@ umask 027
 # Resolve paths without reading configuration, so help also works with broken edits.
 LIB_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 . "$LIB_DIR/frp-ssh-guard-config.sh"
+. "$LIB_DIR/frp-ssh-guard-platform.sh"
 
 GUARD_TABLE="${GUARD_TABLE:-frp_ssh_persistent_guard}"
 readonly SERVICE=frp-ssh-guard.service
@@ -1019,6 +1020,7 @@ case "$action" in
         ;;
     check|install|trial|reload)
         for tool in ss mktemp cat install mv rm cp readlink grep rmdir sed; do need "$tool"; done
+        platform_report || die 'Unsupported platform; no changes made.'
         SOURCE_SCRIPT=$(readlink -f -- "${BASH_SOURCE[0]}")
         if [[ "$action" == reload ]]; then
             systemctl is-active --quiet "$SERVICE" || die 'Guard is inactive. Run enable first.'
@@ -1048,7 +1050,7 @@ case "$action" in
         if [[ "${GUARD_PACKAGED:-0}" != 1 ]]; then
             install -d -o root -g root -m 0755 "$BIN_DIR"
             [[ "$SOURCE_SCRIPT" == "$INSTALLED_SCRIPT" ]] || atomic_install "$SOURCE_SCRIPT" "$INSTALLED_SCRIPT" 0755
-            for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-events.py frp-ssh-guard-behavior.py frp-ssh-guard-alerts.py; do
+            for helper in frp-ssh-guard-config.sh frp-ssh-guard-platform.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-events.py frp-ssh-guard-behavior.py frp-ssh-guard-alerts.py; do
                 [[ "$LIB_DIR/$helper" == "$BIN_DIR/$helper" ]] || atomic_install "$LIB_DIR/$helper" "$BIN_DIR/$helper" 0755
             done
             write_unit

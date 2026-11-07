@@ -12,10 +12,12 @@ EDIT_USER_SET=0
 EDIT_USER="root"
 CONFIG_USER="${FRP_GUARD_CONFIG_USER:-${SUDO_USER:-root}}"
 UPGRADE=0
+PREFLIGHT=0
 
 usage() {
   cat <<'TXT'
 Usage: sudo ./install.sh [--prefix DIR] [--ports LIST] [--exclude LIST] [--edit-user USER] [--config-user USER]
+       ./install.sh --preflight    check this system's requirements only; changes nothing
 
   --ports       ports to PROTECT  (required) e.g. 22001,22003 or 20000-20100
   --exclude     ports to EXCLUDE  (optional) e.g. 22002
@@ -34,24 +36,29 @@ while (( $# )); do
     --exclude)   EXCLUDE="${2-}"; EXCLUDE_SET=1; shift 2 ;;
     --edit-user) EDIT_USER="${2:?}"; EDIT_USER_SET=1; shift 2 ;;
     --config-user) CONFIG_USER="${2:?}"; shift 2 ;;
+    --preflight) PREFLIGHT=1; shift ;;
     -h|--help)   usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
+SRC="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+. "$SRC/bin/frp-ssh-guard-platform.sh"
+if (( PREFLIGHT )); then
+  platform_report || exit 1
+  echo 'This system meets the FRP-SSH-Guard requirements.'
+  exit 0
+fi
+
 [[ "$PREFIX" =~ ^/([a-zA-Z0-9_-]+/)+[a-zA-Z0-9_-]+$ ]] || { echo "Use an absolute prefix with at least two components (for example /opt/frp-ssh-guard)." >&2; exit 2; }
-[[ ! -e /usr/lib/frp-ssh-guard/run ]] || { echo "The Debian package is installed. Manage it with apt and frp-ssh-guard." >&2; exit 1; }
+[[ ! -e /usr/lib/frp-ssh-guard/run ]] || { echo "A packaged installation (deb or rpm) is present. Manage it with your package manager and frp-ssh-guard." >&2; exit 1; }
 (( EUID == 0 )) || { echo "Run with sudo." >&2; exit 1; }
 if [[ -e "$PREFIX/bin/frp-ssh-guard" ]]; then
   grep -Fqx '# Managed by frp-ssh-guard-persistent.sh' "$PREFIX/bin/frp-ssh-guard" || { echo 'Existing command belongs to another installation; refusing to overwrite it.' >&2; exit 1; }
   UPGRADE=1
 fi
 
-for t in nft systemctl ss python3 jq flock journalctl; do
-  command -v "$t" >/dev/null || { echo "Missing dependency: $t (install nftables, iproute2, python3, jq)" >&2; exit 1; }
-done
-
-SRC="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+platform_report || exit 1
 
 # --- only two things are asked ---
 if [[ -z "$PROTECT" && ! -f "$PREFIX/etc/ports.conf" && ! -f "$PREFIX/etc/settings.conf" && -t 0 ]]; then
@@ -73,7 +80,7 @@ install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-log.sh"         "$BIN/fr
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-strike.py"      "$BIN/frp-ssh-guard-strike"
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-auth.py"        "$BIN/frp-ssh-guard-auth"
 install -o root -g root -m 0644 "$SRC/VERSION" "$BIN/VERSION"
-for helper in frp-ssh-guard-config.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-learn.py frp-ssh-guard-auth.py frp-ssh-guard-events.py frp-ssh-guard-behavior.py frp-ssh-guard-alerts.py; do
+for helper in frp-ssh-guard-config.sh frp-ssh-guard-platform.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-learn.py frp-ssh-guard-auth.py frp-ssh-guard-events.py frp-ssh-guard-behavior.py frp-ssh-guard-alerts.py; do
   install -o root -g root -m 0755 "$SRC/bin/$helper" "$BIN/$helper"
 done
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.0.9
+
+- Support every common systemd Linux family. A noarch `.rpm` is added for Fedora,
+  RHEL/Rocky/Alma 9+ and openSUSE (Tumbleweed, Leap 16), with the same files as the
+  `.deb`. Arch Linux and other systemd distributions use `install.sh`.
+- RPM upgrades and reinstalls refresh an active guard automatically and never stop
+  it. An erase stops protection and keeps settings and state; the migration notes
+  give the manual purge.
+- Install, upgrade and removal steps are shared by both formats in `lifecycle.sh`.
+  The Debian maintainer scripts call it, with unchanged behavior.
+- `install.sh --preflight` checks a system without root, and `check`/`enable` refuse
+  an unsupported system with the same checks: systemd, nftables 1.0.6+, Python 3.9+,
+  Bash 4.4+, jq, `ss`, `flock`. Both print the install command for apt, dnf, zypper
+  or pacman.
+- `doctor` shows the distribution, architecture, kernel, nftables and Python
+  versions, SELinux mode, and whether firewalld or `nftables.service` is active.
+- Architectures: the packages run wherever a supported distribution ships the
+  dependencies. CI tests amd64 and arm64 on real kernels in every listed
+  distribution. Debian armhf, armel, mips64el and riscv64 package lifecycles are
+  tested under emulation.
+- The release scan now reads `.rpm` packages too, without needing rpm tools.
+
 ## 0.0.8
 
 - Ban slow bots that stay under every limit by connecting a few dozen times a day

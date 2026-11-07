@@ -30,30 +30,104 @@ jobs:
       - name: Install build and kernel-test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y make python3 dpkg nftables util-linux
+          sudo apt-get install -y make python3 dpkg rpm nftables util-linux
       - name: Test and build
         env:
           FRP_GUARD_PRIVACY_RULES: ${{ secrets.FRP_GUARD_PRIVACY_RULES }}
+          FRP_GUARD_REQUIRE_RPM: '1'
         run: make release
       - name: Validate rules in an isolated network namespace
         run: sudo env FRP_GUARD_LIVE_TESTS=1 python3 -m unittest discover -s tests -v
       - name: Verify reproducibility and checksums
         env:
           FRP_GUARD_PRIVACY_RULES: ${{ secrets.FRP_GUARD_PRIVACY_RULES }}
+          FRP_GUARD_REQUIRE_RPM: '1'
         run: |
           cp dist/SHA256SUMS /tmp/first-build.sha256
           python3 scripts/build.py release
           cmp /tmp/first-build.sha256 dist/SHA256SUMS
           (cd dist && sha256sum -c SHA256SUMS)
-      - name: Verify Debian 12 install, reinstall, removal, and purge
-        run: docker run --rm -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" debian:12 bash /src/tests/package-smoke.sh
-      - name: Verify Ubuntu 24.04 install, reinstall, removal, and purge
-        run: docker run --rm -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" ubuntu:24.04 bash /src/tests/package-smoke.sh
       - uses: actions/upload-artifact@v7
-        if: github.event_name != 'pull_request'
         with:
           name: release-artifacts
           path: |
             dist/*.deb
+            dist/*.rpm
             dist/SHA256SUMS
           if-no-files-found: error
+
+  # Each supported distribution's own Bash, Python and nftables against a real
+  # kernel, then its package lifecycle (deb, rpm) or the installer preflight.
+  distros:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: 'debian:12', family: deb }
+          - { image: 'debian:13', family: deb }
+          - { image: 'ubuntu:24.04', family: deb }
+          - { image: 'fedora:42', family: rpm }
+          - { image: 'rockylinux/rockylinux:9', family: rpm }
+          - { image: 'almalinux:9', family: rpm }
+          - { image: 'opensuse/tumbleweed', family: rpm }
+          - { image: 'opensuse/leap:16.0', family: rpm }
+          - { image: 'archlinux:latest', family: source }
+    name: ${{ matrix.image }} (${{ matrix.family }})
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: dist
+      - name: Userland rules and package lifecycle
+        run: docker run --rm --privileged -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" "${{ matrix.image }}" bash /src/tests/distro-smoke.sh "${{ matrix.family }}"
+
+  # A real arm64 kernel and arm64 userlands.
+  arm64:
+    needs: validate
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: dist
+      - name: Debian 12 arm64 userland rules and package lifecycle
+        run: docker run --rm --privileged -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" debian:12 bash /src/tests/distro-smoke.sh deb
+      - name: Fedora arm64 userland rules and package lifecycle
+        run: docker run --rm --privileged -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" fedora:42 bash /src/tests/distro-smoke.sh rpm
+
+  # Other Debian architectures FRP builds for, emulated: package lifecycle only.
+  emulated:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: 'debian:12', platform: 'linux/arm/v7', arch: armhf }
+          - { image: 'debian:12', platform: 'linux/arm/v5', arch: armel }
+          - { image: 'debian:12', platform: 'linux/mips64le', arch: mips64el }
+          - { image: 'debian:13', platform: 'linux/riscv64', arch: riscv64 }
+    name: ${{ matrix.image }} ${{ matrix.arch }} (emulated)
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: dist
+      - name: Register QEMU emulators
+        run: docker run --rm --privileged tonistiigi/binfmt --install all
+      - name: Package lifecycle on ${{ matrix.arch }}
+        run: docker run --rm --platform "${{ matrix.platform }}" -e FRP_GUARD_DISPOSABLE=1 -v "$PWD:/src:ro" "${{ matrix.image }}" bash /src/tests/package-smoke.sh

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build reproducible, allowlisted source and architecture-independent deb files."""
+"""Build reproducible, allowlisted source archives and architecture-independent deb/rpm packages."""
 import argparse
 import gzip
 import hashlib
@@ -83,6 +83,47 @@ def build_source(version, epoch, output):
     return [tar_path, zip_path]
 
 
+def nftables_minimum():
+    """One minimum for every package format, taken from the Debian control file."""
+    match = re.search(r"nftables \(>= ([0-9.]+)\)", (ROOT / "packaging/control").read_text())
+    if not match:
+        raise ValueError("packaging/control must state the nftables minimum")
+    return match[1]
+
+
+def stage_tree(stage):
+    """Installed files shared by the deb and rpm packages (identical payloads)."""
+    for path in (ROOT / "bin").glob("*"):
+        if path.suffix in (".sh", ".py"):
+            copy(path, stage / "usr/lib" / NAME / path.name, 0o755)
+    copy(ROOT / "packaging/run", stage / "usr/lib" / NAME / "run", 0o755)
+    copy(ROOT / "packaging/lifecycle.sh", stage / "usr/lib" / NAME / "lifecycle.sh", 0o755)
+    copy(ROOT / "VERSION", stage / "usr/lib" / NAME / "VERSION")
+    (stage / "usr/sbin").mkdir(parents=True)
+    (stage / "usr/sbin" / NAME).symlink_to("../lib/frp-ssh-guard/run")
+    for path in (ROOT / "packaging/systemd").iterdir():
+        copy(path, stage / "usr/lib/systemd/system" / path.name)
+    # A default is installed by the lifecycle script only on fresh installs, so
+    # upgrading cannot mask a user's legacy guard.conf/ports.conf configuration.
+    copy(ROOT / "etc/settings.conf.example", stage / "usr/share" / NAME / "settings.conf.default")
+    copy(ROOT / "packaging/logrotate", stage / "etc/logrotate.d" / NAME)
+    doc = stage / "usr/share/doc" / NAME
+    for name in ("README.md", "README.zh-CN.md", "CHANGELOG.md", "SECURITY.md"):
+        copy(ROOT / name, doc / name)
+    copy(ROOT / "LICENSE", doc / "copyright")
+    for path in (ROOT / "docs").glob("*.md"):
+        copy(path, doc / path.name)
+    for path in (ROOT / "etc").glob("*.example"):
+        copy(path, doc / "examples" / path.name)
+
+
+def normalize(stage, epoch):
+    for path in sorted(stage.rglob("*"), reverse=True) + [stage]:
+        if not path.is_symlink():
+            if path.is_dir(): path.chmod(0o755)
+            os.utime(path, (epoch, epoch))
+
+
 def build_deb(version, epoch, output):
     with tempfile.TemporaryDirectory(prefix="frp-ssh-guard-build-") as tmp:
         stage = Path(tmp) / NAME
@@ -91,38 +132,15 @@ def build_deb(version, epoch, output):
         (control / "control").write_text((ROOT / "packaging/control").read_text().replace("@VERSION@", version))
         for name in ("preinst", "postinst", "prerm", "postrm"):
             copy(ROOT / "packaging" / name, control / name, 0o755)
-        for path in (ROOT / "bin").glob("*"):
-            if path.suffix in (".sh", ".py"):
-                copy(path, stage / "usr/lib" / NAME / path.name, 0o755)
-        copy(ROOT / "packaging/run", stage / "usr/lib" / NAME / "run", 0o755)
-        copy(ROOT / "VERSION", stage / "usr/lib" / NAME / "VERSION")
-        (stage / "usr/sbin").mkdir(parents=True)
-        (stage / "usr/sbin" / NAME).symlink_to("../lib/frp-ssh-guard/run")
-        for path in (ROOT / "packaging/systemd").iterdir():
-            copy(path, stage / "usr/lib/systemd/system" / path.name)
-        # A default is installed by postinst only on fresh installs, so upgrading
-        # cannot mask a user's legacy guard.conf/ports.conf configuration.
-        copy(ROOT / "etc/settings.conf.example", stage / "usr/share" / NAME / "settings.conf.default")
-        copy(ROOT / "packaging/logrotate", stage / "etc/logrotate.d" / NAME)
+        stage_tree(stage)
         (control / "conffiles").write_text("/etc/logrotate.d/frp-ssh-guard\n")
-        doc = stage / "usr/share/doc" / NAME
-        for name in ("README.md", "README.zh-CN.md", "CHANGELOG.md", "SECURITY.md"):
-            copy(ROOT / name, doc / name)
-        copy(ROOT / "LICENSE", doc / "copyright")
-        for path in (ROOT / "docs").glob("*.md"):
-            copy(path, doc / path.name)
-        for path in (ROOT / "etc").glob("*.example"):
-            copy(path, doc / "examples" / path.name)
         payload = sorted(p for p in stage.rglob("*") if p.is_file() and not p.is_symlink() and control not in p.parents)
         size = sum(p.stat().st_size for p in payload)
         with (control / "control").open("a") as f:
             f.write(f"Installed-Size: {(size + 1023) // 1024}\n")
         (control / "md5sums").write_text("".join(
             f"{hashlib.md5(p.read_bytes()).hexdigest()}  {p.relative_to(stage)}\n" for p in payload))
-        for path in sorted(stage.rglob("*"), reverse=True) + [stage]:
-            if not path.is_symlink():
-                if path.is_dir(): path.chmod(0o755)
-                os.utime(path, (epoch, epoch))
+        normalize(stage, epoch)
         upstream = version.split("-", 1)[0]
         target = output / f"{NAME}_{upstream}.deb"
         subprocess.run(["dpkg-deb", "--root-owner-group", "--build", str(stage), str(target)],
@@ -130,9 +148,80 @@ def build_deb(version, epoch, output):
     return target
 
 
+OWNED_DIRS = (f"/usr/lib/{NAME}", f"/usr/share/{NAME}", f"/usr/share/doc/{NAME}")
+
+
+def rpm_files(stage):
+    """%files entries for the staged tree: the package owns only its own directories."""
+    lines = []
+    for path in sorted(stage.rglob("*")):
+        name = "/" + str(path.relative_to(stage))
+        if path.is_symlink():
+            lines.append(name)
+        elif path.is_dir():
+            if name.startswith(OWNED_DIRS):
+                lines.append("%dir " + name)
+        else:
+            mode = f"{path.stat().st_mode & 0o777:04o}"
+            marker = ("%config(noreplace) " if name.startswith("/etc/") else
+                      "%doc " if name.startswith("/usr/share/doc/") else "")
+            lines.append(f"{marker}%attr({mode},root,root) {name}")
+    return lines
+
+
+def render_spec(stage, version):
+    upstream, release = version.split("-", 1)
+    text = (ROOT / "packaging/rpm/frp-ssh-guard.spec.in").read_text()
+    for key, value in (("@UPSTREAM@", upstream), ("@RELEASE@", release), ("@NFTABLES@", nftables_minimum()),
+                       ("@STAGE@", str(stage)), ("@FILES@", "\n".join(rpm_files(stage)))):
+        text = text.replace(key, value)
+    return text
+
+
+RPM_DEFINES = {
+    # Reproducible output: fixed host/time, clamped mtimes, gzip payload, no post-processing.
+    "_buildhost": "reproducible", "use_source_date_epoch_as_buildtime": "1",
+    "clamp_mtime_to_source_date_epoch": "1", "_binary_payload": "w9.gzdio",
+    "__os_install_post": "%{nil}", "debug_package": "%{nil}", "_build_id_links": "none",
+}
+
+
+def build_rpm(version, epoch, output):
+    if not shutil.which("rpmbuild"):
+        raise ValueError("rpmbuild is required to build the .rpm package (install the rpm package)")
+    upstream, release = version.split("-", 1)
+    with tempfile.TemporaryDirectory(prefix="frp-ssh-guard-rpm-") as tmp:
+        tmp = Path(tmp)
+        stage = tmp / "stage"
+        stage_tree(stage)
+        normalize(stage, epoch)
+        spec = tmp / f"{NAME}.spec"
+        spec.write_text(render_spec(stage, version))
+        top = tmp / "top"
+        for name in ("BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"):
+            (top / name).mkdir(parents=True)
+        command = ["rpmbuild", "-bb", "--quiet", "--define", f"_topdir {top}", "--define", f"_rpmdir {tmp / 'out'}"]
+        for key, value in RPM_DEFINES.items():
+            command += ["--define", f"{key} {value}"]
+        subprocess.run(command + [str(spec)], check=True,
+                       env={**os.environ, "SOURCE_DATE_EPOCH": str(epoch), "LC_ALL": "C", "TZ": "UTC"})
+        target = output / f"{NAME}-{upstream}.noarch.rpm"
+        shutil.copyfile(tmp / "out/noarch" / f"{NAME}-{upstream}-{release}.noarch.rpm", target)
+    return target
+
+
+def rpm_available():
+    if shutil.which("rpmbuild"):
+        return True
+    if os.environ.get("FRP_GUARD_REQUIRE_RPM") == "1":
+        raise ValueError("rpmbuild is required for this release build (install the rpm package)")
+    print("Note: rpmbuild not found; the .rpm package is skipped.", file=sys.stderr)
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["all", "deb", "source", "release", "version", "bump-revision"])
+    parser.add_argument("kind", choices=["all", "deb", "rpm", "source", "release", "version", "bump-revision"])
     args = parser.parse_args()
     try:
         version, package_version = versions()
@@ -152,6 +241,11 @@ def main():
     output.mkdir(exist_ok=True)
     artifacts = []
     if args.kind in ("all", "deb", "release"): artifacts.append(build_deb(package_version, epoch, output))
+    try:
+        if args.kind == "rpm" or args.kind in ("all", "release") and rpm_available():
+            artifacts.append(build_rpm(package_version, epoch, output))
+    except ValueError as error:
+        parser.error(str(error))
     if args.kind in ("all", "source"): artifacts.extend(build_source(version, epoch, output))
     if args.kind in ("all", "release"):
         sums = output / "SHA256SUMS"

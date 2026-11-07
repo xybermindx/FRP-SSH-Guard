@@ -129,10 +129,30 @@ Changing table names while active is rejected.
 
 ## Paths and lifecycle
 
-The Debian launcher supplies program, configuration, state, and log directories.
+The package launcher supplies program, configuration, state, and log directories.
 The same runtime supports source installations with `GUARD_DIR` set to their prefix.
-Package units are dpkg-owned; activation does not generate overriding `/etc` units.
-The source installer generates equivalent units for its prefix.
+Package units are owned by the package manager; activation does not generate
+overriding `/etc` units. The source installer generates equivalent units for its prefix.
+
+The `.deb` and the noarch `.rpm` install an identical payload, staged once by
+`scripts/build.py`. Their install, upgrade and removal steps live in one script,
+`/usr/lib/frp-ssh-guard/lifecycle.sh`:
+
+| Step | Debian | RPM |
+| --- | --- | --- |
+| `configure` | `postinst configure` | `%post` (count 1 install, 2 upgrade) |
+| `before-remove` | `prerm remove` | `%preun` with count 0 |
+
+Upgrades never stop protection: the old `%preun` sees count 1 and does nothing. The
+steps that run while the script is not installed stay in each format: checks before
+unpacking (`preinst`, `%pre`), and the systemd reload after removal (`postrm`,
+`%postun`). RPM has no purge, so an erase keeps state like `dpkg remove`.
+
+`bin/frp-ssh-guard-platform.sh` holds the requirements (systemd, nftables, Python,
+Bash, jq, `ss`, `flock`). `install.sh --preflight` and `check`/`enable` share it, and
+it prints the install command for the detected package manager. `doctor` reports the
+distribution, architecture, kernel, nftables and Python versions, SELinux mode, and
+whether firewalld or `nftables.service` is active.
 
 The main packaged service brings up authentication monitoring, learning, history/strike timers, and manual-list
 watching. They stop with it. Fresh package installation initializes only missing state

@@ -172,8 +172,10 @@ released there too.
 ## Upgrade without reloading policy
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.8.deb
+sudo apt install ./frp-ssh-guard_0.0.9.deb
 dpkg-query -W frp-ssh-guard
+# Fedora/RHEL/Rocky/Alma: sudo dnf install ./frp-ssh-guard-0.0.9.noarch.rpm; rpm -q frp-ssh-guard
+# openSUSE: sudo zypper install --allow-unsigned-rpm ./frp-ssh-guard-0.0.9.noarch.rpm
 sudo frp-ssh-guard status
 ```
 

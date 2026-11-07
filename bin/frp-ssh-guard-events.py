@@ -420,6 +420,40 @@ def applied(config):
                                     or 'off')])
 
 
+def platform_lines(run=subprocess.run, root=Path('/')):
+    """Read-only facts about this system for doctor: distribution, versions, firewalls."""
+    try:
+        release = dict(line.split('=', 1) for line in (root / 'etc/os-release').read_text().splitlines() if '=' in line)
+    except OSError:
+        release = {}
+    machine = os.uname()
+    lines = ['Platform: ' + release.get('PRETTY_NAME', 'unknown Linux').strip('"') + ' (' + machine.machine
+             + ', kernel ' + machine.release + ')']
+    try:
+        nft = run(['nft', '--version'], capture_output=True, text=True).stdout.split()
+        nft_version = nft[1].lstrip('v') if len(nft) > 1 else 'unknown'
+    except OSError:
+        nft_version = 'missing'
+    lines.append('nftables: ' + nft_version + '; Python: ' + sys.version.split()[0])
+    try:
+        mode = 'enforcing' if (root / 'sys/fs/selinux/enforce').read_text().strip() == '1' else 'permissive'
+    except OSError:
+        mode = 'not active'
+    lines.append('SELinux: ' + mode)
+    active = {}
+    for service in ('firewalld', 'nftables'):
+        try:
+            active[service] = run(['systemctl', 'is-active', service + '.service'], capture_output=True,
+                                  text=True).stdout.strip() == 'active'
+        except OSError:
+            active[service] = False
+    lines.append('firewalld: ' + ('active (separate table; the guard keeps its own)' if active['firewalld'] else 'not active'))
+    if active['nftables']:
+        lines.append('nftables.service: active. Restarting it with a "flush ruleset" configuration removes the guard '
+                     'table until recovery restores it, within about a minute.')
+    return lines
+
+
 def describe_learning(config):
     parts = []
     if config['LEARN_ADMINS'] == 'on':
@@ -601,6 +635,8 @@ def main():
             show(config, store, sys.argv[2] if action == 'report' else None)
             if action == 'doctor':
                 document = snapshot(config)
+                for line in platform_lines():
+                    print(line)
                 print('Guard table present: ' + ('yes' if document else 'no'))
                 print('Native SSH configured: ' + config['PROTECT_SERVER_SSH'])
                 rules = [item['rule'] for item in (document or {}).get('nftables', []) if 'rule' in item]

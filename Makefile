@@ -3,7 +3,7 @@ all: release
 
 lint:
 	@for f in bin/*.sh install.sh uninstall.sh; do bash -n "$$f" || exit 1; done
-	@for f in packaging/run packaging/preinst packaging/postinst packaging/prerm packaging/postrm scripts/hooks/*; do sh -n "$$f" || exit 1; done
+	@for f in packaging/run packaging/lifecycle.sh packaging/preinst packaging/postinst packaging/prerm packaging/postrm scripts/hooks/*; do sh -n "$$f" || exit 1; done
 	@python3 -c "import ast,pathlib; [ast.parse(p.read_text(), filename=str(p)) for d in ('bin','scripts','tests') for p in pathlib.Path(d).glob('*.py')]"
 	@echo "Syntax checks passed"
 

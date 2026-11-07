@@ -158,8 +158,10 @@ Fail2ban 及其他防火墙相互独立；在那里被封禁的地址也需要�
 ## 升级时不重载策略
 
 ```bash
-sudo apt install ./frp-ssh-guard_0.0.8.deb
+sudo apt install ./frp-ssh-guard_0.0.9.deb
 dpkg-query -W frp-ssh-guard
+# Fedora/RHEL/Rocky/Alma：sudo dnf install ./frp-ssh-guard-0.0.9.noarch.rpm；rpm -q frp-ssh-guard
+# openSUSE：sudo zypper install --allow-unsigned-rpm ./frp-ssh-guard-0.0.9.noarch.rpm
 sudo frp-ssh-guard status
 ```
 

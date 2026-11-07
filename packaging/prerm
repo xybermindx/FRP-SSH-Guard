@@ -1,11 +1,6 @@
 #!/bin/sh
 set -eu
+# An upgrade keeps protection running; only removal stops it.
 case "${1:-}" in
-    remove|deconfigure)
-        if [ -d /run/systemd/system ]; then
-            /usr/sbin/frp-ssh-guard remove
-        else
-            systemctl --root=/ disable frp-ssh-guard.service
-        fi
-        ;;
+    remove|deconfigure) exec /usr/lib/frp-ssh-guard/lifecycle.sh before-remove ;;
 esac

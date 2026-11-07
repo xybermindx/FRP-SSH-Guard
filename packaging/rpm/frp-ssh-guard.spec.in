@@ -1,0 +1,69 @@
+Name:           frp-ssh-guard
+Version:        @UPSTREAM@
+Release:        @RELEASE@
+Summary:        Guard for FRP-forwarded and optional local SSH ports
+License:        MIT
+URL:            https://github.com/xybermindx/FRP-SSH-Guard
+BuildArch:      noarch
+# Scripts only: dependencies are declared below, not detected from shebangs.
+AutoReqProv:    no
+Requires:       bash >= 4.4
+Requires:       nftables >= @NFTABLES@
+Requires:       python3 >= 3.9
+Requires:       jq
+Requires:       (iproute or iproute2)
+Requires:       systemd
+Requires:       util-linux
+Requires:       coreutils
+Requires:       grep
+Requires:       sed
+Requires:       gawk
+Recommends:     logrotate
+
+%description
+Limits TCP connection attempts on selected frps listener ports using
+nftables, with scoped/expiring manual blocks, optional local SSH authentication
+protection and login learning, shared or per-port jails, ban history,
+restless-source rules and repeat-offender escalation. Configuration is required
+before activation; installing this package does not alter firewall rules.
+
+%prep
+
+%build
+
+%install
+mkdir -p %{buildroot}
+cp -a @STAGE@/. %{buildroot}/
+
+%pre
+# Fresh installs only: never take over a command or units from another installation.
+if [ "$1" -eq 1 ]; then
+    if [ -e /usr/sbin/frp-ssh-guard ] || [ -L /usr/sbin/frp-ssh-guard ]; then
+        echo 'An unrelated or unmanaged frp-ssh-guard command already exists; refusing to overwrite it.' >&2
+        exit 1
+    fi
+    if [ -e /etc/systemd/system/frp-ssh-guard.service ]; then
+        echo 'An existing source installation or local service was found.' >&2
+        echo 'Back up its data and uninstall its units before installing this package. See docs/MIGRATING.md.' >&2
+        exit 1
+    fi
+fi
+
+%post
+# Install (1) and upgrade (2) alike: an active guard is refreshed automatically.
+/usr/lib/frp-ssh-guard/lifecycle.sh configure
+
+%preun
+# Only erase (0) stops protection; an upgrade or reinstall keeps it running.
+if [ "$1" -eq 0 ]; then
+    /usr/lib/frp-ssh-guard/lifecycle.sh before-remove
+fi
+
+%postun
+if [ "$1" -eq 0 ] && [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || :
+fi
+
+%files
+%defattr(-,root,root,-)
+@FILES@

@@ -27,7 +27,9 @@ jobs:
       - name: Check release contents for private deployment details
         env:
           FRP_GUARD_PRIVACY_RULES: ${{ secrets.FRP_GUARD_PRIVACY_RULES }}
-        run: python3 scripts/privacy.py --require-private --artifacts dist/*.deb dist/SHA256SUMS
+        run: python3 scripts/privacy.py --require-private --artifacts dist/*.deb dist/*.rpm dist/SHA256SUMS
+      - name: Install package inspection tools
+        run: sudo apt-get update && sudo apt-get install -y rpm
       - name: Check version and create draft with tested artifacts
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,6 +41,8 @@ jobs:
           test "$RELEASE_TAG" = "v$application_version"
           package="dist/frp-ssh-guard_${application_version}.deb"
           test "$(dpkg-deb -f "$package" Version)" = "$package_version"
+          rpm_package="dist/frp-ssh-guard-${application_version}.noarch.rpm"
+          test "$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$rpm_package")" = "$package_version"
           notes="docs/RELEASE-v${application_version}.md"
           test -f "$notes" || notes=CHANGELOG.md
           (cd dist && sha256sum -c SHA256SUMS)
@@ -47,8 +51,8 @@ jobs:
               echo 'Published release unchanged; validated artifacts are available for a maintainer-approved correction.'
               exit 0
             fi
-            gh release upload "$RELEASE_TAG" "$package" dist/SHA256SUMS --clobber
+            gh release upload "$RELEASE_TAG" "$package" "$rpm_package" dist/SHA256SUMS --clobber
           else
-            gh release create "$RELEASE_TAG" "$package" dist/SHA256SUMS --verify-tag --draft \
+            gh release create "$RELEASE_TAG" "$package" "$rpm_package" dist/SHA256SUMS --verify-tag --draft \
               --title "$RELEASE_TAG" --notes-file "$notes"
           fi

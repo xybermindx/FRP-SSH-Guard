@@ -4,7 +4,7 @@
 
 ![FRP-SSH-Guard — SSH protection at the public edge](docs/images/guard-cover.svg)
 
-**[Download v0.0.8 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb)** · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
+**[Download v0.0.9 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb)** · [.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm) (pre-release) · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9) · Stable: [v0.0.8](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
 FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
@@ -17,9 +17,9 @@ default to off; slow brute-force protection defaults to on.
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
 > failed logins in the latest 24-hour window.
 
-**Version 0.0.8 · MIT licensed · Bash and Python**
+**Version 0.0.9 (pre-release) · MIT licensed · Bash and Python**
 
-[What's new in v0.0.8](docs/RELEASE-v0.0.8.md) ·
+[What's new in v0.0.9](docs/RELEASE-v0.0.9.md) ·
 [Configuration and command examples](docs/EXAMPLES.md) ·
 [Upgrade instructions](docs/MIGRATING.md)
 
@@ -116,7 +116,18 @@ protect `22001` on the public server.
 
 Target environment:
 
-- Debian 12+ or Ubuntu 24.04+, systemd, nftables 1.0.6+, and kernel nftables support.
+- Linux with systemd, nftables 1.0.6+, Python 3.9+, Bash 4.4+, jq, iproute2 (`ss`),
+  util-linux and kernel nftables support:
+
+  | Family | Versions | Package |
+  | --- | --- | --- |
+  | Debian, Ubuntu | Debian 12 and 13, Ubuntu 24.04+ | `.deb` |
+  | Fedora, RHEL, Rocky Linux, AlmaLinux | Fedora 42+, RHEL/Rocky/Alma 9+ | `.rpm` |
+  | openSUSE | Tumbleweed, Leap 16 | `.rpm` |
+  | Arch Linux and other systemd distributions | current | source installer |
+
+  `./install.sh --preflight` (no root needed) checks a system and prints the install
+  command for its missing dependencies.
 - Root access for installation and firewall changes.
 - `frps` listening directly in the host network namespace. Container bridge/NAT
   port publishing is not covered by this input-hook design; validate that topology separately.
@@ -158,28 +169,37 @@ still sees every packet.
 
 ## Download a release
 
-Download from **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)**. Debian `.deb` files are
+Download from **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9)**. Package files are
 release assets; they do not appear in the GitHub **Packages** tab.
-Release v0.0.8 contains:
+Release v0.0.9 contains:
 
 | Artifact | Purpose |
 | --- | --- |
-| [frp-ssh-guard_0.0.8.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb) | Install on the target Debian/Ubuntu host. |
-| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/SHA256SUMS) | Verify the downloaded Debian package. |
+| [frp-ssh-guard_0.0.9.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb) | Install on a Debian/Ubuntu host. |
+| [frp-ssh-guard-0.0.9.noarch.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm) | Install on a Fedora, RHEL/Rocky/Alma or openSUSE host. |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/SHA256SUMS) | Verify the downloaded package. |
 
 The complete source remains in the repository. GitHub automatically provides
-[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.8.zip)
-and [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.8.tar.gz)
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.9.zip)
+and [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.9.tar.gz)
 for the release tag, including the runtime, build scripts, packaging, docs, and tests.
-Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb`.
+Separate source bundles are not uploaded as release assets. `SHA256SUMS` covers the `.deb` and `.rpm`.
 
-The package contains scripts rather than a CPU-specific compiled binary. Its
-Debian metadata uses `Architecture: all`; dependencies are installed for the host
-architecture. CI currently validates x64 (amd64); ARM and 32-bit systems have not
-been verified. Checksums detect corruption/changes; they are not publisher signatures.
+The packages contain scripts rather than a CPU-specific compiled binary
+(`Architecture: all` and `noarch`), so they run on every architecture a supported
+distribution ships the dependencies for. Of FRP's Linux builds:
+
+| FRP build | Coverage |
+| --- | --- |
+| amd64, arm64 | Tested in CI on real kernels and in each distribution above |
+| arm_hf (armhf), arm (armel), riscv64, mips64le | Debian packages; install, upgrade and removal tested under emulation |
+| loong64 | Debian 14 (testing) only; not tested |
+| mips, mipsle, mips64 | No supported distribution; router systems such as OpenWrt are not supported |
+
+Checksums detect corruption/changes; they are not publisher signatures.
 FRP/systemd behavior has been checked in a disposable Debian 12 VM. The
 [CI workflow](https://github.com/xybermindx/FRP-SSH-Guard/actions/workflows/ci.yml)
-checks builds, nftables and Debian/Ubuntu package lifecycles. See
+checks builds, nftables in every listed distribution, and the deb and rpm lifecycles. See
 [validation results](docs/VALIDATION.md) for the tested scope and limitations.
 
 ## Deploy step by step
@@ -201,17 +221,23 @@ FRP selection and validates the port-22 sshd/systemd socket listener instead.
 
 ### 2. Verify and install the package
 
-Download the `.deb` and `SHA256SUMS` into the same directory:
+Download the package for your system and `SHA256SUMS` into the same directory:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.8.deb
+sudo apt install ./frp-ssh-guard_0.0.9.deb                                    # Debian, Ubuntu
+sudo dnf install ./frp-ssh-guard-0.0.9.noarch.rpm                             # Fedora, RHEL, Rocky, Alma
+sudo zypper install --allow-unsigned-rpm ./frp-ssh-guard-0.0.9.noarch.rpm     # openSUSE
 ```
 
-Confirm the `.deb` reports `OK`. **Upgrading an active guard automatically applies
+On Arch Linux and other systemd distributions, unpack the source archive, run
+`./install.sh --preflight`, then `sudo ./install.sh --ports 22001` (see
+`./install.sh --help`).
+
+Confirm the package reports `OK`. **Upgrading an active guard automatically applies
 the updated rules and monitors; no manual reload is needed.** A fresh or disabled
 installation stays inactive until ports are configured and protection is enabled.
-Dependencies are resolved through apt.
+Dependencies are resolved by apt, dnf or zypper.
 
 ### 3. Configure your public forwarded ports
 
@@ -220,7 +246,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 Installation automatically creates this folder and migrates existing settings
-and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.8.deb` uses the
+and manual lists. A normal `sudo apt install ./frp-ssh-guard_0.0.9.deb` uses the
 invoking user's home. Direct root/unattended installation uses
 `/root/.frp-ssh-guard/`. Later upgrades keep the previously selected owner and
 customized values, even when another administrator installs the package.
@@ -240,10 +266,10 @@ deadlines stay unchanged; pending custom edits remain unapplied. Status can show
 pending edits after defaults are added. Set `PROTECT_SERVER_SSH=on` and explicitly
 run `check` then `reload` when ready to activate local SSH protection. An unavailable
 or invalid file is left alone with a notice; fix it and reinstall using
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.8.deb` to retry.
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.9.deb` to retry.
 
 To choose an owner before the first migration, use
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.8.deb`.
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.9.deb` (with dnf or zypper for the `.rpm`).
 Conflicting existing home files or an unavailable home leave the old configuration
 in use; the installer reports this instead of overwriting data. Use
 `frp-ssh-guard --help` to see the actual settings path and `sudo frp-ssh-guard
@@ -550,8 +576,9 @@ If you installed a package from before the public version-number correction,
 follow the [migration instructions](docs/MIGRATING.md#corrected-public-version-numbering)
 to switch to the current version while retaining settings.
 
-Download **v0.0.8** and install it with `sudo apt install ./frp-ssh-guard_0.0.8.deb`.
-APT upgrades earlier builds while keeping your settings. `frp-ssh-guard --version`
+Download **v0.0.9** and install it with `sudo apt install ./frp-ssh-guard_0.0.9.deb`
+(or the `.rpm` with dnf or zypper). The package manager upgrades earlier builds while
+keeping your settings. `frp-ssh-guard --version`
 shows the release version; `dpkg-query -W frp-ssh-guard` also shows the internal
 package revision used by APT to recognize newer builds.
 

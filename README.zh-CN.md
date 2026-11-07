@@ -4,7 +4,7 @@
 
 ![FRP-SSH-Guard — 公网边缘的 SSH 防护](docs/images/guard-cover.svg)
 
-**[下载 v0.0.8 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb)** · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
+**[下载 v0.0.9 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb)** · [.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm)（预发布版）· [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9) · 稳定版：[v0.0.8](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
 FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
@@ -15,9 +15,9 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 > **约 10 天观测：** 已丢弃 **4,255,592** 个恶意数据包（**99.97%**），
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，最近 24 小时后端登录失败 **0** 次。
 
-**版本 0.0.8 · MIT 开源许可 · Bash 与 Python**
+**版本 0.0.9（预发布版）· MIT 开源许可 · Bash 与 Python**
 
-[v0.0.8 更新说明](docs/RELEASE-v0.0.8.md) ·
+[v0.0.9 更新说明](docs/RELEASE-v0.0.9.md) ·
 [配置及命令示例](docs/EXAMPLES.zh-CN.md) ·
 [升级说明](docs/MIGRATING.md)（英文）
 
@@ -103,7 +103,17 @@ flowchart LR
 
 目标环境：
 
-- Debian 12+ 或 Ubuntu 24.04+，使用 systemd、nftables 1.0.6+，且内核支持 nftables。
+- 使用 systemd 的 Linux，需要 nftables 1.0.6+、Python 3.9+、Bash 4.4+、jq、iproute2（`ss`）、
+  util-linux，且内核支持 nftables：
+
+  | 系列 | 版本 | 软件包 |
+  | --- | --- | --- |
+  | Debian、Ubuntu | Debian 12 和 13、Ubuntu 24.04+ | `.deb` |
+  | Fedora、RHEL、Rocky Linux、AlmaLinux | Fedora 42+、RHEL/Rocky/Alma 9+ | `.rpm` |
+  | openSUSE | Tumbleweed、Leap 16 | `.rpm` |
+  | Arch Linux 及其他 systemd 发行版 | 当前版本 | 源码安装脚本 |
+
+  `./install.sh --preflight`（无需 root）可检查系统，并给出缺失依赖的安装命令。
 - 安装和修改防火墙需要 root 权限。
 - `frps` 直接在主机网络命名空间监听。容器桥接/NAT 端口映射不属于此 input hook 方案的覆盖范围，需要另行验证。
 - 每台主机仅支持一个防护实例。其他防火墙规则仍然有效；本工具不会放行被其他规则阻止的端口。
@@ -140,27 +150,35 @@ flowchart LR
 
 ## 下载发布版本
 
-请从 **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)** 下载。Debian `.deb` 文件作为发布附件提供，
-不会显示在 GitHub 的 **Packages** 栏目中。v0.0.8 发布版本包含：
+请从 **[GitHub Releases](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9)** 下载。软件包作为发布附件提供，
+不会显示在 GitHub 的 **Packages** 栏目中。v0.0.9 发布版本包含：
 
 | 文件 | 用途 |
 | --- | --- |
-| [frp-ssh-guard_0.0.8.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/frp-ssh-guard_0.0.8.deb) | 安装到目标 Debian/Ubuntu 主机。 |
-| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.8/SHA256SUMS) | 校验下载的 Debian 软件包。 |
+| [frp-ssh-guard_0.0.9.deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb) | 安装到 Debian/Ubuntu 主机。 |
+| [frp-ssh-guard-0.0.9.noarch.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm) | 安装到 Fedora、RHEL/Rocky/Alma 或 openSUSE 主机。 |
+| [SHA256SUMS](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/SHA256SUMS) | 校验下载的软件包。 |
 
 完整源码保留在仓库中。GitHub 会根据发布标签自动提供
-[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.8.zip)
-和 [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.8.tar.gz)，
+[Source code (zip)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.9.zip)
+和 [Source code (tar.gz)](https://github.com/xybermindx/FRP-SSH-Guard/archive/refs/tags/v0.0.9.tar.gz)，
 包含运行代码、构建脚本、打包文件、文档及测试。无需再上传重复的源码附件。
-`SHA256SUMS` 仅校验 `.deb` 文件。
+`SHA256SUMS` 校验 `.deb` 和 `.rpm` 文件。
 
-软件包包含脚本，而非针对特定 CPU 编译的二进制程序。Debian 元数据使用
-`Architecture: all`，依赖包按主机架构安装。当前 CI 验证的是 x64（amd64）；
-ARM 和 32 位系统尚未验证。
+软件包包含脚本，而非针对特定 CPU 编译的二进制程序（`Architecture: all` 与 `noarch`），
+因此可在受支持发行版提供依赖的任何架构上运行。FRP 的 Linux 构建对应情况：
+
+| FRP 构建 | 覆盖情况 |
+| --- | --- |
+| amd64、arm64 | 在 CI 中使用真实内核及上述每个发行版测试 |
+| arm_hf（armhf）、arm（armel）、riscv64、mips64le | Debian 软件包；在模拟环境中测试安装、升级与卸载 |
+| loong64 | 仅 Debian 14（testing）；尚未测试 |
+| mips、mipsle、mips64 | 没有受支持的发行版；不支持 OpenWrt 等路由器系统 |
+
 校验和可检测文件变化或损坏，但不是发布者签名。
 已在一次性 Debian 12 虚拟机中验证 FRP/systemd 行为。
 [CI 工作流](https://github.com/xybermindx/FRP-SSH-Guard/actions/workflows/ci.yml)
-检查构建、nftables 和 Debian/Ubuntu 软件包生命周期。
+检查构建、每个所列发行版中的 nftables，以及 deb 和 rpm 软件包生命周期。
 实际验证范围与限制见[验证记录](docs/VALIDATION.md)（英文）。
 
 ## 逐步部署
@@ -181,15 +199,20 @@ sudo ss -lntp 'sport = :22001'
 
 ### 2. 校验并安装软件包
 
-把 `.deb` 和 `SHA256SUMS` 下载到同一目录：
+把适合本系统的软件包和 `SHA256SUMS` 下载到同一目录：
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-sudo apt install ./frp-ssh-guard_0.0.8.deb
+sudo apt install ./frp-ssh-guard_0.0.9.deb                                    # Debian、Ubuntu
+sudo dnf install ./frp-ssh-guard-0.0.9.noarch.rpm                             # Fedora、RHEL、Rocky、Alma
+sudo zypper install --allow-unsigned-rpm ./frp-ssh-guard-0.0.9.noarch.rpm     # openSUSE
 ```
 
-确认 `.deb` 显示 `OK`。**升级已运行的守卫会自动应用新版规则和监控，无需手动 reload。**
-首次安装或已停用的守卫保持未启用状态，需先配置端口并启用防护。apt 会处理依赖安装。
+在 Arch Linux 及其他 systemd 发行版上，解压源码包，运行 `./install.sh --preflight`，
+然后执行 `sudo ./install.sh --ports 22001`（见 `./install.sh --help`）。
+
+确认软件包显示 `OK`。**升级已运行的守卫会自动应用新版规则和监控，无需手动 reload。**
+首次安装或已停用的守卫保持未启用状态，需先配置端口并启用防护。apt、dnf 或 zypper 会处理依赖安装。
 
 ### 3. 设置公网转发端口
 
@@ -198,7 +221,7 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 ```
 
 安装会自动创建该目录，并迁移现有设置和手动名单。
-普通的 `sudo apt install ./frp-ssh-guard_0.0.8.deb` 使用调用 sudo 的用户的家目录；
+普通的 `sudo apt install ./frp-ssh-guard_0.0.9.deb` 使用调用 sudo 的用户的家目录；
 直接由 root 或无人值守安装时使用 `/root/.frp-ssh-guard/`。
 后续升级保留已选用户及其自定义值，即使换一位管理员安装也不会更换位置。
 
@@ -214,10 +237,10 @@ ${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf
 也不会应用尚未确认的自定义修改。补齐默认项后，状态可能显示存在待应用修改。
 准备启用本机 SSH 防护时，将 `PROTECT_SERVER_SSH=on`，然后明确执行 `check`、`reload`。
 若文件不可访问或格式无效，会保留原文件并提示；修复后可用
-`sudo apt install --reinstall ./frp-ssh-guard_0.0.8.deb` 重试。
+`sudo apt install --reinstall ./frp-ssh-guard_0.0.9.deb` 重试。
 
 首次迁移前可用
-`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.8.deb`
+`sudo env FRP_GUARD_CONFIG_USER=USERNAME apt install ./frp-ssh-guard_0.0.9.deb`（`.rpm` 使用 dnf 或 zypper）
 指定所有者。若家目录不可用或已有文件冲突，安装器会报告并继续使用原有配置，
 不会覆盖数据。用 `frp-ssh-guard --help` 查看实际路径，修复后可执行
 `sudo frp-ssh-guard config-home USERNAME` 重试。
@@ -499,8 +522,8 @@ sudo apt purge frp-ssh-guard   # 删除系统状态和日志；家目录文件�
 [迁移说明](docs/MIGRATING.md#corrected-public-version-numbering)（英文）
 切换到当前版本，并保留现有设置。
 
-下载 **v0.0.8**，执行 `sudo apt install ./frp-ssh-guard_0.0.8.deb` 即可升级较早构建，
-并保留原有设置。`frp-ssh-guard --version` 显示发布版本；
+下载 **v0.0.9**，执行 `sudo apt install ./frp-ssh-guard_0.0.9.deb`（或用 dnf、zypper 安装 `.rpm`）
+即可升级较早构建，并保留原有设置。`frp-ssh-guard --version` 显示发布版本；
 `dpkg-query -W frp-ssh-guard` 还会显示 APT 用来识别更新构建的内部软件包修订号。
 
 安装新版 `.deb` 会自动升级程序，保留自定义配置、家目录文件、当前封禁及剩余时长、

@@ -118,6 +118,47 @@ class PrivacyTests(unittest.TestCase):
             archive.writestr('backup.zip', b'opaque')
         self.assertEqual(self.run_check('--artifacts', str(path), '--require-private')[0], 1)
 
+    @staticmethod
+    def fake_rpm(files, header_text=b'example package', compress=None):
+        """A minimal RPM: lead, signature and main headers, then a cpio payload."""
+        import gzip
+        import struct
+
+        def header(blob):
+            data = blob + b'\0'
+            return (b'\x8e\xad\xe8\x01' + bytes(4) + struct.pack('>II', 1, len(data))
+                    + struct.pack('>iiii', 1000, 6, 0, 1) + data)
+        signature = header(b'signature')
+        cpio = b''
+        for name, content in list(files) + [('TRAILER!!!', b'')]:
+            encoded = name.encode() + b'\0'
+            mode = 0 if name == 'TRAILER!!!' else 0o100644
+            entry = b'070701' + b''.join(b'%08x' % value for value in
+                                         (0, mode, 0, 0, 1, 0, len(content), 0, 0, 0, 0, len(encoded), 0))
+            entry += encoded + bytes(-(110 + len(encoded)) % 4)
+            cpio += entry + content + bytes(-len(content) % 4)
+        return (b'\xed\xab\xee\xdb' + bytes(92) + signature + bytes(-(96 + len(signature)) % 8)
+                + header(header_text) + (compress or gzip.compress)(cpio))
+
+    def test_rpm_payload_and_scripts_are_scanned_without_rpm_tools(self):
+        import lzma
+        clean = self.root / 'example.noarch.rpm'
+        clean.write_bytes(self.fake_rpm([('./usr/share/doc/example/README.md', b'198.51.100.10 example')]))
+        self.assertEqual(self.run_check('--artifacts', str(clean), '--require-private')[0], 0)
+        address = str(ipaddress.ip_address(1)).encode()  # not a documentation address
+        for files, header, compress in (([('./usr/lib/example/run', address)], b'example package', None),
+                                        ([('./etc/example.conf', b'example-private-host')], b'example', lzma.compress),
+                                        ([('./usr/lib/example/run', b'#!/bin/sh')], b'%post\nexample-private-host', None),
+                                        ([('./usr/lib/example/backup.zip', b'opaque')], b'example', None)):
+            with self.subTest(files=files[0][0], header=header):
+                path = self.root / 'planted.noarch.rpm'
+                path.write_bytes(self.fake_rpm(files, header, compress))
+                self.assertEqual(self.run_check('--artifacts', str(path), '--require-private')[0], 1)
+        unknown = self.root / 'unknown.noarch.rpm'
+        unknown.write_bytes(self.fake_rpm([('./x', b'x')], compress=lambda data: b'\x28\xb5\x2f\xfd' + data))
+        with self.assertRaises(ValueError):
+            privacy.Audit([]).artifact(unknown)
+
     def test_tracked_deployment_data_is_rejected_without_private_rules(self):
         audit = privacy.Audit([])
         audit.source('lists/learned.conf', b'198.51.100.10')

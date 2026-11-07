@@ -6,9 +6,12 @@ import importlib.util
 import io
 import ipaddress
 import json
+import lzma
+import gzip
 import os
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 import tarfile
@@ -24,7 +27,50 @@ LOCAL = tuple(ipaddress.ip_address(n) for n in ('0.0.0.0', '127.0.0.1', '::', ':
 PRIVATE_DIRS = {'.private-artifacts', '.aws', '.codex', '.agents', '.frp-ssh-guard', 'lists', 'logs', 'observations'}
 LIVE_FILES = {'etc/settings.conf', 'etc/guard.conf', 'etc/ports.conf', 'etc/active.nft',
               'events.sqlite3', 'events.sqlite3-journal', 'events.sqlite3-wal', 'events.sqlite3-shm', 'applied.conf', 'auth-state.json', 'unified-state.json', 'learn-cursor.json', 'etc/user-home.json'}
-ARCHIVES = ('.zip', '.tar.gz', '.tgz', '.tar.xz', '.tar', '.deb', '.bundle')
+ARCHIVES = ('.zip', '.tar.gz', '.tgz', '.tar.xz', '.tar', '.deb', '.rpm', '.bundle')
+
+
+def rpm_sections(data):
+    """Header (names, scripts, descriptions) and decompressed payload of an RPM, without rpm tools."""
+    if data[:4] != b'\xed\xab\xee\xdb' or len(data) < 112:
+        raise ValueError('not an RPM package')
+
+    def header(offset):
+        if data[offset:offset + 3] != b'\x8e\xad\xe8':
+            raise ValueError('invalid RPM header')
+        count, size = struct.unpack('>II', data[offset + 8:offset + 16])
+        end = offset + 16 + count * 16 + size
+        if end > len(data):
+            raise ValueError('truncated RPM header')
+        return data[offset:end], end
+    signature, offset = header(96)
+    offset += -offset % 8  # the signature is padded to 8 bytes
+    main, offset = header(offset)
+    payload = data[offset:]
+    if payload[:2] == b'\x1f\x8b':
+        payload = gzip.decompress(payload)
+    elif payload[:6] == b'\xfd7zXZ\x00':
+        payload = lzma.decompress(payload)
+    else:
+        raise ValueError('unsupported RPM payload compression; review it separately')
+    return signature + main, payload
+
+
+def cpio_members(data):
+    """(name, is_file, content) of each member of a newc/crc cpio archive."""
+    offset = 0
+    while True:
+        head = data[offset:offset + 110]
+        if len(head) < 110 or head[:6] not in (b'070701', b'070702'):
+            raise ValueError('invalid cpio payload')
+        mode, size, name_size = (int(head[i:i + 8], 16) for i in (14, 54, 94))
+        name_end = offset + 110 + name_size
+        name = data[offset + 110:name_end - 1].decode('utf-8', 'replace')
+        start = name_end + (-name_end % 4)
+        if name == 'TRAILER!!!':
+            return
+        yield name, mode & 0o170000 == 0o100000, data[start:start + size]
+        offset = start + size + (-(start + size) % 4)
 
 
 def git(*args):
@@ -134,7 +180,18 @@ class Audit:
                         self.member(name + '::' + m.name, m.name, archive.extractfile(m).read())
 
     def artifact(self, path):
-        if path.suffix == '.deb':
+        if path.suffix == '.rpm':
+            header, payload = rpm_sections(path.read_bytes())
+            self.text(path.name + '::header', header)
+            total = 0
+            for name, regular, content in cpio_members(payload):
+                total += len(content)
+                if len(content) > LIMIT or total > LIMIT * 8:
+                    raise ValueError('archive exceeds review limit')
+                self.text(path.name + '::' + name, name.encode())
+                if regular:
+                    self.member(path.name + '::' + name, name, content)
+        elif path.suffix == '.deb':
             for flag in ('--fsys-tarfile', '--ctrl-tarfile'):
                 result = subprocess.run(['dpkg-deb', flag, str(path)], capture_output=True, check=True)
                 self.archive(path.name, result.stdout)

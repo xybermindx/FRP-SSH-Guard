@@ -1,3 +1,41 @@
+# Migration to 0.0.9
+
+Debian and Ubuntu hosts upgrade as before with
+`sudo apt install ./frp-ssh-guard_0.0.9.deb`. An active guard is refreshed
+automatically, and settings, bans, boot enablement and timer deadlines are kept.
+Nothing in the runtime changes for them.
+
+## New: RPM distributions and the source installer
+
+Fedora, RHEL/Rocky/Alma 9+ and openSUSE (Tumbleweed, Leap 16) install the noarch RPM:
+
+```bash
+sudo dnf install ./frp-ssh-guard-0.0.9.noarch.rpm                          # Fedora, RHEL, Rocky, Alma
+sudo zypper install --allow-unsigned-rpm ./frp-ssh-guard-0.0.9.noarch.rpm  # openSUSE
+```
+
+The guard stays inactive until you configure ports and run `check` and `enable`, as on
+Debian. Later RPM upgrades refresh an active guard automatically. A reinstall or
+upgrade never stops protection.
+
+`sudo dnf remove frp-ssh-guard` (or `zypper remove`) stops protection and removes the
+program. Settings, lists and state are kept, because RPM has no purge. To erase them
+too, after removal:
+
+```bash
+sudo rm -rf /etc/frp-ssh-guard /var/lib/frp-ssh-guard /var/log/frp-ssh-guard
+sudo rm -f /etc/systemd/system/frp-ssh-guard-lists.path.d/50-user-home.conf
+sudo systemctl daemon-reload
+```
+
+As on Debian, home settings in `~/.frp-ssh-guard/` are kept; remove them yourself if
+no longer needed.
+
+A host that ran the source installer must uninstall it with `uninstall.sh` before
+switching to the RPM; the RPM refuses to overwrite it. Arch Linux and other systemd
+distributions use the source installer. Check them first with
+`./install.sh --preflight`.
+
 # Migration to 0.0.8
 
 Install with `sudo apt install ./frp-ssh-guard_0.0.8.deb`; it upgrades every v0.0.7
