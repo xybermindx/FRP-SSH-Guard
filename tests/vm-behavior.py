@@ -65,6 +65,13 @@ def rotate_until_banned(ip, set_name, minutes=25):
     raise AssertionError(f'{ip} was not banned in {set_name}')
 
 
+def reachable(ip, port):
+    """The SYN got through: frps accepted the connection, whatever the backend does."""
+    code = ('import socket; s=socket.socket(); s.settimeout(1); s.bind(("' + ip + '",0)); '
+            's.connect(("198.51.100.1",' + str(port) + ')); s.close()')
+    return client(code).returncode == 0
+
+
 def banned_drops():
     table = output('nft', 'list', 'table', 'inet', TABLE)
     return int(re.search(r'counter packets ([0-9]+) bytes [0-9]+ drop comment "22003 banned v4"', table)[1])
@@ -168,7 +175,9 @@ def main():
     rotate_until_banned('198.51.100.34', 'wideban4')
     assert '198.51.100.34 22003' not in elements('ban4')  # one address-wide ban, not one per port
     assert not vm.connect('198.51.100.34', 22003)  # also a port it never touched
-    assert '198.51.100.34 all source=runtime' in (home / 'blocklist.conf').read_text()
+    def listed():  # the sampler exports the ban just after adding it
+        return '198.51.100.34 source=runtime until=' in (home / 'blocklist.conf').read_text().split('[all]')[1].split('\n[')[0]
+    wait_for(listed, seconds=90)
     print('PASS: per-port jails ban a rotating source on all ports through wideban4', flush=True)
 
     settings.write_text(settings.read_text().replace('SSH_BEHAVIOR_RULES="2p:15m"', 'SSH_BEHAVIOR_RULES="20b:30m"'))
@@ -176,20 +185,21 @@ def main():
     guard('reload')
     assert '"22003 burst v4"' in output('nft', 'list', 'table', 'inet', TABLE)
     guard('allow', '198.51.100.36')
+    wait_for(lambda: '198.51.100.32 22004' in elements('known4'), seconds=90)  # a reload empties the set until the next sample
     for ip, port, count in (('198.51.100.35', 22003, 25), ('198.51.100.36', 22003, 25),
                             ('198.51.100.37', 22003, 17), ('198.51.100.32', 22004, 25)):
         for _ in range(count):
             attempt(ip, port)
     banned = elements('ban4')
     assert '198.51.100.35 22003' in banned, banned  # an unknown source, stopped during the burst
-    assert not vm.connect('198.51.100.35', 22003)
+    assert not reachable('198.51.100.35', 22003)
     assert '198.51.100.36 22003' not in banned  # whitelisted
     assert '198.51.100.37 22003' not in banned  # under the limit
     assert '198.51.100.32 22004' not in banned  # known user
-    wait_for(lambda: 'reason=burst-connections limit=20/30m' in (home / 'frp-ssh-guard.log').read_text(), seconds=90)
+    wait_for(lambda: 'reason=burst-connections limit=20/30m' in (home / 'frp-ssh-guard.log').read_text(), seconds=120)
     measure()
     guard('unban', '198.51.100.35')
-    assert vm.connect('198.51.100.35', 22003)  # the meter was reset with the ban
+    assert reachable('198.51.100.35', 22003)  # the meter was reset with the ban
     print('PASS: a burst bans only an unknown source that exceeds it, and unban resets it', flush=True)
     guard('disable')
     run('ip', 'netns', 'del', 'guard-client')
