@@ -27,12 +27,12 @@ def main():
     assert 'SSH_SLOW_PROTECTION=on\n' in fresh
     assert 'SSH_SLOW_MODE' not in fresh
     assert 'PROTECT_SERVER_SSH=off\n' in fresh
-    assert 'LOGIN_USERS=""\n' in fresh
+    assert '# LOGIN_USERS=""\n' in fresh
     assert vm.run('systemctl', 'is-active', '--quiet', 'frp-ssh-guard.service', check=False).returncode != 0
     # Keep the shipped slow switch/threshold; isolate it from fast detection.
     settings.write_text(fresh.replace('PROTECT_SERVER_SSH=off', 'PROTECT_SERVER_SSH=on')
-                        .replace('SSH_AUTH_FAILURES=5', 'SSH_AUTH_FAILURES=100')
-                        .replace('SSH_INVALID_USER_FAILURES=3', 'SSH_INVALID_USER_FAILURES=100'))
+                        .replace('# SSH_AUTH_FAILURES=5', 'SSH_AUTH_FAILURES=100')
+                        .replace('# SSH_INVALID_USER_FAILURES=3', 'SSH_INVALID_USER_FAILURES=100'))
     vm.guard('enable')
     assert 'Slow SSH protection: on' in vm.guard('doctor')
     vm.run('ip', 'netns', 'add', 'guard-slow-client')

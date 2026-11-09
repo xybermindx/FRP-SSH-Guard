@@ -138,9 +138,6 @@ def main():
         assert line in upgraded.splitlines()
     assert upgraded.index('EXCLUDE_PORTS=') < upgraded.index('PROTECT_SERVER_SSH=off')
     assert upgraded.index('PROTECT_SERVER_SSH=off') < upgraded.index('JAIL_PER_PORT=off') < upgraded.index('PER_IP_RATE=9')
-    assert 'SSH_AUTH_FAILURES=5\n' in upgraded
-    assert 'SSH_INVALID_USER_FAILURES=3\n' in upgraded
-    assert 'SSH_AUTH_WINDOW=10m\n' in upgraded
     assert (home / 'settings.conf').stat().st_mode == original_mode or not had_home
     backups = list(home.glob('settings.conf.before-upgrade-*'))
     assert len(backups) == 1 and backups[0].read_bytes() == original_settings

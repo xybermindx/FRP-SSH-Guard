@@ -19,7 +19,8 @@ home_dir=$(python3 /usr/lib/frp-ssh-guard/frp-ssh-guard-input.py location /etc/f
 grep -qx 'PROTECT_SERVER_SSH=off' "$home_dir/settings.conf"
 grep -qx 'JAIL_PER_PORT=off' "$home_dir/settings.conf"
 grep -qx 'SSH_SLOW_PROTECTION=on' "$home_dir/settings.conf"
-grep -qx 'SSH_SLOW_TOTAL_CONNECTIONS=300' "$home_dir/settings.conf"
+grep -qx 'SSH_BEHAVIOR_RULES="20b:30m 4p:2h 3p:6h 50c:12h"' "$home_dir/settings.conf"
+grep -qx '# SSH_SLOW_TOTAL_CONNECTIONS=300' "$home_dir/settings.conf"
 ! grep -q '^SSH_SLOW_MODE=' "$home_dir/settings.conf"
 printf '\nPROTECTED_PORTS=22001\nPER_IP_RATE=9\n' >> "$home_dir/settings.conf"
 printf '198.51.100.1\n' > /var/lib/frp-ssh-guard/lists/learned.conf

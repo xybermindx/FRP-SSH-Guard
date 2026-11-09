@@ -49,7 +49,7 @@ def main():
     def configure(**values):
         content = settings.read_text()
         for key, value in values.items():
-            content = re.sub(r'^' + key + r'=.*$', key + '=' + value, content, flags=re.M)
+            content = re.sub(r'^(?:# )?' + key + r'=.*$', key + '=' + value, content, flags=re.M)  # Advanced lines start with #
         settings.write_text(content)
         guard('check')
         guard('reload')

@@ -142,8 +142,9 @@ def main():
     client('import socket, time; s=socket.socket(); s.bind(("198.51.100.32",0)); s.connect(("198.51.100.1",22004))\n'
            'data=b""\nwhile len(data) < 40000: data += s.recv(65536)\ntime.sleep(150)')
     wait_for(lambda: '198.51.100.32 22004' in elements('known4'), seconds=30)
+    counted = elements('count4')['198.51.100.32 22004']['counter']['packets']  # the connection that proved it
     attempt('198.51.100.32', 22004)
-    assert '198.51.100.32 22004' not in elements('count4')
+    assert elements('count4')['198.51.100.32 22004']['counter']['packets'] == counted
     assert 'known-user source=198.51.100.32 ports=22004' in (home / 'frp-ssh-guard.log').read_text()
     print('PASS: a session with real output makes a known user who is no longer counted', flush=True)
 
