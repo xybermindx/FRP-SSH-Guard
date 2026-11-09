@@ -21,9 +21,19 @@ was changed.
   `EDIT_USER` handling was checked for the default and a custom account.
 - Source and history passed the private privacy rules; the built `.deb` passed the
   artifact scan.
-- Not run: `tests/vm-behavior.py` in a disposable VM, which adds the real-kernel burst
-  checks. The kernel has not loaded the burst rule on this host; unprivileged
-  namespaces are unavailable here, and the live server's firewall was left alone.
+- `tests/vm-behavior.py` passed on 2026-11-09 on a disposable GitHub Actions runner
+  (Ubuntu 24.04, 4 CPUs) with real frps/frpc, nftables and synthetic addresses, through
+  the `.github/workflows/vm-behavior.yml` workflow. It upgraded from the v0.0.7 package
+  and passed every check:
+  - the upgrade turns the rules and learning on without a manual reload;
+  - a session with real output makes a known user who stops being counted;
+  - a resent SYN counts once;
+  - a burst bans an unknown source that exceeds it, spares whitelisted, known and
+    under-limit sources, and `unban` resets the meter;
+  - shared and per-port jails ban a rotating source on all ports.
+- The same run recorded about 9,000 SYN packets per second dropped from a banned
+  source, about 16 MB for the learning service, and about 0.3 s of CPU per minute job.
+  This is one small measurement, not a load benchmark.
 
 ## Every systemd Linux family and FRP architecture (v0.0.9)
 

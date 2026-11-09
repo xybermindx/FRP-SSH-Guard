@@ -87,9 +87,20 @@ still sees every packet.
 - **Only new connections to the ports you choose are measured.** Other ports and
   protocols leave immediately.
 - **Memory is bounded.** Each automatic ban and meter set holds at most 65,536 entries.
-- **Little runs outside the kernel:** two small log followers, and a job once a minute.
+- **Little runs outside the kernel:** one small log follower (two with
+  `PROTECT_SERVER_SSH=on`), and a job once a minute.
 
-<!-- measured-cost -->
+Measured once on a 4-CPU GitHub Actions runner with synthetic traffic
+(`tests/vm-behavior.py`):
+
+| Measure | Result |
+| --- | --- |
+| SYN packets dropped from a banned source during a 10-second flood | about 9,000 per second |
+| Memory of the login-learning service | about 16 MB |
+| CPU time of the once-a-minute job | about 0.3 s per run, roughly 0.5% of one CPU |
+
+These figures come from one small test. The packet rate is what this test recorded,
+not a maximum, and your hardware and traffic will differ.
 
 ### Observed in one live deployment
 
