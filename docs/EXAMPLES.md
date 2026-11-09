@@ -87,13 +87,15 @@ section); listed addresses are never counted. Each ban, with its reason, appears
 ```ini
 SSH_SLOW_BEHAVIOR=on                       # off: no streaks and no behavior bans
 SSH_BEHAVIOR_PAUSE=2h                      # a pause this long starts a streak over
-SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"   # N ports (p) or N connections (c) within the last T
+SSH_BEHAVIOR_RULES="20b:30m 4p:2h 3p:6h 50c:12h"   # burst (b), N ports (p) or N connections (c) within T
 LEARN_USERS=on                             # stop counting sources that completed a login
 LEARN_SESSION_AGE=3m                       # proof: connection still open after this long
 LEARN_SESSION_BYTES=32KiB                  # proof: more data than this sent to the client
 ```
 
-A source that keeps connecting with no 2-hour pause, never completing a login, is
+A source that has not completed a login is banned during a burst of about 20 new
+connections within 30 minutes. A source that keeps connecting with no 2-hour pause,
+never completing a login, is
 banned when its last 2 hours touched 4 forwarded ports, its last 6 hours touched 3,
 or its last 12 hours held 50 connections. Port rules ban every port, also with
 `JAIL_PER_PORT=on`; the connection rule follows the jail mode. One connection that
@@ -104,7 +106,7 @@ A stricter example for hosts without monitoring traffic: ban after 3 ports in 1
 hour or 30 connections in 6 hours.
 
 ```ini
-SSH_BEHAVIOR_RULES="3p:1h 30c:6h"
+SSH_BEHAVIOR_RULES="20b:30m 3p:1h 30c:6h"
 ```
 
 Whitelist monitoring probes, backup jobs, CI and git automation first: they connect

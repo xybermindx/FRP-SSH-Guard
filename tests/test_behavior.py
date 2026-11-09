@@ -50,7 +50,7 @@ class BehaviorTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         (self.root / 'lists').mkdir()
-        self.config = events.data.settings((ROOT / 'etc/settings.conf.example').read_text())
+        self.config = events.data.template_settings((ROOT / 'etc/settings.conf.example').read_text())
         self.config.update(PROTECTED_PORTS=','.join(f'{p}:30:20' for p in PORTS), OBSERVABILITY_VERSION='1',
                            CONFIG_BASE=str(self.root / 'etc'), MANUAL_DIR=str(self.root / 'home'))
         self.store = events.Store(self.root / 'state', now=NOW)
@@ -266,6 +266,10 @@ class BehaviorTests(unittest.TestCase):
         self.assertNotIn('add element', self.nft.text())
 
     def test_judge_uses_only_the_last_rule_window(self):
+        self.assertEqual(behavior.rules('20b:30m'), [(20, 'b', 1800, '30m')])
+        # The kernel enforces a burst rule, so a streak never matches it.
+        self.assertEqual(behavior.judge(NOW - 7 * 86400, NOW, [(22001, int(NOW // 900), 500)],
+                                        behavior.rules('20b:30m'), False, '2h'), [])
         entries = behavior.rules('4p:2h 50c:12h')
         slot = behavior.SLOT
         old = [(port, (NOW - 5 * HOUR) // slot, 1) for port in PORTS]  # spread, but long ago

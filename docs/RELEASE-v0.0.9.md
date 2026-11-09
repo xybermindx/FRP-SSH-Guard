@@ -1,16 +1,27 @@
 # v0.0.9 (pre-release)
 
-FRP-SSH-Guard on every common systemd Linux family, with a new `.rpm`, a preflight check, and tested coverage of FRP's Linux architectures.
+FRP-SSH-Guard on every common systemd Linux family, with a new `.rpm`, a preflight check, and tested coverage of FRP's Linux architectures. It also stops short bursts of password guessing during the burst and makes `settings.conf` much shorter.
 
 [English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.9/README.md) ·
 [Chinese guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.9/README.zh-CN.md)
 
 This is a pre-release for testing. The stable release remains
-[v0.0.8](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8). Protection
-behavior is unchanged from v0.0.8.
+[v0.0.8](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8). Package
+revision 2 adds the burst limit and the short settings file to the first v0.0.9 build.
 
 ## Changes
 
+- **Burst limit:** `SSH_BEHAVIOR_RULES` gains a burst rule, and the default becomes
+  `20b:30m 4p:2h 3p:6h 50c:12h`. A source with no proven login is banned during the
+  burst at about 20 new connections within 30 minutes. Bans follow `JAIL_PER_PORT` and
+  are logged with the reason `burst-connections`. Whitelisted sources and known users
+  are skipped.
+- **Short settings file:** 15 everyday settings in five sections, with the others as
+  one-line defaults under Advanced. Setting names and meanings are unchanged. The
+  [settings reference](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.9/docs/SETTINGS.md)
+  explains each one.
+- **`tidy-settings`:** moves an existing file to the short layout. It keeps every
+  changed value, saves a private backup and changes no firewall rule.
 - **Supported systems:**
 
   | Family | Versions | Package |
@@ -51,8 +62,19 @@ installations stay inactive until you configure ports and run
 [migration notes](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.9/docs/MIGRATING.md)
 for RPM removal and purging.
 
+Upgrades keep your settings file and comments. If `SSH_BEHAVIOR_RULES` still has the
+exact previous default, the upgrade adds `20b:30m` once and leaves a comment saying so.
+An active guard applies it during the automatic refresh. Customized rules are not
+changed. Before upgrading, whitelist monitoring probes, CI, backup jobs and scripts
+that make many short connections. To turn the burst limit off, remove `20b:30m`, then
+run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`.
+
 ## Limits
 
+- A new source can still make about 20 connections before its first ban.
+- The burst rule counts connections per source, so attempts spread thinly across many
+  addresses are not caught. Key-only SSH login on the backend is the complete answer
+  to password guessing.
 - The RPM is new. CI installs, reinstalls and removes it in Fedora, Rocky, Alma and
   openSUSE containers, and loads the rules with each distribution's own nftables. The
   SELinux-enforcing VM test with firewalld (`tests/vm-rpm.py`) has not been run yet.

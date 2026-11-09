@@ -1,9 +1,26 @@
 # Migration to 0.0.9
 
+## Burst limit and the short settings file (package revision 2)
+
+Upgrades keep your settings file and comments. If `SSH_BEHAVIOR_RULES` still has the
+exact previous default, the upgrade adds the burst rule `20b:30m` once, with a comment
+saying so, and an active guard applies it during the automatic refresh. Customized
+rules are not changed. To turn the rule off, remove `20b:30m`, then run
+`sudo frp-ssh-guard check && sudo frp-ssh-guard reload`. Later upgrades respect that.
+
+Whitelist monitoring probes, CI, backup jobs and scripts that make many short
+connections before upgrading.
+
+Settings now listed under Advanced are no longer added to older files, because their
+defaults already apply. To move a file to the short layout, run
+`sudo frp-ssh-guard tidy-settings`, then `check && reload`. Your changed values are
+kept; comments you wrote stay only in the `settings.conf.before-upgrade-*` backup.
+
+## Debian and Ubuntu
+
 Debian and Ubuntu hosts upgrade as before with
 `sudo apt install ./frp-ssh-guard_0.0.9.deb`. An active guard is refreshed
 automatically, and settings, bans, boot enablement and timer deadlines are kept.
-Nothing in the runtime changes for them.
 
 ## New: RPM distributions and the source installer
 

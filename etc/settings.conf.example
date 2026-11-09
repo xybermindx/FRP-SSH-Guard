@@ -1,192 +1,76 @@
-# FRP-SSH-Guard settings (literal KEY=value assignments; no shell execution).
+# FRP-SSH-Guard settings
 #
-# === When and how changes take effect ===
-# Saving this file changes nothing yet. The running guard, and every reboot,
-# keep using the last ACCEPTED settings until you accept your edits:
-#   1. Save your edits here.
-#   2. sudo frp-ssh-guard check     validate only; nothing changes
-#   3. sudo frp-ssh-guard reload    guard already running: accept and apply now
-#      sudo frp-ssh-guard enable    first activation, or after disable
-#   4. sudo frp-ssh-guard status    shows "Pending edits: no" once accepted
-# Short form: sudo frp-ssh-guard check && sudo frp-ssh-guard reload
-# Reload keeps current bans and learned entries with their remaining time;
-# connection counters start again. If check or reload fails, the previous
-# settings stay active: fix the reported setting and run both commands again.
-# Finish a pending trial first (keep or disable). GUARD_TABLE is the exception:
-# disable, edit, then enable.
-# whitelist.conf and blocklist.conf work differently: they apply when saved.
+# Nothing changes until you run:
+#   sudo frp-ssh-guard check && sudo frp-ssh-guard reload
+# (Use enable instead of reload the first time.) Current bans are kept.
+# Most people only need to set PROTECTED_PORTS. Times look like 30s 10m 12h 7d 4w.
 
-# === Ports and protection switches ===
-# Public frps forwarded TCP ports. Empty refuses activation unless local SSH is on.
-# Port numbers below are invented examples, not a deployment configuration.
-# Comma-separated ports/ranges; never include management SSH, frps control ports,
-# or public HTTP(S). Enable server SSH separately below. Start listeners first.
+# === 1. Ports to protect ===
+# Public frps ports that forward SSH. Not the frps control port or web ports.
 # Example: PROTECTED_PORTS="22001,22003,23000-23010"
-# Optional per-port/range global rate and burst: "22001:30:20,23000-23010:60:40"
 PROTECTED_PORTS=""
-
-# Ports/ranges to skip within PROTECTED_PORTS. Default none.
-# Example: EXCLUDE_PORTS="23005,23008-23009"
+# Ports to skip inside that list. Example: EXCLUDE_PORTS="23005,23008-23009"
 EXCLUDE_PORTS=""
-
-# PROTECT_SERVER_SSH: local SSH protection switch (on/off).
-# Protect this server's SSH port 22, including observed authentication failures.
-# Default off. When enabled, port 22 is added to the protected ports automatically.
+# Also protect this server's own SSH on port 22 (on/off).
 PROTECT_SERVER_SSH=off
 
-# JAIL_PER_PORT: jail scope switch (on/off); port rate limits remain enabled.
-# Default off: a banned IP is blocked across ALL protected ports.
-# On: automatic and authentication bans apply only to the offending port.
-# Switching mode affects NEW bans only. Existing shared bans stay shared;
-# existing per-port bans keep their original ports and absolute expiry.
-# Strike history retains each offense's original scope across mode switches.
-# Explicit manual block scopes are independent of this switch.
+# === 2. What a ban does ===
+# Length of a first ban. For a permanent block, use blocklist.conf.
+BAN_TIMEOUT=12h
+# Longer bans for repeat offenders, as "offense:duration". Empty turns this off.
+STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"
+# off: a ban covers every protected port. on: only the attacked port.
 JAIL_PER_PORT=off
 
-# SSH_SLOW_PROTECTION: slow brute-force switch (on/off). Default on.
-# Bans sources that stay under the per-minute limits below but keep trying.
-# Custom/FRP ports count new connections (the tunnel hides logins):
-#   JAIL_PER_PORT=off: more than SSH_SLOW_TOTAL_CONNECTIONS (default 300) from one
-#     source across all custom ports within SSH_SLOW_WINDOW: banned on all ports.
-#   JAIL_PER_PORT=on: more than SSH_SLOW_PORT_CONNECTIONS (default 100) from one
-#     source on one port within SSH_SLOW_WINDOW: banned on that port.
-# Port 22, only when PROTECT_SERVER_SSH=on: SSH_SLOW_FAILURES failed logins
-#   (default 20) within SSH_SLOW_WINDOW: banned with the jail scope above.
-# Addresses in whitelist.conf (any port) are known administrators and are never
-# counted. Bans last BAN_TIMEOUT and are written to the activity log.
-# SSH_SLOW_BEHAVIOR (below) also catches slower bots that rotate across ports.
-# Off: no slow detection and no slow bans. The faster limits below still apply.
+# === 3. Catching attackers ===
+# Detect attacks that stay under the per-minute limits (on/off).
 SSH_SLOW_PROTECTION=on
-
-# === Detection thresholds ===
-# Local sshd journal outcomes only; attempted passwords are never read or stored.
-# Count repeated invalid-user connections or failed authentications in this window.
-SSH_AUTH_FAILURES=5
-SSH_INVALID_USER_FAILURES=3
-SSH_AUTH_WINDOW=10m
-
-# Slow brute-force thresholds, used when SSH_SLOW_PROTECTION=on (1–1000000).
-# Custom ports, JAIL_PER_PORT=off: new connections per source across all ports.
-SSH_SLOW_TOTAL_CONNECTIONS=300
-# Custom ports, JAIL_PER_PORT=on: new connections per source on one port.
-SSH_SLOW_PORT_CONNECTIONS=100
-# Port 22 with PROTECT_SERVER_SSH=on: failed logins per source.
-SSH_SLOW_FAILURES=20
-# Window for all three: positive integer + s/m/h/d/w. Connection counts refill
-# gradually across the window, so they are approximate. Default 24 hours.
-SSH_SLOW_WINDOW=24h
-
-# SSH_SLOW_BEHAVIOR: restless-source rules for custom/FRP ports (on/off).
-# Default on, also after upgrades; acts only with SSH_SLOW_PROTECTION=on.
-# Catches bots that stay under the limits above by connecting slowly, often to
-# every port, around the clock. Only connections from sources WITHOUT a real
-# session on that port are counted (see LEARN_USERS); whitelisted and learned
-# sources are never counted; a resent SYN is the same connection.
-# A source's streak is its run of such connections with no pause of
-# SSH_BEHAVIOR_PAUSE; that pause starts the streak over. The source is banned for
-# BAN_TIMEOUT (repeat bans climb STRIKE_LADDER) when, with its streak at least T
-# long (no pause during the last T), the last T held:
-#   Np:T  N or more different custom ports: banned on ALL ports, also with
-#         JAIL_PER_PORT=on (rotating across ports is about the source), or
-#   Nc:T  N or more new connections: banned on all ports, or with JAIL_PER_PORT=on
-#         only on each port that reached N by itself.
-# Whitelist monitoring probes, scheduled jobs, CI/git automation and office NATs
-# that connect around the clock with only short sessions.
+# Ban sources by the patterns below (on/off). Needs the switch above.
 SSH_SLOW_BEHAVIOR=on
-# Pause that starts a streak over: 30m to 12h. Default 2 hours.
-SSH_BEHAVIOR_PAUSE=2h
-# Rules separated by spaces; N ports 2-1000000, N connections 1-1000000, T 15m-7d.
-# Default: 4 ports for 2 hours, 3 ports for 6 hours, 50 connections for 12 hours.
-SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"
+# Only sources that never completed a login are judged:
+#   20b:30m  about 20 connections within 30 minutes: banned at once
+#   4p:2h    4 different ports during 2 hours of steady attempts
+#   3p:6h    3 different ports during 6 hours of steady attempts
+#   50c:12h  50 connections during 12 hours of steady attempts
+# Whitelist monitoring, CI and scripts that make many short connections.
+SSH_BEHAVIOR_RULES="20b:30m 4p:2h 3p:6h 50c:12h"
 
-# Activity log frp-ssh-guard.log, beside whitelist.conf and blocklist.conf:
-# one line per ban (with its reason and end time), manual ban, release, strike
-# escalation, accepted settings, new-source login and suspected subnet cluster.
-# Newest first; at this size the oldest lines are deleted (no archives).
-# 1KiB–100MiB. Default 10MiB.
-LOG_MAX_SIZE=10MiB
-# Report suspected subnet clusters only; never automatically block a subnet.
-# Count distinct automatically banned sources per jail scope (IPv4 /24, IPv6 /64).
-SUBNET_REPORT_MIN_SOURCES=5
-SUBNET_REPORT_WINDOW=24h
+# === 4. Protecting real users ===
+# Trust a source after an administrator logs in to this server (on/off).
+LEARN_ADMINS=on
+# Stop counting a source on a port once it has held a real session (on/off).
+LEARN_USERS=on
 
-# === Connection limits and ban duration ===
-# Per source AND destination port: sustained new SYN packets/minute, not logins.
-# Positive integers 1–1000000. Default 2/minute with a burst allowance of 40.
-# Shared NAT/VPN users count together. Bursts replenish over time, not per minute.
+# === 5. Rate limits ===
+# Per source and port: new connections per minute, and the burst allowed.
 PER_IP_RATE=2
 PER_IP_BURST=40
-
-# Shared new SYN ceiling per destination port (shared across IPv4/IPv6).
-# Positive integers 1–1000000. Default 30/minute, burst 20. Excess is dropped;
-# the shared limit alone does not add IP bans. Per-port overrides take precedence.
+# Per port, all sources together. Excess is dropped; nobody is banned.
 GLOBAL_RATE=30
 GLOBAL_BURST=20
 
-# Base source ban when the per-source or local authentication limit is exceeded.
-# Scope is all protected ports unless JAIL_PER_PORT=on.
-# Positive integer + s/m/h/d/w (seconds/minutes/hours/days/weeks). Default 12 hours.
-# For a PERMANENT block, write the address in blocklist.conf with no time, or run
-# sudo frp-ssh-guard block 203.0.113.10 (see blocklist.conf for more examples).
-BAN_TIMEOUT=12h
-
-# LEARN_ADMINS: trust administrators automatically (on/off). Default on.
-# When root, the account that owns this settings folder, or a member of the
-# sudo, admin or wheel group logs in successfully to THIS server's sshd, the
-# source IP is added to whitelist.conf for LEARN_TIMEOUT: it is then never banned
-# or counted on any protected port. No usernames need to be typed in.
-# Everyone sharing that public IP (for example an office NAT) is trusted too.
-# Logins to SSH servers behind FRP are invisible here and teach nothing.
-# Learned sources are also exempted from an existing fail2ban sshd jail.
-LEARN_ADMINS=on
-
-# Optional extra accounts that teach trust the same way: grep extended regex,
-# e.g. "alice|bob". Default empty. Use only for trusted operator accounts.
-LOGIN_USERS=""
-
-# Maximum learned addresses (integer 1–1000000); oldest entries evicted. Default 500.
-MAX_LEARNED=500
-# Learned-address timeout: positive integer + s/m/h/d/w; default 90 days.
-# Trusted successful logins refresh this expiry; apply/reload/reboot do not.
-LEARN_TIMEOUT=90d
-
-# LEARN_USERS: recognize users of custom/FRP ports by their sessions (on/off).
-# Default on. Logins behind FRP are invisible, but a connection that stays open
-# for LEARN_SESSION_AGE, or that received more than LEARN_SESSION_BYTES, has
-# logged in. Its source becomes a known user of THAT port for LEARN_TIMEOUT,
-# renewed by later sessions: slow protection and SSH_SLOW_BEHAVIOR stop counting
-# it there, so frequent reconnects on an unstable network cost nothing. The
-# per-minute limits still apply. Known users are not written to whitelist.conf;
-# sudo frp-ssh-guard forget IP removes them. Checked about once a minute.
-LEARN_USERS=on
-# Connection age that proves a login: 3m to 1d. Default 3 minutes. sshd closes
-# connections that have not logged in after LoginGraceTime (2 minutes by
-# default); if a backend raises it, keep this value above it.
-LEARN_SESSION_AGE=3m
-# Data sent to the client that proves a login: 8KiB to 100MiB. Default 32KiB.
-# A failed login exchanges a few KiB; raise this for a long pre-login Banner.
-LEARN_SESSION_BYTES=32KiB
-
-# Repeat offenders: an automatic ban that comes within STRIKE_WINDOW after the
-# source's previous ban ENDED moves one step up STRIKE_LADDER, and a source at the
-# top step keeps getting the top duration. Staying clean for STRIKE_WINDOW after
-# a ban ends starts over at BAN_TIMEOUT. Positive integer + s/m/h/d/w. Default 90 days.
-# Bans are sampled every minute: short bans and repeated events may be missed.
-STRIKE_WINDOW=90d
-# Increasing "step:duration" pairs, steps >=2. Empty disables escalation.
-# Default: 1st ban=BAN_TIMEOUT (12 hours), 2nd=3 days, 3rd=7 days, 4th=30 days,
-# 5th or more=90 days. Durations count from the latest offense.
-STRIKE_LADDER="2:3d 3:7d 4:30d 5:90d"
-# Maximum strike duration from the latest offense. Default 90 days.
-# The strike helper caps ladder durations at this value.
-STRIKE_MAX=90d
-
-# Advanced settings (usually leave unchanged).
-# Allowed protected-port bounds, inclusive, integers 1–65535. Defaults cover all TCP.
-PORT_MIN=1
-PORT_MAX=65535
-# Local account owning command-managed lists. Default root; trusted accounts only.
-EDIT_USER=root
-# Dedicated nftables table identifier. One guard instance is supported.
-# Default below; to change while active: disable first, then enable with new name.
-GUARD_TABLE=frp_ssh_persistent_guard
+# === Advanced (optional) ===
+# These are the defaults. To change one, remove the leading "# ".
+# Each is explained in docs/SETTINGS.md (packages: /usr/share/doc/frp-ssh-guard/).
+# SSH_AUTH_FAILURES=5
+# SSH_INVALID_USER_FAILURES=3
+# SSH_AUTH_WINDOW=10m
+# SSH_SLOW_TOTAL_CONNECTIONS=300
+# SSH_SLOW_PORT_CONNECTIONS=100
+# SSH_SLOW_FAILURES=20
+# SSH_SLOW_WINDOW=24h
+# SSH_BEHAVIOR_PAUSE=2h
+# LOGIN_USERS=""
+# MAX_LEARNED=500
+# LEARN_TIMEOUT=90d
+# LEARN_SESSION_AGE=3m
+# LEARN_SESSION_BYTES=32KiB
+# STRIKE_WINDOW=90d
+# STRIKE_MAX=90d
+# LOG_MAX_SIZE=10MiB
+# SUBNET_REPORT_MIN_SOURCES=5
+# SUBNET_REPORT_WINDOW=24h
+# PORT_MIN=1
+# PORT_MAX=65535
+# EDIT_USER=root
+# GUARD_TABLE=frp_ssh_persistent_guard

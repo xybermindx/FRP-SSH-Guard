@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import time
 
@@ -64,6 +65,26 @@ def rotate_until_banned(ip, set_name, minutes=25):
     raise AssertionError(f'{ip} was not banned in {set_name}')
 
 
+def banned_drops():
+    table = output('nft', 'list', 'table', 'inet', TABLE)
+    return int(re.search(r'counter packets ([0-9]+) bytes [0-9]+ drop comment "22003 banned v4"', table)[1])
+
+
+def measure():
+    """Cost figures for the guides, on this machine with synthetic traffic only."""
+    before, started = banned_drops(), time.monotonic()
+    run('timeout', '10', 'ip', 'netns', 'exec', 'guard-client', 'hping3', '-q', '-S', '--flood', '-I', 'guard-peer',
+        '-a', '198.51.100.35', '-p', '22003', '198.51.100.1', check=False)
+    print(f'PERF: {(banned_drops() - before) / (time.monotonic() - started):.0f} SYN packets/s dropped '
+          f'for a banned source on {os.cpu_count()} CPUs', flush=True)
+    for unit in ('frp-ssh-guard-auth', 'frp-ssh-guard-learn'):
+        print('PERF:', unit, 'memory', output('systemctl', 'show', '-p', 'MemoryCurrent', '--value', unit), flush=True)
+    started = time.monotonic()
+    run('systemctl', 'start', 'frp-ssh-guard-log.service')
+    print(f'PERF: minute job took {time.monotonic() - started:.2f}s, cpu_ns',
+          output('systemctl', 'show', '-p', 'CPUUsageNSec', '--value', 'frp-ssh-guard-log'), flush=True)
+
+
 def main():
     assert os.environ.get('FRP_GUARD_DISPOSABLE') == '1' and os.geteuid() == 0
     old, new, frp = [Path(p).resolve() for p in sys.argv[1:]]
@@ -106,12 +127,13 @@ def main():
     run('ip', 'link', 'set', 'guard-peer', 'netns', 'guard-client')
     run('ip', 'addr', 'add', '198.51.100.1/24', 'dev', 'guard-host')
     run('ip', 'link', 'set', 'guard-host', 'up')
-    for suffix in (31, 32, 33, 34):
+    for suffix in (31, 32, 33, 34, 35, 36, 37):
         run('ip', '-n', 'guard-client', 'addr', 'add', f'198.51.100.{suffix}/24', 'dev', 'guard-peer')
     run('ip', '-n', 'guard-client', 'link', 'set', 'guard-peer', 'up')
     run('ip', '-n', 'guard-client', 'link', 'set', 'lo', 'up')
-    settings.write_text(settings.read_text().replace('SSH_BEHAVIOR_PAUSE=2h', 'SSH_BEHAVIOR_PAUSE=30m')
-                        .replace('SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"', 'SSH_BEHAVIOR_RULES="2p:15m"'))
+    settings.write_text(settings.read_text()
+                        .replace('SSH_BEHAVIOR_RULES="20b:30m 4p:2h 3p:6h 50c:12h"', 'SSH_BEHAVIOR_RULES="2p:15m"')
+                        + '\nSSH_BEHAVIOR_PAUSE=30m\n')
     guard('check')
     guard('reload')
     assert '"22001 observe v4"' in output('nft', 'list', 'table', 'inet', TABLE)
@@ -147,6 +169,27 @@ def main():
     assert not vm.connect('198.51.100.34', 22003)  # also a port it never touched
     assert '198.51.100.34 all source=runtime' in (home / 'blocklist.conf').read_text()
     print('PASS: per-port jails ban a rotating source on all ports through wideban4', flush=True)
+
+    settings.write_text(settings.read_text().replace('SSH_BEHAVIOR_RULES="2p:15m"', 'SSH_BEHAVIOR_RULES="20b:30m"'))
+    guard('check')
+    guard('reload')
+    assert '"22003 burst v4"' in output('nft', 'list', 'table', 'inet', TABLE)
+    guard('allow', '198.51.100.36')
+    for ip, port, count in (('198.51.100.35', 22003, 25), ('198.51.100.36', 22003, 25),
+                            ('198.51.100.37', 22003, 17), ('198.51.100.32', 22004, 25)):
+        for _ in range(count):
+            attempt(ip, port)
+    banned = elements('ban4')
+    assert '198.51.100.35 22003' in banned, banned  # an unknown source, stopped during the burst
+    assert not vm.connect('198.51.100.35', 22003)
+    assert '198.51.100.36 22003' not in banned  # whitelisted
+    assert '198.51.100.37 22003' not in banned  # under the limit
+    assert '198.51.100.32 22004' not in banned  # known user
+    wait_for(lambda: 'reason=burst-connections limit=20/30m' in (home / 'frp-ssh-guard.log').read_text(), seconds=90)
+    measure()
+    guard('unban', '198.51.100.35')
+    assert vm.connect('198.51.100.35', 22003)  # the meter was reset with the ban
+    print('PASS: a burst bans only an unknown source that exceeds it, and unban resets it', flush=True)
     guard('disable')
     run('ip', 'netns', 'del', 'guard-client')
 

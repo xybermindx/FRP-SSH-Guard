@@ -50,7 +50,8 @@ load_guard_config() {
     # Behavior rules are on by default, also for an older file or accepted snapshot
     # without the setting: the automatic package refresh applies them. They act
     # only where SSH_SLOW_PROTECTION=on.
-    SSH_SLOW_BEHAVIOR=on SSH_BEHAVIOR_PAUSE=2h SSH_BEHAVIOR_RULES='4p:2h 3p:6h 50c:12h'
+    SSH_SLOW_BEHAVIOR=on SSH_BEHAVIOR_PAUSE=2h SSH_BEHAVIOR_RULES='20b:30m 4p:2h 3p:6h 50c:12h'
+    BEHAVIOR_RULES_VERSION=0
     # Recognizing real sessions only stops counting, so it is on after upgrades.
     LEARN_USERS=on LEARN_SESSION_AGE=3m LEARN_SESSION_BYTES=32KiB
     unset LOG_MAX_SIZE
@@ -110,7 +111,7 @@ write_accepted_config() {
         PROTECT_SERVER_SSH JAIL_PER_PORT SSH_AUTH_FAILURES SSH_INVALID_USER_FAILURES SSH_AUTH_WINDOW \
         SSH_SLOW_PROTECTION SSH_SLOW_TOTAL_CONNECTIONS SSH_SLOW_PORT_CONNECTIONS SSH_SLOW_FAILURES SSH_SLOW_WINDOW \
         SSH_SLOW_BEHAVIOR SSH_BEHAVIOR_PAUSE SSH_BEHAVIOR_RULES LEARN_USERS LEARN_SESSION_AGE LEARN_SESSION_BYTES \
-        LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW OBSERVABILITY_VERSION; do
+        LOG_MAX_SIZE SUBNET_REPORT_MIN_SOURCES SUBNET_REPORT_WINDOW OBSERVABILITY_VERSION BEHAVIOR_RULES_VERSION; do
         printf '%s=%q\n' "$key" "${!key-}"
     done
 }

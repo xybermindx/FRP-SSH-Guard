@@ -213,9 +213,50 @@ else:
         (self.root / 'nft.calls').write_text('')
         self.require_ok(self.run_guard('unban', '198.51.100.7'))
         calls = (self.root / 'nft.calls').read_text()
-        for name in ('ban4', 'slow4', 'slowhit4'):
+        for name in ('ban4', 'slow4', 'slowhit4', 'burst4', 'bursthit4'):
             for port in ('22001', '22003'):
                 self.assertIn(f'delete element inet frp_ssh_persistent_guard {name} {{ 198.51.100.7 . {port} }}', calls)
+
+    def test_upgrade_adds_the_burst_rule_once_and_a_later_choice_stays(self):
+        old = 'SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"\n'
+        self.settings('PROTECTED_PORTS="22001"\nSSH_SLOW_PROTECTION=on\n' + old)
+        self.require_ok(self.run_guard('enable'))
+        applied = self.root / 'applied.conf'
+        self.assertNotIn('burst v4', (self.root / 'live.nft').read_text())  # an explicit reload keeps the old rules
+        # A snapshot from before the burst rule has no marker.
+        applied.write_text(''.join(line for line in applied.read_text().splitlines(keepends=True)
+                                   if not line.startswith('BEHAVIOR_RULES_VERSION=')))
+        self.require_ok(self.run_guard('_upgrade'))
+        self.assertIn('"22001 burst v4"', (self.root / 'live.nft').read_text())
+        self.assertIn('BEHAVIOR_RULES_VERSION=1', applied.read_text())
+        applied.write_text(applied.read_text().replace('20b:30m\\ ', ''))
+        self.require_ok(self.run_guard('_upgrade'))
+        self.assertNotIn('burst v4', (self.root / 'live.nft').read_text())
+
+    def test_short_template_activates_with_every_default(self):
+        template = (ROOT / 'etc/settings.conf.example').read_text()
+        self.settings(template.replace('PROTECTED_PORTS=""', 'PROTECTED_PORTS="22001"'))
+        self.require_ok(self.run_guard('enable'))
+        live = (self.root / 'live.nft').read_text()
+        self.assertIn('"22001 burst v4"', live)
+        self.assertIn('limit rate over 300/day burst 300 packets', live)
+
+    def test_tidy_settings_keeps_values_and_leaves_the_firewall_alone(self):
+        self.settings('# my note\nPROTECTED_PORTS="22001"\nSSH_SLOW_PROTECTION=on\nBAN_TIMEOUT=6h\n'
+                      'SSH_SLOW_WINDOW=48h\nMAX_LEARNED=500\n')
+        result = self.run_guard('tidy-settings')
+        self.require_ok(result)
+        self.assertIn('Nothing is applied yet', result.stdout)
+        path = self.root / 'etc/settings.conf'
+        lines = path.read_text().splitlines()
+        for line in ('BAN_TIMEOUT=6h', 'SSH_SLOW_WINDOW=48h', '# MAX_LEARNED=500', 'PROTECTED_PORTS=22001'):
+            self.assertIn(line, lines)
+        self.assertNotIn('# my note', lines)
+        backups = list((self.root / 'etc').glob('settings.conf.before-upgrade-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertIn('# my note', backups[0].read_text())
+        self.assertFalse((self.root / 'live.nft').exists())
+        self.assertIn('already uses', self.run_guard('tidy-settings').stdout)
 
     def test_upgrade_does_not_activate_fresh_or_disabled_installations(self):
         self.require_ok(self.run_guard('_upgrade'))

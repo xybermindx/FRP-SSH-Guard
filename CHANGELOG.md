@@ -2,6 +2,21 @@
 
 ## 0.0.9
 
+- Stop short bursts of password guessing. A new burst rule type, `Nb:T`, joins
+  `SSH_BEHAVIOR_RULES`, and the default becomes `20b:30m 4p:2h 3p:6h 50c:12h`. A source
+  with no proven login is banned during the burst at about 20 new connections within
+  30 minutes, following `JAIL_PER_PORT`. The firewall enforces it directly. Whitelisted
+  sources and known users are skipped. The logged reason is `burst-connections`.
+- Upgrades add the rule once to a file or accepted policy that still has the exact
+  previous default. Customized rules are not changed. Remove `20b:30m` to turn it off.
+- `settings.conf` is much shorter: 15 everyday settings in five sections, and the
+  others as one-line defaults under Advanced. Names and meanings are unchanged, and
+  the new [settings reference](docs/SETTINGS.md) explains each one. Existing files
+  are not rewritten.
+- New `tidy-settings` command moves an existing file to the short layout. It keeps
+  every changed value, saves a private backup and changes no firewall rule.
+- The guides now open with why the tool is needed, what it does and does not stop,
+  what it costs to run, and a short setup and tuning table.
 - Support every common systemd Linux family. A noarch `.rpm` is added for Fedora,
   RHEL/Rocky/Alma 9+ and openSUSE (Tumbleweed, Leap 16), with the same files as the
   `.deb`. Arch Linux and other systemd distributions use `install.sh`.

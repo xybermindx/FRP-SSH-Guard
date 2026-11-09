@@ -45,6 +45,7 @@ LOGGED = ('ban', 'manual-ban', 'strike-ban', 'release', 'settings-applied', 'new
 SUCCESS = re.compile(r'^Accepted (password|publickey|keyboard-interactive(?:/pam)?) for (\S+) from ')
 METHOD = re.compile(r'^(?:Failed|Accepted) (\S+) for ')
 MAX_ROWS = 200000
+BURST_MARKS = ('bursthit4', 'bursthit6')
 
 
 def policy():
@@ -74,9 +75,20 @@ def until(stamp):
     return dt.datetime.fromtimestamp(stamp, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
+def burst_rule(config):
+    """(count, window) of the Nb:T behavior rule, or None."""
+    for entry in config.get('SSH_BEHAVIOR_RULES', '').split():
+        number, _, span = entry.partition(':')
+        if number.endswith('b'):
+            return number[:-1], span
+    return None
+
+
 def ban_limit(config, reason):
     window = config['SSH_SLOW_WINDOW']
+    burst = burst_rule(config)
     return {'connection-rate': config['PER_IP_RATE'] + '/minute,burst=' + config['PER_IP_BURST'],
+            'burst-connections': burst[0] + '/' + burst[1] if burst else None,
             'slow-connections': config['SSH_SLOW_PORT_CONNECTIONS'] + '/' + window,
             'slow-connections-all-ports': config['SSH_SLOW_TOTAL_CONNECTIONS'] + '/' + window,
             'failed-logins': config['SSH_AUTH_FAILURES'] + '/' + config['SSH_AUTH_WINDOW'],
@@ -346,10 +358,12 @@ def sample(store, config, now, document=None, baseline=False):
     initialized = store.get('ban_baseline', False)
     rows = lists.kernel_rows(document, now)
     marks = set(slow_marks(document))
+    bursts = set(slow_marks(document, BURST_MARKS))
     live = {(row.ip, row.scope): row.expiry for name, row in rows if name in ('ban4', 'ban6', 'wideban4', 'wideban6')}
     for (ip, scope), expiry in live.items():
-        # A slow-protection rule marks the same key when it adds the ban.
-        reason = ('slow-connections-all-ports' if scope == '*' else 'slow-connections') if (ip, scope) in marks else None
+        # A slow-protection or burst rule marks the same key when it adds the ban.
+        reason = ('burst-connections' if (ip, scope) in bursts else
+                  ('slow-connections-all-ports' if scope == '*' else 'slow-connections') if (ip, scope) in marks else None)
         store.record_ban(ip, scope, expiry, 'kernel' if initialized and not baseline else 'restored', config, now, reason)
     strikes = {(row.ip, row.scope): row.expiry for name, row in rows if name in ('hardban4', 'hardban6')}
     for (ip, scope), expiry in strikes.items():
@@ -370,11 +384,11 @@ def sample(store, config, now, document=None, baseline=False):
     store.db.commit()
 
 
-def slow_marks(document):
-    """Sources the kernel banned for too many new connections (the slowhit sets)."""
+def slow_marks(document, names=('slowhit4', 'slowhit6')):
+    """Sources the kernel banned for too many new connections (the marker sets)."""
     for item in document.get('nftables', []):
         obj = item.get('set', {})
-        if obj.get('name') not in ('slowhit4', 'slowhit6'):
+        if obj.get('name') not in names:
             continue
         for element in obj.get('elem', []):
             value = element.get('elem', {}).get('val') if isinstance(element, dict) and 'elem' in element else element
@@ -389,17 +403,23 @@ def slow_marks(document):
 
 
 def slow_alerts(store, config, document, now):
-    """Report each connection-based slow ban once per window."""
-    window = data.duration(config['SSH_SLOW_WINDOW'])
-    for ip, scope in sorted(set(slow_marks(document))):
-        key = 'slowconn|' + ip + '|' + scope
+    """Report each connection-based slow or burst ban once per window."""
+    def report(key, window, signal, limit):
         prior = store.db.execute('SELECT stamp FROM episodes WHERE key=?', (key,)).fetchone()
         if prior and prior[0] >= now - window:
-            continue
+            return
         store.db.execute('INSERT OR REPLACE INTO episodes VALUES (?,?)', (key, now))
-        limit = config['SSH_SLOW_TOTAL_CONNECTIONS' if scope == '*' else 'SSH_SLOW_PORT_CONNECTIONS']
-        store.emit(digest(key + '|' + str(now)), now, 'slow-threshold', ip, scope,
-                   'signal=' + ('connections-all-ports' if scope == '*' else 'connections') + ' action=ban', int(limit))
+        store.emit(digest(key + '|' + str(now)), now, 'slow-threshold', key.split('|')[1], key.split('|')[2],
+                   'signal=' + signal + ' action=ban', int(limit))
+
+    window = data.duration(config['SSH_SLOW_WINDOW'])
+    for ip, scope in sorted(set(slow_marks(document))):
+        report('slowconn|' + ip + '|' + scope, window, 'connections-all-ports' if scope == '*' else 'connections',
+               config['SSH_SLOW_TOTAL_CONNECTIONS' if scope == '*' else 'SSH_SLOW_PORT_CONNECTIONS'])
+    burst = burst_rule(config)
+    if burst:
+        for ip, scope in sorted(set(slow_marks(document, BURST_MARKS))):
+            report('burst|' + ip + '|' + scope, data.duration(burst[1]), 'burst', burst[0])
 
 
 def applied(config):
@@ -477,7 +497,7 @@ def describe_slow(config):
             + '; whitelisted sources are not counted)')
     if config.get('SSH_SLOW_BEHAVIOR') == 'on':
         text += ('\nBehavior rules: on (' + config['SSH_BEHAVIOR_RULES'] + ' on custom ports; a '
-                 + config['SSH_BEHAVIOR_PAUSE'] + ' pause starts a streak over; p bans all ports, c follows the jail mode)')
+                 + config['SSH_BEHAVIOR_PAUSE'] + ' pause starts a streak over; p bans all ports, c and b follow the jail mode, b acts at once)')
     else:
         text += '\nBehavior rules: off (set SSH_SLOW_BEHAVIOR=on, then check and reload)'
     if config.get('LEARN_USERS') == 'on':

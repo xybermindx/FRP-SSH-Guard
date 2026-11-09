@@ -64,7 +64,7 @@ class ListTests(unittest.TestCase):
         self.assertNotIn('tier=', '\n'.join(data.HEADERS['allow']))
 
     def test_default_ban_durations_and_every_shipped_header_refresh(self):
-        values = data.settings((ROOT / 'etc/settings.conf.example').read_text())
+        values = data.template_settings((ROOT / 'etc/settings.conf.example').read_text())
         rows = data.records(''.join(f'198.51.100.{tier} tier={tier}\n' for tier in range(1, 6)))
         resolved = data.resolve_tiers(rows, values['BAN_TIMEOUT'], values['STRIKE_LADDER'], values['STRIKE_MAX'], now=0)
         self.assertEqual([row.expiry for row in resolved],

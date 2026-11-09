@@ -38,7 +38,7 @@ SCHEMA = '''
     CREATE TABLE IF NOT EXISTS known (ip TEXT, port INTEGER, expiry REAL, PRIMARY KEY(ip, port));
 '''
 SS = ['ss', '-H', '-t', '-i', '-n', '-p', 'state', 'established']
-RULE = re.compile(r'([1-9][0-9]{0,6})([pc]):([1-9][0-9]{0,8}[smhdw])')
+RULE = re.compile(r'([1-9][0-9]{0,6})([pcb]):([1-9][0-9]{0,8}[smhdw])')
 MAX_ROWS = 200000
 SLOT = 900  # seconds per activity slot
 
@@ -434,6 +434,8 @@ def summary(store, config, now, limit=10):
     def progress(row):
         best = 0.0
         for number, kind, seconds, _ in entries:
+            if kind == 'b':  # enforced by nftables, not by streaks
+                continue
             counts = window(activity.get(row[0], []), now, seconds)
             amount = len(counts) if kind == 'p' else sum(counts.values())
             best = max(best, min((row[2] - row[1]) / seconds, amount / number))

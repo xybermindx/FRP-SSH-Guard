@@ -90,6 +90,7 @@ Lifecycle / service:
   apply            Reapply accepted policy and current lists (internal/compatibility).
   check [FILE]     Validate list, listeners and rules without installing.
   ports            Print accepted ports (configured ports before first activation).
+  tidy-settings    Rewrite settings.conf in the short layout, keeping your values.
   status           Service state, counters, and allow/learned/ban counts.
   disable          Stop protection and disable startup; retain settings/data.
   remove           Compatibility alias for disable.
@@ -145,7 +146,7 @@ case "$action" in
         printf 'FRP-SSH-Guard %s\n' "$version"; exit 0 ;;
     -h|--help|help) usage; exit 0 ;;
     install|trial|check|config-home) (( $# <= 2 )) || { usage >&2; exit 2; } ;;
-    keep|reload|ports|status|doctor|remove|rollback|banned|learned|blocklist|whitelist|strikes|apply|_upgrade|_expire|_stop)
+    keep|reload|ports|status|doctor|remove|rollback|banned|learned|blocklist|whitelist|strikes|apply|tidy-settings|_upgrade|_expire|_stop)
         (( $# == 1 )) || { usage >&2; exit 2; } ;;
     report)
         (( $# <= 2 )) || { usage >&2; exit 2; } ;;
@@ -416,9 +417,16 @@ seconds_of() {
 # Express "more than COUNT new connections within SSH_SLOW_WINDOW" as an nftables
 # token bucket: COUNT at once, refilled at COUNT per window (approximate).
 slow_limit() {
-    local count=$1 window unit=day span=86400
+    local window unit=day
     window=$(seconds_of "$SSH_SLOW_WINDOW")
-    if (( window > 86400 )); then unit=week; span=604800; fi
+    if (( window > 86400 )); then unit=week; fi
+    bucket_limit "$1" "$window" "$unit"
+}
+
+# COUNT at once, refilled at COUNT per WINDOW seconds, in nftables' UNIT.
+bucket_limit() {
+    local count=$1 window=$2 unit=$3 span=3600
+    case "$unit" in day) span=86400 ;; week) span=604800 ;; esac
     echo "$(( (count * span + window - 1) / window ))/$unit burst $count packets"
 }
 
@@ -443,6 +451,7 @@ verify_listeners() {
 
 compile_rules() {
     local output=$1 spec port rate burst portset jail_type='' key4='ip saddr' key6='ip6 saddr' slow behavior=off
+    local entry surge='' surge_window=''
     # A resent SYN (same source port AND same initial sequence number) is the same
     # connection: per-source meters skip it once the first SYN passed them. A new
     # connection reusing a source port has a new sequence number and still counts.
@@ -451,6 +460,16 @@ compile_rules() {
     # Behavior rules count connections of sources without a real session (known)
     # per source and port; the sampler turns the counters into streaks.
     if [[ "$SSH_SLOW_PROTECTION" == on && "$SSH_SLOW_BEHAVIOR" == on ]]; then behavior=on; fi
+    # An Nb:T rule must act during the burst, so it is a kernel meter and not one
+    # of the rules the once-a-minute sampler judges. Validation allows one.
+    if [[ "$behavior" == on ]]; then
+        for entry in $SSH_BEHAVIOR_RULES; do
+            if [[ "$entry" =~ ^([0-9]+)b:(.+)$ ]]; then
+                surge_window=${BASH_REMATCH[2]}
+                surge=$(bucket_limit "${BASH_REMATCH[1]}" "$(seconds_of "$surge_window")" hour)
+            fi
+        done
+    fi
     # Slow protection on custom ports counts new connections (logins are hidden by
     # the tunnel): per source across all custom ports in shared mode, or per source
     # and port in per-port mode. Its key and ban scope follow JAIL_PER_PORT.
@@ -504,6 +523,12 @@ compile_rules() {
             echo "    set count4 { type ipv4_addr . inet_service; flags dynamic,timeout; timeout 26h; size 65536; }"
             echo "    set count6 { type ipv6_addr . inet_service; flags dynamic,timeout; timeout 26h; size 65536; }"
         fi
+        if [[ -n "$surge" ]]; then
+            echo "    set burst4 { type ipv4_addr$jail_type; flags dynamic,timeout; timeout $surge_window; size 65536; }"
+            echo "    set burst6 { type ipv6_addr$jail_type; flags dynamic,timeout; timeout $surge_window; size 65536; }"
+            echo "    set bursthit4 { type ipv4_addr$jail_type; flags dynamic,timeout; timeout 10m; size 65536; }"
+            echo "    set bursthit6 { type ipv6_addr$jail_type; flags dynamic,timeout; timeout 10m; size 65536; }"
+        fi
         if [[ "$JAIL_PER_PORT" == on ]]; then
             # All-port bans in per-port mode (behavior rules for ports touched).
             echo "    set wideban4 { type ipv4_addr; flags timeout; size 65536; }"
@@ -549,6 +574,10 @@ compile_rules() {
                 # Known users (a real session on this port) are not counted.
                 echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 ip saddr . tcp dport != @known4 $first4 != @synseen4 update @slow4 { $key4 limit rate over $slow } add @slowhit4 { $key4 } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v4\""
                 echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip6 saddr != @trusted6 ip6 saddr . tcp dport != @known6 $first6 != @synseen6 update @slow6 { $key6 limit rate over $slow } add @slowhit6 { $key6 } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port slow v6\""
+                if [[ -n "$surge" ]]; then
+                    echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 ip saddr . tcp dport != @known4 $first4 != @synseen4 update @burst4 { $key4 limit rate over $surge } add @bursthit4 { $key4 } add @ban4 { $key4 timeout $BAN_TIMEOUT } counter drop comment \"$port burst v4\""
+                    echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip6 saddr != @trusted6 ip6 saddr . tcp dport != @known6 $first6 != @synseen6 update @burst6 { $key6 limit rate over $surge } add @bursthit6 { $key6 } add @ban6 { $key6 timeout $BAN_TIMEOUT } counter drop comment \"$port burst v6\""
+                fi
                 if [[ "$behavior" == on ]]; then
                     echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 ip saddr . tcp dport != @known4 $first4 != @synseen4 update @count4 { ip saddr . tcp dport counter } comment \"$port observe v4\""
                     echo "        tcp dport $port ct state new tcp flags & (syn | ack) == syn ip6 saddr != @trusted6 ip6 saddr . tcp dport != @known6 $first6 != @synseen6 update @count6 { ip6 saddr . tcp dport counter } comment \"$port observe v6\""
@@ -682,6 +711,7 @@ commit_candidate() {
     local previous=0
     observe checkpoint
     OBSERVABILITY_VERSION=1
+    BEHAVIOR_RULES_VERSION=1
     if [[ -f "$APPLIED_CONF" ]]; then
         cp "$APPLIED_CONF" "$STAGE/previous.conf"
         previous=1
@@ -797,12 +827,24 @@ forgive() {
     observe forgive "$ip"
 }
 
+cmd_tidy_settings() {
+    local template
+    for template in "$LIB_DIR/settings.conf.default" /usr/share/frp-ssh-guard/settings.conf.default \
+        "$LIB_DIR/../etc/settings.conf.example"; do
+        if [[ -f "$template" ]]; then
+            python3 "$INPUT_HELPER" tidy-settings "$ETC_DIR" "$template"
+            return
+        fi
+    done
+    die 'The settings template is missing; reinstall the package.'
+}
+
 cmd_unban() {
     local ip set spec token
     ip=$(python3 "$INPUT_HELPER" host "$1") || exit 1
     table_active || die "Guard is not active."
     # Slow meters too: an exhausted connection budget would re-ban at once.
-    for set in ban4 ban6 hardban4 hardban6 slow4 slow6 slowhit4 slowhit6; do
+    for set in ban4 ban6 hardban4 hardban6 slow4 slow6 slowhit4 slowhit6 burst4 burst6 bursthit4 bursthit6; do
         if [[ "$JAIL_PER_PORT" == on ]]; then
             for spec in ${PROTECTED_PORTS//,/ }; do
                 token=${spec%%:*}
@@ -952,6 +994,7 @@ case "$action" in
 esac
 case "$action" in
     remove|rollback|_expire) ;; # stop helpers before taking the runtime lock
+    tidy-settings) ;; # takes the installation locks itself
     *) lock_guard ;;
 esac
 case "$action" in
@@ -990,6 +1033,10 @@ case "$action" in
             exit 0
         fi
         [[ -f "$APPLIED_CONF" ]] || die 'Active guard has no accepted policy; automatic refresh refused.'
+        # Once only: the marker lets an operator go back to the old rules afterwards.
+        if [[ "$BEHAVIOR_RULES_VERSION" == 0 && "$SSH_BEHAVIOR_RULES" == '4p:2h 3p:6h 50c:12h' ]]; then
+            SSH_BEHAVIOR_RULES='20b:30m 4p:2h 3p:6h 50c:12h'
+        fi
         verify_unit_owner
         sync_lists
         STAGE=$(mktemp -d "${TMPDIR:-/run}/frp-ssh-guard.XXXXXX")
@@ -1186,4 +1233,5 @@ case "$action" in
         echo 'Accepted policy and current lists applied.' ;;
 
     report)   cmd_report "${2:-24h}" ;;
+    tidy-settings) cmd_tidy_settings ;;
 esac

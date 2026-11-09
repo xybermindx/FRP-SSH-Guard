@@ -1,5 +1,30 @@
 # v0.0.9 validation
 
+## Burst limit and the short settings file (package revision 2)
+
+Checked on the development host with synthetic addresses only. No production firewall
+was changed.
+
+- Local `make test`: 187 cases, 185 passing. The privileged namespace case and the RPM
+  build case are skipped locally; CI runs both. New regressions:
+  - the exact burst rule in both jail modes, its order after the slow rule, the port 22
+    exclusion, and no rule or sets when either switch is off or no `b` entry exists;
+  - rule bounds, one burst rule at most, and streak judging that ignores it;
+  - the `burst-connections` reason, reported once per window;
+  - the one-time upgrade of the exact previous default in the file and the accepted
+    policy, with customized rules untouched and a later return to the old rules kept;
+  - every setting stated once in the template, with Advanced values equal to the
+    runtime defaults, and activation from the short template;
+  - `tidy-settings` keeping changed values, writing a backup, staying stable on a
+    second run and leaving the firewall alone.
+- The first v0.0.9 build's template upgraded and tidied correctly, and the source installer's
+  `EDIT_USER` handling was checked for the default and a custom account.
+- Source and history passed the private privacy rules; the built `.deb` passed the
+  artifact scan.
+- Not run: `tests/vm-behavior.py` in a disposable VM, which adds the real-kernel burst
+  checks. The kernel has not loaded the burst rule on this host; unprivileged
+  namespaces are unavailable here, and the live server's firewall was left alone.
+
 ## Every systemd Linux family and FRP architecture (v0.0.9)
 
 Checked on 2026-11-07 in GitHub Actions and on the development host with synthetic

@@ -125,27 +125,20 @@ class ConfigUpgradeTests(unittest.TestCase):
                 for line in (data.LEGACY_SETTINGS_HEADER + variant
                              + data.LEGACY_RENAMED_COMMENTS['ALERT_LOG_MAX_SIZE'][0]):
                     self.assertNotIn(line, updated.splitlines())
-                self.assertIn('# === When and how changes take effect ===', updated)
-                lines = updated.splitlines()
-                # New thresholds join the existing slow settings, not the end of the file.
-                self.assertLess(lines.index('SSH_SLOW_TOTAL_CONNECTIONS=300'), lines.index('SSH_SLOW_FAILURES=20'))
-                self.assertEqual(lines.index('SSH_SLOW_PORT_CONNECTIONS=100') + 1, lines.index('SSH_SLOW_FAILURES=20'))
+                self.assertIn('# Nothing changes until you run:', updated)
+                self.assertNotIn('SSH_SLOW_TOTAL_CONNECTIONS', values)  # Advanced keeps its default
                 self.assertIn('instructions', keys)
                 self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
 
-    def test_admin_learning_is_added_above_login_users_and_shipped_comment_refreshed(self):
+    def test_admin_learning_is_added_above_login_users(self):
         self.assertEqual(data.settings(TEMPLATE)['LEARN_ADMINS'], 'on')
-        original = ('PROTECTED_PORTS="22001"\nBAN_TIMEOUT=6h\n\n'
-                    + ''.join(line + '\n' for line in data.REFRESHED_COMMENTS['LOGIN_USERS'][0])
-                    + 'LOGIN_USERS="alice"\nMAX_LEARNED=500\n')
+        original = 'PROTECTED_PORTS="22001"\nBAN_TIMEOUT=6h\n\nLOGIN_USERS="alice"\nMAX_LEARNED=500\n'
         updated, keys = data.merge_defaults(original, TEMPLATE)
         lines = updated.splitlines()
         self.assertEqual(data.settings(updated)['LEARN_ADMINS'], 'on')
         self.assertEqual(data.settings(updated)['LOGIN_USERS'], 'alice')
         self.assertLess(lines.index('LEARN_ADMINS=on'), lines.index('LOGIN_USERS="alice"'))
         self.assertLess(lines.index('BAN_TIMEOUT=6h'), lines.index('LEARN_ADMINS=on'))
-        for line in data.REFRESHED_COMMENTS['LOGIN_USERS'][0]:
-            self.assertNotIn(line, lines)
         self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
         custom = 'PROTECTED_PORTS="22001"\n# my admins\nLOGIN_USERS="alice"\n'
         kept = data.merge_defaults(custom, TEMPLATE)[0].splitlines()
@@ -161,11 +154,11 @@ class ConfigUpgradeTests(unittest.TestCase):
         values = data.settings(updated)
         for key, value in (('BAN_TIMEOUT', '6h'), ('STRIKE_LADDER', '2:1d 3:3d 4:7d 5:28d'), ('STRIKE_MAX', '28d')):
             self.assertEqual(values[key], value)  # an upgrade never changes chosen durations
-        for blocks in (data.REFRESHED_COMMENTS[k] for k in ('BAN_TIMEOUT', 'STRIKE_WINDOW', 'STRIKE_LADDER', 'STRIKE_MAX')):
+        for blocks in (data.REFRESHED_COMMENTS[k] for k in ('BAN_TIMEOUT', 'STRIKE_LADDER')):
             for line in blocks[-1]:
                 if line not in TEMPLATE.splitlines():
                     self.assertNotIn(line, updated.splitlines())
-        self.assertIn('# source\'s previous ban ENDED moves one step up STRIKE_LADDER, and a source at the',
+        self.assertIn('# Longer bans for repeat offenders, as "offense:duration". Empty turns this off.',
                       updated.splitlines())
         self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
 
@@ -191,20 +184,21 @@ class ConfigUpgradeTests(unittest.TestCase):
         self.assertEqual(values['SSH_SLOW_BEHAVIOR'], 'on')  # on by default, also after upgrades
         self.assertEqual(values['LEARN_USERS'], 'on')  # it only stops counting real users
         self.assertEqual(values['BAN_TIMEOUT'], '5h')
-        for key in ('SSH_BEHAVIOR_PAUSE', 'SSH_BEHAVIOR_RULES', 'LEARN_SESSION_AGE', 'LEARN_SESSION_BYTES'):
-            self.assertEqual(values[key], fresh[key])
+        self.assertEqual(values['SSH_BEHAVIOR_RULES'], fresh['SSH_BEHAVIOR_RULES'])
+        for key in ('SSH_BEHAVIOR_PAUSE', 'LEARN_SESSION_AGE', 'LEARN_SESSION_BYTES'):
+            self.assertNotIn(key, values)  # Advanced settings keep their defaults
         lines = updated.splitlines()
         self.assertLess(lines.index('SSH_SLOW_WINDOW=24h'), lines.index('SSH_SLOW_BEHAVIOR=on'))
-        self.assertLess(lines.index('SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"'), lines.index('LOG_MAX_SIZE=10MiB'))
+        self.assertLess(lines.index('SSH_BEHAVIOR_RULES="20b:30m 4p:2h 3p:6h 50c:12h"'), lines.index('LOG_MAX_SIZE=10MiB'))
         self.assertLess(lines.index('LEARN_TIMEOUT=90d'), lines.index('LEARN_USERS=on'))
-        self.assertLess(lines.index('LEARN_SESSION_BYTES=32KiB'), lines.index('STRIKE_WINDOW=90d'))
+        self.assertLess(lines.index('LEARN_USERS=on'), lines.index('STRIKE_WINDOW=90d'))
         for line in original.splitlines():
             self.assertIn(line, lines)
         self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
         # A file without the anchoring settings still gets every key, at the end.
         bare, keys = data.merge_defaults('PROTECTED_PORTS="22001"\n', TEMPLATE)
         self.assertEqual(data.settings(bare)['SSH_SLOW_BEHAVIOR'], 'on')
-        self.assertIn('LEARN_SESSION_AGE', keys)
+        self.assertIn('LEARN_USERS', keys)
         self.path.write_text(original)
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -216,6 +210,63 @@ class ConfigUpgradeTests(unittest.TestCase):
         with contextlib.redirect_stdout(output):
             data.append_defaults(self.path, TEMPLATE)
         self.assertNotIn('restless-source', output.getvalue())
+
+    def test_previous_default_rules_gain_the_burst_rule_once(self):
+        old, new = '4p:2h 3p:6h 50c:12h', '20b:30m 4p:2h 3p:6h 50c:12h'
+        original = 'PROTECTED_PORTS="22001"\nSSH_BEHAVIOR_RULES="' + old + '"  # kept\n'
+        updated, keys = data.merge_defaults(original, TEMPLATE)
+        self.assertEqual(data.settings(updated)['SSH_BEHAVIOR_RULES'], new)
+        self.assertIn(data.BURST_NOTE, updated.splitlines())
+        self.assertIn('SSH_BEHAVIOR_RULES="' + new + '"  # kept', updated.splitlines())
+        self.assertIn('burst-rule', keys)
+        self.assertEqual(data.merge_defaults(updated, TEMPLATE), (updated, []))
+        # Going back to the old rules afterwards is a choice that later upgrades keep.
+        reverted = updated.replace(new, old)
+        self.assertEqual(data.merge_defaults(reverted, TEMPLATE), (reverted, []))
+        custom = original.replace(old, '3p:1h 30c:6h')
+        self.assertEqual(data.settings(data.merge_defaults(custom, TEMPLATE)[0])['SSH_BEHAVIOR_RULES'], '3p:1h 30c:6h')
+        short = TEMPLATE.replace(new, old)
+        self.assertEqual(data.merge_defaults(short, TEMPLATE), (short, []))
+        self.path.write_text(original)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            data.append_defaults(self.path, TEMPLATE)
+        self.assertIn('added the 20b:30m burst limit to SSH_BEHAVIOR_RULES', output.getvalue())
+
+    def test_template_states_every_setting_once_with_the_runtime_default(self):
+        stated = data.template_settings(TEMPLATE)
+        self.assertEqual(set(stated), data.POLICY_KEYS - {'SSH_SLOW_MODE', 'ALERT_LOG_MAX_SIZE'})
+        self.assertFalse(set(data.advanced_defaults(TEMPLATE)) & set(data.settings(TEMPLATE)))
+        keys = sorted(data.advanced_defaults(TEMPLATE))
+        result = subprocess.run(['bash', '-ec', '. "$1"; load_guard_config runtime; shift; for key; do printf "%s=%s\\n" "$key" "${!key}"; done',
+                                 'defaults', str(ROOT / 'bin/frp-ssh-guard-config.sh'), *keys],
+                                env={**os.environ, 'GUARD_DIR': str(self.root)}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(dict(line.split('=', 1) for line in result.stdout.splitlines()),
+                         data.advanced_defaults(TEMPLATE))
+
+    def test_tidy_keeps_every_changed_value_and_is_stable(self):
+        original = ('# my note\nPROTECTED_PORTS="22001,22003"\nSSH_SLOW_PROTECTION=on\nJAIL_PER_PORT=on\n'
+                    'LOGIN_USERS="alice|bob"\nSSH_SLOW_WINDOW=48h\nLOG_MAX_SIZE=10MiB\n'
+                    "SSH_BEHAVIOR_RULES='3p:1h 30c:6h'\nEDIT_USER=\"$(id)\"\n")
+        text, _ = data.tidy(original, TEMPLATE)
+        values = data.settings(text)
+        for key, value in data.settings(original).items():
+            if key != 'LOG_MAX_SIZE':
+                self.assertEqual(values[key], value, key)
+        self.assertNotIn('LOG_MAX_SIZE', values)  # at its default: stays a commented line
+        self.assertIn('# LOG_MAX_SIZE=10MiB', text.splitlines())
+        self.assertNotIn('# LOGIN_USERS=""', text.splitlines())
+        self.assertNotIn('# my note', text)
+        self.assertEqual(data.tidy(text, TEMPLATE)[0], text)
+        self.path.write_text(original)
+        with contextlib.redirect_stdout(io.StringIO()):
+            data.tidy_file(self.path, TEMPLATE)
+        self.assertEqual(self.path.read_text(), text)
+        backups = list(self.root.glob('settings.conf.before-upgrade-*'))
+        self.assertEqual([backup.read_text() for backup in backups], [original])
+        with self.assertRaises(ValueError):
+            data.tidy('BAN_TIMEOUT=3h\n', TEMPLATE)  # legacy ports.conf selection
 
     def test_invalid_input_and_unsafe_file_types_are_unchanged(self):
         for kind in ('invalid', 'symlink', 'hardlink', 'fifo', 'directory'):

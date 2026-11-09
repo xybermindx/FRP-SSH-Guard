@@ -119,6 +119,35 @@ cat "$GUARD_DIR/rules.nft"
         off = self.rules('22001\n', config='SSH_SLOW_PROTECTION=off\n')
         self.assertNotIn(' slow v4', off.stdout)
 
+    def test_burst_rule_acts_in_the_kernel_for_unproven_sources_only(self):
+        on = 'SSH_SLOW_PROTECTION=on\nSSH_SLOW_BEHAVIOR=on\n'
+        rules = 'SSH_BEHAVIOR_RULES="20b:30m 4p:2h"\n'
+        shared = self.rules('22001\n', config=on + rules)
+        self.assertEqual(shared.returncode, 0, shared.stderr)
+        # Trusted and known sources skip it, and a resent SYN is not counted again.
+        self.assertIn('tcp dport 22001 ct state new tcp flags & (syn | ack) == syn ip saddr != @trusted4 '
+                      'ip saddr . tcp dport != @known4 ip saddr . tcp sport . tcp dport . tcp sequence != @synseen4 '
+                      'update @burst4 { ip saddr limit rate over 40/hour burst 20 packets } '
+                      'add @bursthit4 { ip saddr } add @ban4 { ip saddr timeout 12h } counter drop comment "22001 burst v4"',
+                      shared.stdout)
+        self.assertIn('set burst6 { type ipv6_addr; flags dynamic,timeout; timeout 30m; size 65536; }', shared.stdout)
+        self.assertIn('"22001 burst v6"', shared.stdout)
+        self.assertLess(shared.stdout.index('"22001 slow v4"'), shared.stdout.index('"22001 burst v4"'))
+        self.assertLess(shared.stdout.index('"22001 burst v4"'), shared.stdout.index('"22001 first v4"'))
+        per_port = self.rules('22001\n', config=on + rules + 'JAIL_PER_PORT=on\n')
+        self.assertIn('update @burst4 { ip saddr . tcp dport limit rate over 40/hour burst 20 packets } '
+                      'add @bursthit4 { ip saddr . tcp dport } add @ban4 { ip saddr . tcp dport timeout 12h }', per_port.stdout)
+        self.assertIn('limit rate over 60/hour burst 20 packets',
+                      self.rules('22001\n', config=on + 'SSH_BEHAVIOR_RULES="20b:20m"\n').stdout)
+        native = self.rules('22001\n', config=on + rules + 'PROTECT_SERVER_SSH=on\n')
+        self.assertIn('"22001 burst v4"', native.stdout)
+        self.assertNotIn('"22 burst v4"', native.stdout)  # port 22 counts failed logins instead
+        for config in ('SSH_SLOW_PROTECTION=off\nSSH_SLOW_BEHAVIOR=on\n' + rules,
+                       'SSH_SLOW_PROTECTION=on\nSSH_SLOW_BEHAVIOR=off\n' + rules,
+                       on + 'SSH_BEHAVIOR_RULES="4p:2h"\n'):
+            with self.subTest(config=config):
+                self.assertNotIn('burst4', self.rules('22001\n', config=config).stdout)
+
     def test_resent_syns_known_users_and_behavior_rules_in_both_jail_modes(self):
         on = 'SSH_SLOW_PROTECTION=on\nSSH_SLOW_BEHAVIOR=on\n'
         shared = self.rules('22001\n', config=on)
@@ -174,7 +203,7 @@ grep -E '^(SSH_SLOW_BEHAVIOR|LEARN_USERS)=' "$GUARD_DIR/accepted"
 ''')
         self.assertEqual(result.returncode, 0, result.stderr)
         lines = result.stdout.splitlines()
-        self.assertEqual(lines[0], 'on|on|4p:2h 3p:6h 50c:12h|3m|')
+        self.assertEqual(lines[0], 'on|on|20b:30m 4p:2h 3p:6h 50c:12h|3m|')
         self.assertEqual(lines[1], '1')  # the automatic package refresh counts at once
         self.assertEqual(lines[2:], ['SSH_SLOW_BEHAVIOR=on', 'LEARN_USERS=on'])
 

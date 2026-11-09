@@ -686,60 +686,79 @@ _BAN_COMMENT = ['# Base source ban when the per-source or local authentication l
                 '# Scope is all protected ports unless JAIL_PER_PORT=on.',
                 '# Positive integer + s/m/h/d/w (seconds/minutes/hours/days/weeks). Default 6 hours.']
 REFRESHED_COMMENTS = {
-    'LOGIN_USERS': [[
-        "# Optional learning from successful logins to THIS SERVER's sshd, not tunneled SSH.",
-        '# Default empty = disabled. grep extended regex, e.g. "alice|bob".',
-        '# Matching source IPs bypass guard limits/blocks; also exempted from an existing',
-        '# fail2ban sshd jail. Enable only for trusted operator accounts.']],
     'BAN_TIMEOUT': [_BAN_COMMENT + [  # v0.0.7
         '# For a PERMANENT block, write the address in blocklist.conf with no time, or run',
         '# sudo frp-ssh-guard block 203.0.113.10 (see blocklist.conf for more examples).'], _BAN_COMMENT],
-    'STRIKE_WINDOW': [[
-        '# Repeat-offender history window; positive integer + s/m/h/d/w. Default 90 days.',
-        '# Bans are sampled every minute: short bans and repeated events may be missed.']],
     'STRIKE_LADDER': [[
         '# Increasing "strike-count:duration" pairs, counts >=2. Empty disables escalation.',
         '# Default: 2 offenses=1 day, 3=3 days, 4=7 days, 5 or more=28 days.']],
-    'STRIKE_MAX': [[
-        '# Maximum strike duration from the latest offense. Default 28 days.',
-        '# The strike helper caps ladder durations at this value.']],
 }
 LEGACY_RENAMED_COMMENTS = {'ALERT_LOG_MAX_SIZE': [
     ['# Local alerts: newest complete record first, discard oldest records at the cap.',
      '# No rotated archives or remote notifications. Accepted settings change on reload.']]}
 SWITCH_KEYS = ('EXCLUDE_PORTS', 'PROTECT_SERVER_SSH', 'JAIL_PER_PORT', 'SSH_SLOW_PROTECTION')
 # Missing thresholds placed beside a related setting instead of at the end.
-INSERT_BEFORE = {'SSH_SLOW_TOTAL_CONNECTIONS': 'SSH_SLOW_FAILURES',
-                 'SSH_SLOW_PORT_CONNECTIONS': 'SSH_SLOW_FAILURES',
-                 'LEARN_ADMINS': 'LOGIN_USERS',
+INSERT_BEFORE = {'LEARN_ADMINS': 'LOGIN_USERS',
                  # Behavior rules follow the slow thresholds and
                  # session learning follows the learned-address timeout.
-                 'SSH_SLOW_BEHAVIOR': 'LOG_MAX_SIZE', 'SSH_BEHAVIOR_PAUSE': 'LOG_MAX_SIZE',
-                 'SSH_BEHAVIOR_RULES': 'LOG_MAX_SIZE',
-                 'LEARN_USERS': 'STRIKE_WINDOW', 'LEARN_SESSION_AGE': 'STRIKE_WINDOW',
-                 'LEARN_SESSION_BYTES': 'STRIKE_WINDOW'}
+                 'SSH_SLOW_BEHAVIOR': 'LOG_MAX_SIZE', 'SSH_BEHAVIOR_RULES': 'LOG_MAX_SIZE',
+                 'LEARN_USERS': 'STRIKE_WINDOW'}
+FIRST_SECTION = '# === 1. Ports to protect ==='
+ADVANCED_SECTION = '# === Advanced (optional) ==='
+# The default before the burst rule. Upgrading a file that still has it adds the
+# burst rule once; the note, or the current layout, marks a deliberate choice.
+PREVIOUS_BEHAVIOR_RULES = '4p:2h 3p:6h 50c:12h'
+BURST_NOTE = '# 20b:30m was added during upgrade (burst limit). Remove it to turn that rule off.'
 
 
 def instructions(template):
     """The template's reload instructions, without its title line."""
     lines = template.splitlines()
-    if '# === Ports and protection switches ===' not in lines:
+    if FIRST_SECTION not in lines:
         return []
-    block = lines[1:lines.index('# === Ports and protection switches ===')]
+    block = lines[1:lines.index(FIRST_SECTION)]
     while block and not block[-1].strip():
         block.pop()
     return block
 
 
+def own_comments(lines):
+    """The comment block directly above a setting, without section titles."""
+    block = []
+    for line in reversed(lines):
+        if not line.strip() or line.startswith('# ==='):
+            break
+        block.insert(0, line)
+    return block
+
+
+def advanced_defaults(template):
+    """Settings listed as commented defaults in the template's Advanced section."""
+    lines = template.splitlines()
+    if ADVANCED_SECTION not in lines:
+        return {}
+    result = {}
+    for line in lines[lines.index(ADVANCED_SECTION) + 1:]:
+        match = re.fullmatch(r'# ([A-Z_][A-Z_0-9]*=.*)', line)
+        if match:
+            result.update(settings(match[1]))
+    return result
+
+
+def template_settings(template):
+    """Every default the template states, active and Advanced."""
+    return {**advanced_defaults(template), **settings(template)}
+
+
 def template_comments(template):
-    """Comment lines that precede each setting in the template."""
+    """Comment lines that describe each setting in the template."""
     result, comments = {}, []
     for line in template.splitlines(keepends=True):
         parsed = settings(line)
         if not parsed:
             comments.append(line)
             continue
-        result[next(iter(parsed))] = ''.join(comments)
+        result[next(iter(parsed))] = ''.join(own_comments(comments))
         comments = []
     return result
 
@@ -806,6 +825,15 @@ def merge_defaults(original, template):
             present.setdefault(new_key, present[old_key])
             changes.append(old_key)
 
+    rules = where('SSH_BEHAVIOR_RULES')
+    if (rules and present.get('SSH_BEHAVIOR_RULES') == PREVIOUS_BEHAVIOR_RULES
+            and ADVANCED_SECTION not in plain and BURST_NOTE not in plain):
+        current = settings(template)['SSH_BEHAVIOR_RULES']
+        edit(rules[-1], rules[-1] + 1,
+             BURST_NOTE + '\n' + plain[rules[-1]].replace(PREVIOUS_BEHAVIOR_RULES, current) + '\n')
+        present['SSH_BEHAVIOR_RULES'] = before['SSH_BEHAVIOR_RULES'] = current
+        changes.append('burst-rule')
+
     additions, switches, anchored, comments = [], [], {}, []
     for line in template.splitlines(keepends=True):
         parsed = settings(line)
@@ -824,7 +852,8 @@ def merge_defaults(original, template):
                 if switch == 'off':
                     text += '# To enable it: set on, then sudo frp-ssh-guard check && sudo frp-ssh-guard reload\n'
                 text += 'SSH_SLOW_PROTECTION=' + switch + '\n'
-            text = ''.join(comments) + text
+            block = own_comments(comments)
+            text = ('\n' + ''.join(block) if block else '') + text
             if key in SWITCH_KEYS:
                 switches.append((key, text))
             elif INSERT_BEFORE.get(key) in present and where(INSERT_BEFORE[key]):
@@ -881,8 +910,11 @@ def merge_defaults(original, template):
     return updated, list(dict.fromkeys(changes))
 
 
-def append_defaults(path, template):
-    """Preserve the original bytes and metadata; save a private backup first."""
+def rewrite(path, transform):
+    """Apply transform(text) -> (text, changes), keeping metadata and a private backup.
+
+    Returns (updated text, changes, backup path), or None when nothing changed.
+    """
     path = Path(path)
     if path.parent.is_symlink():
         raise ValueError('Configuration directory must not be a symbolic link.')
@@ -893,9 +925,9 @@ def append_defaults(path, template):
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid():
             raise ValueError('Configuration must be a regular file owned by its selected administrator.')
         original = source.read()
-        updated, keys = merge_defaults(original.decode('utf-8'), template)
+        updated, keys = transform(original.decode('utf-8'))
         if not keys or updated == original.decode('utf-8'):
-            return []
+            return None
         descriptor, temporary = tempfile.mkstemp(prefix='.guard-', dir=path.parent)
         try:
             with os.fdopen(descriptor, 'wb') as output:
@@ -923,8 +955,17 @@ def append_defaults(path, template):
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
+    return updated, keys, backup
+
+
+def append_defaults(path, template):
+    """Preserve the original bytes and metadata; save a private backup first."""
+    result = rewrite(path, lambda text: merge_defaults(text, template))
+    if not result:
+        return []
+    updated, keys, backup = result
     parts = []
-    added = [key for key in keys if key not in ('SSH_SLOW_MODE', 'instructions', *RENAMED)]
+    added = [key for key in keys if key not in ('SSH_SLOW_MODE', 'instructions', 'burst-rule', *RENAMED)]
     switch = settings(updated).get('SSH_SLOW_PROTECTION')
     if added:
         parts.append('added ' + ', '.join(added))
@@ -935,6 +976,8 @@ def append_defaults(path, template):
             parts.append('renamed ' + old_key + ' to ' + new_key)
     if 'instructions' in keys:
         parts.append('refreshed the reload instructions')
+    if 'burst-rule' in keys:
+        parts.append('added the 20b:30m burst limit to SSH_BEHAVIOR_RULES')
     print('Settings updated: ' + '; '.join(parts) + '. Original saved as ' + Path(backup).name)
     if 'SSH_SLOW_PROTECTION' in keys and switch == 'off':
         print('Slow brute-force protection stays off for this older configuration. To enable it, set '
@@ -944,6 +987,59 @@ def append_defaults(path, template):
               'and other round-the-clock automation; to turn the rules off, set SSH_SLOW_BEHAVIOR=off, then run: '
               'sudo frp-ssh-guard check && sudo frp-ssh-guard reload')
     return keys
+
+
+def assignment(key, value):
+    if re.fullmatch(r'[A-Za-z0-9_:.,/@%+-]+', value):
+        return key + '=' + value
+    if not re.search(r'["\\$`]', value):
+        return key + '="' + value + '"'
+    return key + '=' + shlex.quote(value)
+
+
+def tidy(original, template):
+    """The current short layout, holding every value that differs from a default."""
+    values = settings(merge_defaults(original, template)[0])
+    if 'PROTECTED_PORTS' not in values:
+        raise ValueError('tidy-settings needs a settings.conf that sets PROTECTED_PORTS.')
+    advanced = advanced_defaults(template)
+    lines = []
+    for line in template.splitlines(keepends=True):
+        parsed = settings(line)
+        match = re.fullmatch(r'# ([A-Z_][A-Z_0-9]*)=.*\n?', line)
+        if parsed:
+            key, default = next(iter(parsed.items()))
+            lines.append(line if values[key] == default else assignment(key, values[key]) + '\n')
+        elif match and match[1] in advanced and values.get(match[1], advanced[match[1]]) != advanced[match[1]]:
+            lines.append(assignment(match[1], values[match[1]]) + '\n')
+        else:
+            lines.append(line)
+    text = ''.join(lines)
+    if {**advanced, **settings(text)} != {**template_settings(template), **values}:
+        raise ValueError('Reorganizing would change a value; configuration retained.')
+    return text, ['layout']
+
+
+def tidy_file(path, template):
+    result = rewrite(path, lambda text: tidy(text, template))
+    if not result:
+        print('settings.conf already uses the current layout.')
+        return
+    print('Settings reorganized; every changed value was kept. Original saved as ' + Path(result[2]).name)
+    print('Nothing is applied yet. To accept it: sudo frp-ssh-guard check && sudo frp-ssh-guard reload')
+
+
+def tidy_settings(base, template):
+    with installation_lock():
+        selected = location(base)
+        path = (Path(selected['directory']) if selected else Path(base)) / 'settings.conf'
+        if not path.is_file():
+            raise ValueError('No settings.conf to reorganize; legacy guard.conf files are not converted.')
+        defaults = Path(template).read_text()
+        if selected:
+            as_user(selected['user'], ['tidy-user-settings'], [str(path), defaults])
+        else:
+            tidy_file(path, defaults)
 
 
 def upgrade_settings(base, template):
@@ -1063,6 +1159,10 @@ def main():
                   'Check file access/format and retry package installation with --reinstall.', file=sys.stderr)
     elif action == 'upgrade-user-settings':
         append_defaults(*json.load(sys.stdin))
+    elif action == 'tidy-settings':
+        tidy_settings(*args)
+    elif action == 'tidy-user-settings':
+        tidy_file(*json.load(sys.stdin))
     else:
         raise ValueError('Unknown input operation.')
 

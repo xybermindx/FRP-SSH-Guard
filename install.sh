@@ -80,6 +80,7 @@ install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-log.sh"         "$BIN/fr
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-strike.py"      "$BIN/frp-ssh-guard-strike"
 install -o root -g root -m 0755 "$SRC/bin/frp-ssh-guard-auth.py"        "$BIN/frp-ssh-guard-auth"
 install -o root -g root -m 0644 "$SRC/VERSION" "$BIN/VERSION"
+install -o root -g root -m 0644 "$SRC/etc/settings.conf.example" "$BIN/settings.conf.default"
 for helper in frp-ssh-guard-config.sh frp-ssh-guard-platform.sh frp-ssh-guard-validate.py frp-ssh-guard-input.py frp-ssh-guard-lists.py frp-ssh-guard-learn.py frp-ssh-guard-auth.py frp-ssh-guard-events.py frp-ssh-guard-behavior.py frp-ssh-guard-alerts.py; do
   install -o root -g root -m 0755 "$SRC/bin/$helper" "$BIN/$helper"
 done
@@ -111,11 +112,12 @@ text = pathlib.Path(example).read_text() if fresh else p.read_text()
 values = {}
 if ports: values['PROTECTED_PORTS'] = ports
 if fresh or set_exclude == '1': values['EXCLUDE_PORTS'] = exclude
-if fresh or set_user == '1': values['EDIT_USER'] = user
+if set_user == '1' or (fresh and user != 'root'): values['EDIT_USER'] = user
 for key, value in values.items():
     line = key + '=' + shlex.quote(value)
-    if re.search(r'^' + key + '=', text, flags=re.M):
-        text = re.sub(r'^' + key + '=.*$', lambda _: line, text, flags=re.M)
+    pattern = r'^(?:# )?' + key + '=.*$'  # Advanced settings are commented defaults
+    if re.search(pattern, text, flags=re.M):
+        text = re.sub(pattern, lambda _: line, text, flags=re.M)
     else:
         text += '\n' + line + '\n'
 p.write_text(text)

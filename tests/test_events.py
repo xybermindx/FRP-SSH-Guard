@@ -24,7 +24,7 @@ class EventTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.config = events.data.settings((ROOT / 'etc/settings.conf.example').read_text())
+        self.config = events.data.template_settings((ROOT / 'etc/settings.conf.example').read_text())
         self.config.update(PROTECT_SERVER_SSH='on', CONFIG_BASE=str(self.root / 'etc'),
                            MANUAL_DIR=str(self.root / 'home'), OBSERVABILITY_VERSION='1')
         (self.root / 'home').mkdir()
@@ -326,6 +326,24 @@ class EventTests(unittest.TestCase):
         self.assertEqual(self.count('strike-ban'), 1)
         self.assertEqual(self.count('slow-threshold'), 1)
 
+    def test_burst_bans_are_logged_with_their_own_reason_once_per_window(self):
+        def document(mark):
+            def element(value):
+                return {'elem': {'val': value, 'expires': 3600}}
+            return {'nftables': [{'table': {'handle': 1}},
+                                 {'set': {'name': 'ban4', 'elem': [element('198.51.100.8')]}},
+                                 {'set': {'name': 'bursthit4', 'elem': [element('198.51.100.8')] if mark else []}}]}
+        events.sample(self.store, self.config, NOW, {'nftables': [{'table': {'handle': 1}}]}, baseline=True)
+        events.sample(self.store, self.config, NOW + 60, document(True))
+        events.sample(self.store, self.config, NOW + 120, document(True))
+        detail = self.store.db.execute("SELECT detail FROM events WHERE kind='ban'").fetchone()[0]
+        self.assertTrue(detail.startswith('reason=burst-connections limit=20/30m until='), detail)
+        self.assertEqual(self.count('ban'), 1)
+        self.assertEqual(self.count('slow-threshold'), 1)
+        off = {**self.config, 'SSH_BEHAVIOR_RULES': '4p:2h'}
+        events.sample(self.store, off, NOW + 2000, document(True))  # no rule, no report
+        self.assertEqual(self.count('slow-threshold'), 1)
+
     def test_log_lines_show_ports_reason_and_skip_failures(self):
         self.store.emit('a' * 64, NOW, 'auth-failure', '198.51.100.7', '22')
         self.store.emit('b' * 64, NOW + 1, 'ban', '198.51.100.7', '22001',
@@ -351,6 +369,8 @@ class EventTests(unittest.TestCase):
                            ('SSH_BEHAVIOR_RULES', '0c:2h'), ('SSH_BEHAVIOR_RULES', '4p:14m'),
                            ('SSH_BEHAVIOR_RULES', '4p:8d'), ('SSH_BEHAVIOR_RULES', '4x:2h'),
                            ('SSH_BEHAVIOR_RULES', '4p2h'), ('SSH_BEHAVIOR_RULES', '1000001c:2h'),
+                           ('SSH_BEHAVIOR_RULES', '1b:30m'), ('SSH_BEHAVIOR_RULES', '20b:59s'),
+                           ('SSH_BEHAVIOR_RULES', '20b:7h'), ('SSH_BEHAVIOR_RULES', '20b:30m 30b:1h'),
                            ('LEARN_SESSION_AGE', '2m'), ('LEARN_SESSION_AGE', '2d'),
                            ('LEARN_SESSION_BYTES', '7KiB'), ('LEARN_SESSION_BYTES', '101MiB'),
                            ('LEARN_SESSION_BYTES', '32kb')):
@@ -360,7 +380,8 @@ class EventTests(unittest.TestCase):
     def test_valid_behavior_settings_and_older_callers_pass_validation(self):
         validator = events.module('validate')
         for key, value in (('SSH_SLOW_BEHAVIOR', 'off'), ('SSH_BEHAVIOR_RULES', ''), ('SSH_BEHAVIOR_PAUSE', '30m'),
-                           ('SSH_BEHAVIOR_RULES', '2p:15m 1c:7d'), ('LEARN_SESSION_AGE', '1d'),
+                           ('SSH_BEHAVIOR_RULES', '2p:15m 1c:7d'), ('SSH_BEHAVIOR_RULES', '2b:1m 4p:2h'),
+                           ('SSH_BEHAVIOR_RULES', '1000000b:6h'), ('LEARN_SESSION_AGE', '1d'),
                            ('LEARN_SESSION_BYTES', '100MiB')):
             config = {**self.config, key: value}
             if key == 'SSH_BEHAVIOR_RULES' and not value:
@@ -385,7 +406,7 @@ class EventTests(unittest.TestCase):
         events.sample(self.store, self.config, NOW + 60, {'nftables': [{'table': {'handle': 1}}] + document['nftables']})
         self.assertEqual(self.count('ban'), 2)  # the IPv6 one was new to the store
         self.assertIn('behavior=on', events.applied(self.config))
-        self.assertIn('Behavior rules: on (4p:2h 3p:6h 50c:12h', events.describe_slow(self.config))
+        self.assertIn('Behavior rules: on (20b:30m 4p:2h 3p:6h 50c:12h', events.describe_slow(self.config))
         self.assertIn('Known users: on', events.describe_slow(self.config))
         self.assertIn('behavior=off', events.applied({**self.config, 'SSH_SLOW_PROTECTION': 'off'}))
 

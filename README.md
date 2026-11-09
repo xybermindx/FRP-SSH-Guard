@@ -15,7 +15,8 @@ default to off; slow brute-force protection defaults to on.
 
 > **Observed impact (~10-day window):** **4,255,592** abusive packets dropped
 > (**99.97%**), **1,110** auto-bans across **595** unique IPs, and **0** backend
-> failed logins in the latest 24-hour window.
+> failed logins in that window's latest 24 hours. That was a snapshot, not a promise:
+> failed logins later returned in short bursts, which the burst limit now targets.
 
 **Version 0.0.9 (pre-release) · MIT licensed · Bash and Python**
 
@@ -23,17 +24,74 @@ default to off; slow brute-force protection defaults to on.
 [Configuration and command examples](docs/EXAMPLES.md) ·
 [Upgrade instructions](docs/MIGRATING.md)
 
+[Why you need this](#why-you-need-this) · [Attacks](#what-it-protects-against) ·
+[Performance](#performance) · [Quick setup and tuning](#quick-setup-and-tuning) ·
 [Deployment](#deploy-step-by-step) · [Configuration](#configuration) ·
-[Commands](#commands) · [Attack coverage](#what-it-protects-against) ·
+[Commands](#commands) ·
 [Verification](#verify-that-protection-takes-effect) · [Build from source](#open-source-and-building)
 
-## Protection paths
+## Why you need this
 
-![Connection filtering before FRP forwarding, plus optional local SSH authentication monitoring](docs/images/guard-paths.svg)
+FRP puts a private SSH server on a public port, and automated bots find public SSH
+ports quickly. The usual defenses do not fit this setup:
 
-Forwarded SSH authentication stays encrypted; the guard uses connection metadata. Optional local SSH protection reads the public host’s sshd authentication events. Passwords are never collected.
+- **The backend cannot see who is attacking.** frps relays every connection, so sshd
+  on the private host logs each client as `127.0.0.1`. fail2ban has nobody to ban
+  there, and OpenSSH's own per-source penalties can refuse every tunnelled user at once.
+- **The public host cannot see login results.** It knows the real address, but the SSH
+  session passing through it is encrypted.
 
-## Observed deployment results
+FRP-SSH-Guard runs on the public host, the one place that sees real addresses, and
+judges each source by how it connects. Attack traffic is dropped in the kernel before
+it reaches frps, the tunnel or sshd. Users who have completed a login stop being
+counted, so unstable networks and frequent reconnects do not get them banned.
+
+## What it protects against
+
+| Traffic or attack | Expected effect and limits |
+| --- | --- |
+| Many new connections from one source to one protected port | Exceeding the per-source limit adds a temporary ban; shared across protected ports by default, or per port when enabled. |
+| SSH brute-force tools that repeatedly reconnect | Limits connections; optional local sshd monitoring also counts authentication failures on this server. |
+| Repeated local SSH invalid-user attempts | With port-22 protection on: ban after 3 distinct invalid-user connections or 5 failures within 10 minutes by default. |
+| Distributed connection bursts | The shared per-port limit drops excess new attempts; legitimate traffic can also be affected. |
+| Repeated observed bans | Each repeat moves one step up: 12 hours, 3 days, 7 days, 30 days, then 90 days again for every further offense within 90 days of release. A clean 90 days after a ban starts over. Sampling can miss short or repeated events. |
+| Known unwanted IPs/networks | Manual blocks drop matching traffic to guarded ports, subject to whitelist and established-connection precedence. |
+| Slow attempts that stay under the per-minute limits | With `SSH_SLOW_PROTECTION=on` (default): banned after more than 300 new connections per source across forwarded ports in 24 hours (100 on one port with per-port jails), or 20 failed logins on local port 22. Counts refill gradually, so they are approximate. |
+| Slow probes that rotate across forwarded ports around the clock | With `SSH_SLOW_BEHAVIOR=on` (default): banned on all ports when, with no 2-hour pause, a source touches 4 ports within 2 hours or 3 ports within 6 hours, or makes 50 connections within 12 hours. Sources that completed a login are not judged. |
+| Short bursts of password guessing | With `SSH_SLOW_BEHAVIOR=on` (default): a source with no proven login is banned during the burst at about 20 new connections within 30 minutes. |
+| Users on unstable networks who reconnect often | Not counted once one connection from that source and port lasted 3 minutes or received 32 KiB; a resent SYN is never a new connection. The per-minute limits still apply. |
+| Password guesses inside a forwarded SSH connection | Not visible; forwarded authentication outcomes are unavailable, so only connection counts apply. |
+| Application exploits or stolen credentials | No application-level detection or prevention. |
+| Bandwidth-saturating DDoS | No availability guarantee; host filtering cannot recover an already saturated upstream link. |
+| Unconfigured ports, UDP, and other protocols | Outside the filtering scope. |
+
+**Use SSH keys as well.** The guard reduces password guessing, but it cannot judge a
+single guess, and a new source can still make about 20 connections before its first
+ban. Only key-only login (`PasswordAuthentication no` on the backend) makes guessing
+pointless.
+
+**Effectiveness depends on traffic, limits, and the deployment.** The observed
+results under [Performance](#performance) are specific to one deployment. No general prevention percentage,
+throughput benchmark, or external security audit is claimed. New connections are
+measured—not exact sessions or login attempts. A resent SYN (same source port and
+sequence number) counts once for each per-source limit; the shared per-port limit
+still sees every packet.
+
+## Performance
+
+### Cost
+
+- **Nothing sits in the data path.** The guard is a set of nftables rules, not a proxy.
+  Established sessions leave the rules at the first check, so an open SSH session gains
+  no extra hop or buffering.
+- **Only new connections to the ports you choose are measured.** Other ports and
+  protocols leave immediately.
+- **Memory is bounded.** Each automatic ban and meter set holds at most 65,536 entries.
+- **Little runs outside the kernel:** two small log followers, and a job once a minute.
+
+<!-- measured-cost -->
+
+### Observed in one live deployment
 
 An operator-reported dataset from a live deployment during a **~10-day observation window**, together with a **~30-day backend log window**.
 
@@ -52,7 +110,9 @@ An operator-reported dataset from a live deployment during a **~10-day observati
 
 Against the reported baseline this is roughly **77% fewer all-proxy connections**
 and **95% fewer SSH connections reaching the backends**, while the backend
-recorded **zero failed logins** in the latest 24-hour window. The remaining
+recorded **zero failed logins** in the latest 24-hour window. Later windows were
+not always zero: failed logins returned in short bursts from sources that stayed
+under the older limits, which is why the burst limit was added. The remaining
 all-proxy traffic was mostly public web traffic on port 443, which this
 deployment intentionally left outside the guarded ports.
 
@@ -72,6 +132,44 @@ verification. Traffic, settings, and logging coverage affect results. The operat
 also reported CPU usage displaying approximately 0% and a few MB of process RAM;
 the measurement method and kernel firewall costs were not provided, so these
 resource figures are not a performance benchmark.
+
+## Quick setup and tuning
+
+On the public frps host, after your FRP listeners are running:
+
+```bash
+sudo apt install ./frp-ssh-guard_0.0.9.deb        # or the .rpm; see Download below
+${EDITOR:-nano} ~/.frp-ssh-guard/settings.conf    # set PROTECTED_PORTS="22001,22003"
+sudo frp-ssh-guard check                          # validates; changes nothing
+sudo frp-ssh-guard trial                          # 30-minute trial, undone if not kept
+# From another connection, confirm you can still log in, then:
+sudo frp-ssh-guard keep
+sudo frp-ssh-guard status
+```
+
+The defaults suit most servers. To adjust, edit `settings.conf` and run
+`sudo frp-ssh-guard check && sudo frp-ssh-guard reload`, or use a command:
+
+| You want to | Do this |
+| --- | --- |
+| Never ban a host, office or monitoring system | `sudo frp-ssh-guard allow 203.0.113.10` |
+| Release a banned address | `sudo frp-ssh-guard unban 203.0.113.10` |
+| Block an address permanently | `sudo frp-ssh-guard block 203.0.113.10` |
+| Ban bursts sooner or later | Lower or raise 20 in `20b:30m` in `SSH_BEHAVIOR_RULES` |
+| Turn the burst limit off | Remove `20b:30m` from `SSH_BEHAVIOR_RULES` |
+| Change how long bans last | `BAN_TIMEOUT` and `STRIKE_LADDER` |
+| Ban only the attacked port | `JAIL_PER_PORT=on` |
+| Also protect this server's own SSH | `PROTECT_SERVER_SSH=on` |
+| See what it is doing | `sudo frp-ssh-guard status`, `sudo frp-ssh-guard report`, and `~/.frp-ssh-guard/frp-ssh-guard.log` |
+
+The full walkthrough is in [Deploy step by step](#deploy-step-by-step), and every
+setting is in the [settings reference](docs/SETTINGS.md).
+
+## Protection paths
+
+![Connection filtering before FRP forwarding, plus optional local SSH authentication monitoring](docs/images/guard-paths.svg)
+
+Forwarded SSH authentication stays encrypted; the guard uses connection metadata. Optional local SSH protection reads the public host’s sshd authentication events. Passwords are never collected.
 
 ## Purpose and features
 
@@ -141,31 +239,6 @@ the selection. Enable management SSH on port 22 separately with
 
 These are target platforms, not a claim that every kernel/distribution combination
 has been tested. See [validation results](docs/VALIDATION.md).
-
-## What it protects against
-
-| Traffic or attack | Expected effect and limits |
-| --- | --- |
-| Many new connections from one source to one protected port | Exceeding the per-source limit adds a temporary ban; shared across protected ports by default, or per port when enabled. |
-| SSH brute-force tools that repeatedly reconnect | Limits connections; optional local sshd monitoring also counts authentication failures on this server. |
-| Repeated local SSH invalid-user attempts | With port-22 protection on: ban after 3 distinct invalid-user connections or 5 failures within 10 minutes by default. |
-| Distributed connection bursts | The shared per-port limit drops excess new attempts; legitimate traffic can also be affected. |
-| Repeated observed bans | Each repeat moves one step up: 12 hours, 3 days, 7 days, 30 days, then 90 days again for every further offense within 90 days of release. A clean 90 days after a ban starts over. Sampling can miss short or repeated events. |
-| Known unwanted IPs/networks | Manual blocks drop matching traffic to guarded ports, subject to whitelist and established-connection precedence. |
-| Slow attempts that stay under the per-minute limits | With `SSH_SLOW_PROTECTION=on` (default): banned after more than 300 new connections per source across forwarded ports in 24 hours (100 on one port with per-port jails), or 20 failed logins on local port 22. Counts refill gradually, so they are approximate. |
-| Slow probes that rotate across forwarded ports around the clock | With `SSH_SLOW_BEHAVIOR=on` (default): banned on all ports when, with no 2-hour pause, a source touches 4 ports within 2 hours or 3 ports within 6 hours, or makes 50 connections within 12 hours. Sources that completed a login are not judged. |
-| Users on unstable networks who reconnect often | Not counted once one connection from that source and port lasted 3 minutes or received 32 KiB; a resent SYN is never a new connection. The per-minute limits still apply. |
-| Password guesses inside a forwarded SSH connection | Not visible; forwarded authentication outcomes are unavailable, so only connection counts apply. |
-| Application exploits or stolen credentials | No application-level detection or prevention. |
-| Bandwidth-saturating DDoS | No availability guarantee; host filtering cannot recover an already saturated upstream link. |
-| Unconfigured ports, UDP, and other protocols | Outside the filtering scope. |
-
-**Effectiveness depends on traffic, limits, and the deployment.** The observed
-results above are specific to one deployment. No general prevention percentage,
-throughput benchmark, or external security audit is claimed. New connections are
-measured—not exact sessions or login attempts. A resent SYN (same source port and
-sequence number) counts once for each per-source limit; the shared per-port limit
-still sees every packet.
 
 ## Download a release
 
@@ -373,7 +446,10 @@ See [examples](docs/EXAMPLES.md) for FRP-only, local-SSH-only and combined setup
 
 ## Configuration
 
-The complete [commented default](etc/settings.conf.example) explains each setting.
+The [default file](etc/settings.conf.example) is short: most people only set
+`PROTECTED_PORTS`. Less common settings are listed under Advanced at their defaults,
+and the [settings reference](docs/SETTINGS.md) explains each one. To move an older
+file to this layout, run `sudo frp-ssh-guard tidy-settings`.
 The file contains literal `KEY=value` assignments. It is parsed as data; shell
 commands and substitutions are not executed. Configuration comments and CLI output
 are English. Keep your home configuration private; it controls firewall policy.
@@ -388,7 +464,7 @@ are English. Keep your home configuration private; it controls firewall policy.
 | `SSH_AUTH_FAILURES`, `SSH_INVALID_USER_FAILURES`, `SSH_AUTH_WINDOW` | `5`, `3`, `10m` | Local authentication failure threshold, distinct invalid-user connection threshold, and counting window. |
 | `SSH_SLOW_TOTAL_CONNECTIONS`, `SSH_SLOW_PORT_CONNECTIONS`, `SSH_SLOW_FAILURES`, `SSH_SLOW_WINDOW` | `300`, `100`, `20`, `24h` | Slow limits: new connections per source across forwarded ports (shared jails) or on one forwarded port (per-port jails), failed logins on port 22, and their shared window. |
 | `SSH_SLOW_BEHAVIOR` | `on` (also after upgrades) | Restless-source rules for forwarded ports; acts only with `SSH_SLOW_PROTECTION=on`. See [restless sources](#restless-sources-and-known-users-v008). |
-| `SSH_BEHAVIOR_PAUSE`, `SSH_BEHAVIOR_RULES` | `2h`, `4p:2h 3p:6h 50c:12h` | A pause that starts a source's streak over (30m–12h), and the rules: `Np:T` N ports or `Nc:T` N connections within the last T (T 15m–7d). |
+| `SSH_BEHAVIOR_PAUSE`, `SSH_BEHAVIOR_RULES` | `2h`, `20b:30m 4p:2h 3p:6h 50c:12h` | A pause that starts a source's streak over (30m–12h), and the rules: `Nb:T` about N connections within T, acting at once (one rule, T 1m–6h), `Np:T` N ports or `Nc:T` N connections within the last T (T 15m–7d). |
 | `LEARN_USERS` | `on` | Known users: stop counting a source on a forwarded port after one connection there proved a login. |
 | `LEARN_SESSION_AGE`, `LEARN_SESSION_BYTES` | `3m`, `32KiB` | What proves a login: a connection open this long (keep above the backend's `LoginGraceTime`), or more data than this sent to the client. |
 | `LOG_MAX_SIZE` | `10MiB` | Activity log size; newest first, oldest complete lines deleted; 1KiB–100MiB, no archives. Formerly `ALERT_LOG_MAX_SIZE`. |
@@ -727,13 +803,16 @@ machines, so lower limits alone would ban people. Three signals separate the two
 
 With `SSH_SLOW_BEHAVIOR=on`, a source whose streak has lasted at least T is
 banned for `BAN_TIMEOUT` when the last T held any of these
-(`SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"`; stronger evidence needs less time):
+(`SSH_BEHAVIOR_RULES="20b:30m 4p:2h 3p:6h 50c:12h"`; stronger evidence needs less time):
 
 | Within the last T, with no 2-hour pause | T | Ban, shared jails | Ban, per-port jails |
 | --- | --- | --- | --- |
 | 4 or more forwarded ports | 2 hours | All ports | All ports: rotating is about the source |
 | 3 forwarded ports | 6 hours | All ports | All ports |
 | 50 or more new connections | 12 hours | All ports (source total) | Only each port that reached 50 by itself |
+
+The burst rule `20b:30m` needs no streak. The firewall bans a source during the
+burst, at about 20 new connections within 30 minutes, following `JAIL_PER_PORT`.
 
 Repeat bans climb `STRIKE_LADDER`. Whitelisted sources, administrators learned
 from logins to this server, and known users are never judged. Examples:
@@ -742,6 +821,7 @@ from logins to this server, and known users are never judged. Examples:
 | --- | --- |
 | Bot rotating over 5 ports, a connection every 10 minutes | Banned on all ports after about 2 hours |
 | Bot at about 160 connections a day on one port | Banned after about 12 hours |
+| Bot making 30 password tries in two minutes | Banned during the burst, at about the 21st connection |
 | User checking six machines in ten minutes, a few times a day | Each check ends with a pause: never banned |
 | Laptop on flaky Wi-Fi reconnecting every 5 minutes all day | Its first session with a shell makes it a known user: no counts, no ban |
 | Hourly job on one port with short, quiet sessions | 12 connections in 12 hours: never banned |

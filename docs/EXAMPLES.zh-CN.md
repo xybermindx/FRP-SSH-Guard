@@ -82,12 +82,13 @@ SSH_SLOW_WINDOW=24h
 ```ini
 SSH_SLOW_BEHAVIOR=on                       # off：不记录连续记录，也不做行为封禁
 SSH_BEHAVIOR_PAUSE=2h                      # 出现这么长的停顿，连续记录重新开始
-SSH_BEHAVIOR_RULES="4p:2h 3p:6h 50c:12h"   # 最近 T 内 N 个端口（p）或 N 次连接（c）
+SSH_BEHAVIOR_RULES="20b:30m 4p:2h 3p:6h 50c:12h"   # T 内的突发（b）、N 个端口（p）或 N 次连接（c）
 LEARN_USERS=on                             # 不再统计已完成登录的来源
 LEARN_SESSION_AGE=3m                       # 证据：连接在这段时间后仍保持打开
 LEARN_SESSION_BYTES=32KiB                  # 证据：发送给客户端的数据超过此值
 ```
 
+尚未完成登录的来源在 30 分钟内约 20 次新连接时，会在突发过程中被封禁。
 来源持续连接、中间没有 2 小时停顿、且从未完成登录时，如果最近 2 小时触及 4 个转发端口、
 最近 6 小时触及 3 个，或最近 12 小时有 50 次连接，即被封禁。端口规则封禁所有端口，
 `JAIL_PER_PORT=on` 时也一样；连接规则跟随封禁模式。只要有一次连接保持 3 分钟或传回 32 KiB，
@@ -96,7 +97,7 @@ LEARN_SESSION_BYTES=32KiB                  # 证据：发送给客户端的数�
 没有监控流量的主机可使用更严格的示例：1 小时内 3 个端口或 6 小时内 30 次连接即封禁。
 
 ```ini
-SSH_BEHAVIOR_RULES="3p:1h 30c:6h"
+SSH_BEHAVIOR_RULES="20b:30m 3p:1h 30c:6h"
 ```
 
 请先将监控探测、备份任务、CI 和 git 自动化加入白名单：它们全天连接，会话短且输出少。

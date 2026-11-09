@@ -57,6 +57,16 @@ recorded like authentication bans, so strikes, subnet reports and the activity l
 follow. In per-port mode the strike manager inserts address-wide escalations into
 `saved_ban4/6`. Older tables without these sets are left alone until refreshed.
 
+A rule `Nb:T` is compiled into the kernel instead of being judged by the sampler,
+which would see a burst only after it ended. Each forwarded port gets one more rule
+beside the slow rule, with the same `trusted`, `known` and `synseen` lookups, keyed by
+jail mode. It updates `burst4`/`burst6`, a token bucket of N that refills at N per T,
+and on overflow adds the key to `ban4`/`ban6` and to the 10-minute
+`bursthit4`/`bursthit6` marker that records the `burst-connections` reason. An
+upgrade adds the default burst rule once to a file or accepted snapshot that still
+holds the exact default from before the burst rule; `BEHAVIOR_RULES_VERSION` and a comment in the file
+record that, so going back to the old rules afterwards stays in effect.
+
 ## Editable and accepted configuration
 
 `settings.conf` contains literal assignments parsed by an allowlisted data parser.
@@ -202,6 +212,11 @@ live entries before replacement; abrupt restarts can lose unsampled kernel event
 See [verification](VALIDATION.md).
 
 ### Adding missing configuration options
+
+The template lists everyday settings as assignments and the rest as commented
+defaults under Advanced, which installation does not add to existing files because
+runtime defaults already cover them. `tidy-settings` rewrites a file in the current
+layout under the installation locks, keeping every value that differs from a default.
 
 Installation merges commented template defaults into the selected editable file,
 retaining existing assignments and comments. Missing port exclusions and SSH/jail

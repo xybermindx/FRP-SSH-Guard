@@ -48,13 +48,17 @@ def validate(values):
             fail(key, expected)
     bounded('SSH_BEHAVIOR_PAUSE', '2h', 1800, 43200, 'expected a duration from 30m to 12h')
     bounded('LEARN_SESSION_AGE', '3m', 180, 86400, 'expected a duration from 3m to 1d')
-    rules = values.setdefault('SSH_BEHAVIOR_RULES', '4p:2h 3p:6h 50c:12h')
+    rules = values.setdefault('SSH_BEHAVIOR_RULES', '20b:30m 4p:2h 3p:6h 50c:12h')
     for entry in rules.split():
-        match = re.fullmatch(r'([1-9][0-9]{0,6})([pc]):([1-9][0-9]{0,8}[smhdw])', entry)
-        if (not match or int(match[1]) > 1000000 or (match[2] == 'p' and int(match[1]) < 2)
-                or not 900 <= seconds(match[3]) <= 604800):
+        match = re.fullmatch(r'([1-9][0-9]{0,6})([pcb]):([1-9][0-9]{0,8}[smhdw])', entry)
+        low, high = (60, 21600) if match and match[2] == 'b' else (900, 604800)
+        if (not match or int(match[1]) > 1000000 or (match[2] in 'pb' and int(match[1]) < 2)
+                or not low <= seconds(match[3]) <= high):
             fail('SSH_BEHAVIOR_RULES', 'use entries like 4p:2h (N ports, 2-1000000) or 50c:12h '
-                 '(N connections, 1-1000000) with times from 15m to 7d')
+                 '(N connections, 1-1000000) with times from 15m to 7d, or one burst rule like '
+                 '20b:30m (N connections, 2-1000000) with a time from 1m to 6h')
+    if sum(entry.split(':')[0].endswith('b') for entry in rules.split()) > 1:
+        fail('SSH_BEHAVIOR_RULES', 'use at most one burst rule such as 20b:30m')
     if values['SSH_SLOW_BEHAVIOR'] == 'on' and not rules.split():
         fail('SSH_BEHAVIOR_RULES', 'needs at least one rule while SSH_SLOW_BEHAVIOR=on')
     size = re.fullmatch(r'([1-9][0-9]*)(KiB|MiB)', values.setdefault('LEARN_SESSION_BYTES', '32KiB'))

@@ -1,0 +1,29 @@
+name: VM behavior
+# A runner is a disposable machine with a real kernel. Push to vm-test/NAME to run
+# the destructive behavior test, which takes about 45 minutes.
+on:
+  push:
+    branches: ['vm-test/**']
+permissions:
+  contents: read
+jobs:
+  vm-behavior:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install test tools
+        run: sudo apt-get update && sudo apt-get install -y hping3
+      - name: Build the new package
+        run: python3 scripts/build.py deb
+      - name: Download the previous package and FRP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.0.7 -R "$GITHUB_REPOSITORY" -p 'frp-ssh-guard_0.0.7.deb' -D old
+          gh release download -R fatedier/frp -p '*_linux_amd64.tar.gz' -D frp-archive
+          mkdir frp && tar -xzf frp-archive/*.tar.gz -C frp --strip-components=1
+      - name: Run the behavior test
+        run: sudo FRP_GUARD_DISPOSABLE=1 python3 tests/vm-behavior.py old/frp-ssh-guard_0.0.7.deb dist/frp-ssh-guard_0.0.9.deb frp
