@@ -65,6 +65,17 @@ def rotate_until_banned(ip, set_name, minutes=25):
     raise AssertionError(f'{ip} was not banned in {set_name}')
 
 
+def section_of(text, prefix):
+    """The list section holding the first line that starts with prefix."""
+    section = None
+    for line in text.splitlines():
+        if line.startswith('['):
+            section = line.strip()
+        elif line.startswith(prefix):
+            return section
+    return None
+
+
 def reachable(ip, port):
     """The SYN got through: frps accepted the connection, whatever the backend does."""
     code = ('import socket; s=socket.socket(); s.settimeout(1); s.bind(("' + ip + '",0)); '
@@ -164,22 +175,6 @@ def main():
     assert elements('count4')['198.51.100.33 22003']['counter']['packets'] == 1
     print('PASS: a SYN resent with the same source port and sequence counts once', flush=True)
 
-    rotate_until_banned('198.51.100.31', 'ban4')
-    log = (home / 'frp-ssh-guard.log').read_text()
-    assert 'ban source=198.51.100.31 ports=all reason=restless-ports limit=2ports/15m,pause=30m' in log, log
-    print('PASS: shared jails ban a restless two-port source on all ports', flush=True)
-
-    settings.write_text(settings.read_text().replace('JAIL_PER_PORT=off', 'JAIL_PER_PORT=on'))
-    guard('check')
-    guard('reload')
-    rotate_until_banned('198.51.100.34', 'wideban4')
-    assert '198.51.100.34 22003' not in elements('ban4')  # one address-wide ban, not one per port
-    assert not vm.connect('198.51.100.34', 22003)  # also a port it never touched
-    def listed():  # the sampler exports the ban just after adding it
-        return '198.51.100.34 source=runtime until=' in (home / 'blocklist.conf').read_text().split('[all]')[1].split('\n[')[0]
-    wait_for(listed, seconds=90)
-    print('PASS: per-port jails ban a rotating source on all ports through wideban4', flush=True)
-
     settings.write_text(settings.read_text().replace('SSH_BEHAVIOR_RULES="2p:15m"', 'SSH_BEHAVIOR_RULES="20b:30m"'))
     guard('check')
     guard('reload')
@@ -191,16 +186,36 @@ def main():
         for _ in range(count):
             attempt(ip, port)
     banned = elements('ban4')
-    assert '198.51.100.35 22003' in banned, banned  # an unknown source, stopped during the burst
+    assert '198.51.100.35' in banned, banned  # an unknown source, stopped during the burst
     assert not reachable('198.51.100.35', 22003)
-    assert '198.51.100.36 22003' not in banned  # whitelisted
-    assert '198.51.100.37 22003' not in banned  # under the limit
-    assert '198.51.100.32 22004' not in banned  # known user
+    assert '198.51.100.36' not in banned  # whitelisted
+    assert '198.51.100.37' not in banned  # under the limit
+    assert '198.51.100.32' not in banned  # known user
     wait_for(lambda: 'reason=burst-connections limit=20/30m' in (home / 'frp-ssh-guard.log').read_text(), seconds=120)
     measure()
     guard('unban', '198.51.100.35')
     assert reachable('198.51.100.35', 22003)  # the meter was reset with the ban
     print('PASS: a burst bans only an unknown source that exceeds it, and unban resets it', flush=True)
+    settings.write_text(settings.read_text().replace('SSH_BEHAVIOR_RULES="20b:30m"', 'SSH_BEHAVIOR_RULES="2p:15m"'))
+    guard('check')
+    guard('reload')
+
+    rotate_until_banned('198.51.100.31', 'ban4')
+    log = (home / 'frp-ssh-guard.log').read_text()
+    assert 'ban source=198.51.100.31 ports=all reason=restless-ports limit=2ports/15m,pause=30m' in log, log
+    print('PASS: shared jails ban a restless two-port source on all ports', flush=True)
+
+    settings.write_text(settings.read_text().replace('JAIL_PER_PORT=off', 'JAIL_PER_PORT=on'))
+    guard('check')
+    guard('reload')
+    rotate_until_banned('198.51.100.34', 'wideban4')
+    assert '198.51.100.34 22003' not in elements('ban4')  # one address-wide ban, not one per port
+    assert not vm.connect('198.51.100.34', 22003)  # also a port it never touched
+    # The sampler exports the ban just after adding it.
+    wait_for(lambda: section_of((home / 'blocklist.conf').read_text(), '198.51.100.34 source=runtime until=') == '[all]',
+             seconds=90)
+    print('PASS: per-port jails ban a rotating source on all ports through wideban4', flush=True)
+
     guard('disable')
     run('ip', 'netns', 'del', 'guard-client')
 
