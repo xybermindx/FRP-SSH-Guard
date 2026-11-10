@@ -1,5 +1,9 @@
 # v0.0.9 validation
 
+Promoted from pre-release to the v0.0.9 release on 2026-11-10, based on the checks
+recorded below. The tag and the tested release assets are unchanged. `tests/vm-rpm.py`
+and loong64 remain untested.
+
 ## Burst limit and the short settings file (package revision 2)
 
 Checked on the development host with synthetic addresses only. No production firewall

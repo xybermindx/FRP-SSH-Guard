@@ -1,13 +1,11 @@
-# v0.0.9 (pre-release)
+# v0.0.9
 
 FRP-SSH-Guard on every common systemd Linux family, with a new `.rpm`, a preflight check, and tested coverage of FRP's Linux architectures. It also stops short bursts of password guessing during the burst and makes `settings.conf` much shorter.
 
 [English guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.9/README.md) ·
 [Chinese guide](https://github.com/xybermindx/FRP-SSH-Guard/blob/v0.0.9/README.zh-CN.md)
 
-This is a pre-release for testing. The stable release remains
-[v0.0.8](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8). Package
-revision 2 adds the burst limit and the short settings file to the first v0.0.9 build.
+Package revision 2 adds the burst limit and the short settings file to the first v0.0.9 build.
 
 ## Changes
 
@@ -77,7 +75,7 @@ run `sudo frp-ssh-guard check && sudo frp-ssh-guard reload`.
   to password guessing.
 - The RPM is new. CI installs, reinstalls and removes it in Fedora, Rocky, Alma and
   openSUSE containers, and loads the rules with each distribution's own nftables. The
-  SELinux-enforcing VM test with firewalld (`tests/vm-rpm.py`) has not been run yet.
+  SELinux-enforcing VM test with firewalld (`tests/vm-rpm.py`) was not run.
 - Containers cannot test firewalld or SELinux. Restarting `nftables.service` with a
   stock `flush ruleset` configuration removes the guard table until recovery restores
   it, within about a minute.

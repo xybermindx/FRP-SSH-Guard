@@ -4,7 +4,7 @@
 
 ![FRP-SSH-Guard — 公网边缘的 SSH 防护](docs/images/guard-cover.svg)
 
-**[下载 v0.0.9 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb)** · [.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm)（预发布版）· [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9) · 稳定版：[v0.0.8](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
+**[下载 v0.0.9 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb)** · [.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm) · [全部发布文件](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9)
 
 保护 FRP 转发的 SSH 端口，并可选保护公网服务器自身的 SSH 22 端口。
 FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共享或按端口独立的
@@ -16,7 +16,7 @@ FRP-SSH-Guard 提供 nftables 连接速率限制、本机 SSH 失败检测、共
 > 对 **595** 个唯一 IP 触发 **1,110** 次自动封禁，该窗口最近 24 小时后端登录失败 **0** 次。
 > 这只是当时的快照，并非保证：之后登录失败以短时突发的形式再次出现，突发限制正是针对这种情况。
 
-**版本 0.0.9（预发布版）· MIT 开源许可 · Bash 与 Python**
+**版本 0.0.9 · MIT 开源许可 · Bash 与 Python**
 
 [v0.0.9 更新说明](docs/RELEASE-v0.0.9.md) ·
 [配置及命令示例](docs/EXAMPLES.zh-CN.md) ·

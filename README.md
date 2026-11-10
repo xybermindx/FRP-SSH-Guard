@@ -4,7 +4,7 @@
 
 ![FRP-SSH-Guard — SSH protection at the public edge](docs/images/guard-cover.svg)
 
-**[Download v0.0.9 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb)** · [.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm) (pre-release) · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9) · Stable: [v0.0.8](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.8)
+**[Download v0.0.9 .deb](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard_0.0.9.deb)** · [.rpm](https://github.com/xybermindx/FRP-SSH-Guard/releases/download/v0.0.9/frp-ssh-guard-0.0.9.noarch.rpm) · [All release files](https://github.com/xybermindx/FRP-SSH-Guard/releases/tag/v0.0.9)
 
 Protect FRP-forwarded SSH ports and, optionally, the public server's own SSH port 22.
 FRP-SSH-Guard uses nftables connection limits, local SSH failure detection, shared
@@ -18,7 +18,7 @@ default to off; slow brute-force protection defaults to on.
 > failed logins in that window's latest 24 hours. That was a snapshot, not a promise:
 > failed logins later returned in short bursts, which the burst limit now targets.
 
-**Version 0.0.9 (pre-release) · MIT licensed · Bash and Python**
+**Version 0.0.9 · MIT licensed · Bash and Python**
 
 [What's new in v0.0.9](docs/RELEASE-v0.0.9.md) ·
 [Configuration and command examples](docs/EXAMPLES.md) ·
